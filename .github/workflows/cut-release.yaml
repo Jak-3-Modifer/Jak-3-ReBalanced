@@ -1,6 +1,9 @@
 name: Cut Mod Release ⭐
 
 on:
+  push:
+    tags:
+      - 'v*-beta.*'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -67,14 +70,18 @@ jobs:
         id: prep-vars
         run: |
           GAMES=
-          if [[ ${{ inputs.jak1 }} == "true" ]]; then GAMES+=jak1,; fi
-          if [[ ${{ inputs.jak2 }} == "true" ]]; then GAMES+=jak2,; fi
-          if [[ ${{ inputs.jak3 }} == "true" ]]; then GAMES+=jak3,; fi
-          if [[ ${{ inputs.jakx }} == "true" ]]; then GAMES+=jakx,; fi
-          GAMES=${GAMES%?}
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            GAMES=jak3
+          else
+            if [[ "${{ inputs.jak1 }}" == "true" ]]; then GAMES+=jak1,; fi
+            if [[ "${{ inputs.jak2 }}" == "true" ]]; then GAMES+=jak2,; fi
+            if [[ "${{ inputs.jak3 }}" == "true" ]]; then GAMES+=jak3,; fi
+            if [[ "${{ inputs.jakx }}" == "true" ]]; then GAMES+=jakx,; fi
+            GAMES=${GAMES%?}
+          fi
           echo "GAMES=$GAMES" >> $GITHUB_OUTPUT
           REPO=OpenGOAL-Mods/OG-Mod-Base
-          if [[ ${{ inputs.binary_source == 'vanilla' }} ]]; then REPO=open-goal/jak-project; fi
+          if [[ "${{ inputs.binary_source }}" == "vanilla" ]]; then REPO=open-goal/jak-project; fi
           echo "REPO=$REPO" >> $GITHUB_OUTPUT
 
   cut_mod_release:
@@ -83,10 +90,10 @@ jobs:
     uses: ./.github/workflows/mod-release-pipeline.yml
     with:
       semverBump: ${{ inputs.bump }}
-      releaseTag: ${{ inputs.release_tag }}
-      prerelease: ${{ inputs.prerelease }}
+      releaseTag: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+      prerelease: ${{ github.event_name == 'push' || inputs.prerelease }}
       metadataSupportedGames: ${{ needs.prep_vars.outputs.supported_games }}
-      buildBinaries: ${{ inputs.binary_source == 'build_binaries'}}
+      buildBinaries: ${{ github.event_name == 'push' || inputs.binary_source == 'build_binaries'}}
       toolingRepo: ${{ needs.prep_vars.outputs.tooling_repo }}
     secrets:
       token: ${{ secrets.GITHUB_TOKEN }}
