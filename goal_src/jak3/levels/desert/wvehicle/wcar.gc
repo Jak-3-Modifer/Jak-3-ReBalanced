@@ -262,8 +262,8 @@
       )
     :damage (new 'static 'vehicle-damage-info
       :inv-toughness-factor 0.8333333
-      :hit-points 29.997
-      :inv-hit-points 0.033336665
+      :hit-points 30.0
+      :inv-hit-points 0.033333335
       :hit-threshold 8192.0
       :hit-small 102400.0
       :hit-big 131072.0
@@ -684,14 +684,18 @@
 (define *v-scorpion-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      :mass 24.0
-      :inv-mass 0.041666668
+      ;; Restored custom Gila Stomper baseline.
+      :mass 14.0
+      :inv-mass 0.071428575
       :linear-damping 1.0
       :angular-damping 1.0
       :bounce-factor 0.4
       :friction-factor 0.5
-      :cm-offset-joint (new 'static 'vector :y -4096.0 :w 1.0)
-      :inertial-tensor-box (new 'static 'array meters 3 (meters 8) (meters 4) (meters 8))
+      ;; Axles at z 14336 / -12492.8: z 2263.04 gives 55% front /
+      ;; 45% rear static weight distribution.
+      ;; Lower pitch center and added pitch inertia reduce hard-braking tip-over.
+      :cm-offset-joint (new 'static 'vector :y -5120.0 :z 2263.04 :w 1.0)
+      :inertial-tensor-box (new 'static 'array meters 3 (meters 9) (meters 4) (meters 8))
       )
     :extra (new 'static 'rigid-body-object-extra-info
       :max-time-step 0.033333335
@@ -752,10 +756,10 @@
       :tire-steering-speed-bias 40960.0
       :ackermann-factor 0.8
       :tire-friction-factor 1.0
-      :tire-static-friction 1.0
-      :tire-static-friction-speed (meters 2)
-      :tire-dynamic-friction 0.65
-      :tire-dynamic-friction-speed (meters 4)
+      :tire-static-friction 1.65
+      :tire-static-friction-speed (meters 2.5)
+      :tire-dynamic-friction 1.1
+      :tire-dynamic-friction-speed (meters 5.5)
       :tire-inv-max-friction-speed 0.000024414063
       :airfoil-factor 1.0
       :drag-force-factor 0.4
@@ -928,23 +932,25 @@
       :engine-thrust-local-pos (new 'static 'vector :w 1.0)
       :brake-local-pos (new 'static 'vector :w 1.0)
       :wheel-count 4
-      :drive-wheel-count 2
+      :drive-wheel-count 4
       :front-wheel (new 'static 'vehicle-wheel-info
         :local-pos (new 'static 'vector :x 3686.4 :y -4096.0 :z 14336.0 :w 1.0)
+        ;; Gila Stomper: 4WD by default; D-pad Right temporarily selects FWD.
         :flags (vehicle-wheel-flag vwf0 vwf1 vwf4)
         :inertia 32768000.0
         :radius 2048.0
         :susp-arm-length 12288.0
         :steer-arm-length 2048.0
         :scale 4.0
-        :travel 7864.3203
+        :travel 8355.2
         :probe-y-offset -4423.68
         :width 2048.0
-        :suspension-spring 0.36
-        :suspension-damping 0.2
-        :forward-grip 1.3
+        :suspension-spring 0.4
+        :suspension-damping 0.4
+        :forward-grip 1.35
         :side-grip 1.4
-        :max-brake-torque 1.0
+        ;; Reduce hard-stop pitch by halving brake torque at both axles.
+        :max-brake-torque 0.5
         :camber 546.13336
         :settle-pos 0.81
         :probe-radius 4096.0
@@ -958,14 +964,14 @@
         :susp-arm-length 12288.0
         :steer-arm-length 2048.0
         :scale 4.0
-        :travel 7864.3203
+        :travel 9830.4
         :probe-y-offset -4423.68
         :width 2048.0
-        :suspension-spring 0.36
-        :suspension-damping 0.2
-        :forward-grip 1.3
-        :side-grip 1.4
-        :max-brake-torque 1.0
+        :suspension-spring 0.43
+        :suspension-damping 0.44
+        :forward-grip 1.5
+        :side-grip 1.3
+        :max-brake-torque 0.5
         :camber 546.13336
         :settle-pos 0.78
         :probe-radius 4096.0
@@ -1319,10 +1325,11 @@
         :susp-arm-length 12288.0
         :steer-arm-length 2048.0
         :scale 1.0
-        :travel 12288.0
+        ;; Slightly longer, better-controlled travel smooths uneven terrain.
+        :travel 13107.2
         :width 4096.0
         :suspension-spring 0.3
-        :suspension-damping 0.051
+        :suspension-damping 0.065
         :forward-grip 1.0
         :side-grip 1.0
         :max-brake-torque 1.0
@@ -1337,11 +1344,11 @@
         :radius 4915.2
         :susp-arm-length 13516.8
         :scale 1.5
-        :travel 8601.6
+        :travel 9420.8
         :probe-y-offset -3686.4001
         :width 2867.2
         :suspension-spring 0.65
-        :suspension-damping 0.1
+        :suspension-damping 0.12
         :forward-grip 1.5
         :side-grip 1.0
         :max-brake-torque 1.0
@@ -1427,8 +1434,9 @@
       :upshift-rpm 5500.0
       :downshift-rpm 3200.0
       :final-drive-ratio 11.0
-      :gear-ratio-array (new 'static 'array float 8 -2.25 3.375 2.25 1.5 1.0 0.0 0.0 0.0)
-      :gear-count 5
+      ;; Heat Seeker manual test: reverse plus five forward ratios.
+      :gear-ratio-array (new 'static 'array float 8 -2.25 3.375 2.25 1.5 1.2 1.0 0.0 0.0)
+      :gear-count 6
       )
     :handling (new 'static 'vehicle-handling-info
       :max-engine-thrust (meters 50)
@@ -2105,17 +2113,20 @@
 (define *v-mirage-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      :mass 10.0
-      :inv-mass 0.1
+      ;; Dust Demon: medium-weight, planted chassis between the Fox and Scorpion.
+      :mass 18.0
+      :inv-mass 0.055555556
       :linear-damping 1.0
       :angular-damping 1.0
       :bounce-factor 0.4
       :friction-factor 0.5
-      :cm-offset-joint (new 'static 'vector :y 409.6 :z -2048.0 :w 1.0)
-      :inertial-tensor-box (new 'static 'array meters 3 (meters 5.5) (meters 3) (meters 7))
+      ;; Axles at z 7864.32 / -12083.2: z -3705.2416 gives 42% front / 58% rear.
+      :cm-offset-joint (new 'static 'vector :y -1024.0 :z -3705.2416 :w 1.0)
+      :inertial-tensor-box (new 'static 'array meters 3 (meters 6) (meters 3.25) (meters 7.25))
       )
     :extra (new 'static 'rigid-body-object-extra-info
-      :max-time-step 0.033333335
+      ;; Run the per-wheel adaptive damping at up to 200 physics steps per second.
+      :max-time-step 0.005
       :gravity (meters 40)
       :idle-distance (meters 50)
       :attack-force-scale 1.0
@@ -2126,35 +2137,38 @@
     :guard-type #xb
     :vehicle-type (vehicle-type-u8 v-mirage)
     :engine (new 'static 'vehicle-engine-info
-      :max-torque 218103800.0
-      :inertia 16384.0
-      :drag 0.2
+      :max-torque 402653200.0
+      :inertia 32768.0
+      :drag 0.25
       :idle-rpm 900.0
-      :clutch-min-rpm 2000.0
-      :clutch-max-rpm 5500.0
+      :clutch-min-rpm 1200.0
+      :clutch-max-rpm 6200.0
       :min-rpm 600.0
-      :max-rpm 7500.0
-      :peak-torque-rpm 3800.0
-      :powerband-width-rpm 4100.0
+      :max-rpm 7000.0
+      :peak-torque-rpm 3500.0
+      :powerband-width-rpm 5200.0
       )
     :transmission (new 'static 'vehicle-transmission-info
       :inertia 8192.0
-      :upshift-rpm 5500.0
-      :downshift-rpm 3200.0
-      :final-drive-ratio 12.5
-      :gear-ratio-array (new 'static 'array float 8 -2.25 3.375 2.25 1.5 1.0 0.0 0.0 0.0)
-      :gear-count 5
+      ;; Several usable forward ratios retain low-speed control while allowing
+      ;; the Dust Demon to build speed instead of remaining in first gear.
+      :upshift-rpm 5600.0
+      :downshift-rpm 2600.0
+      :final-drive-ratio 16.0
+      ;; Three forward ratios target approximately 36/45/52 m/s.
+      :gear-ratio-array (new 'static 'array float 8 -1.8 1.23 0.98 0.85 0.0 0.0 0.0 0.0)
+      :gear-count 4
       )
     :handling (new 'static 'vehicle-handling-info
       :max-engine-thrust (meters 50)
       :inv-max-engine-thrust 0.0000048828124
-      :engine-response-rate 10.0
+      :engine-response-rate 14.0
       :engine-intake-factor 1.0
-      :brake-factor 3355443200.0
+      :brake-factor 4026532000.0
       :turbo-boost-factor 0.9
       :turbo-boost-duration (seconds 2)
-      :max-xz-speed (meters 30)
-      :player-turn-anim-bias 0.5
+      :max-xz-speed (meters 52)
+      :player-turn-anim-bias 0.35
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
       :pilot-y-accel-factor 1.0
@@ -2162,41 +2176,41 @@
       :ground-probe-distance (meters 3)
       :cos-ground-effect-angle 0.42261827
       :spring-lift-factor 1.0
-      :air-drag-factor 1.0
+      :air-drag-factor 1.15
       :steering-fin-angle 1820.4445
       :steering-thruster-factor 1.0
       :steering-thruster-max-gain 1.0
       :steering-thruster-half-gain-speed (meters 30)
-      :tire-steering-angle 4369.067
-      :tire-steering-speed-factor 38379.52
-      :tire-steering-speed-bias 20480.0
-      :ackermann-factor 0.45
+      :tire-steering-angle 4005.0
+      :tire-steering-speed-factor 45056.0
+      :tire-steering-speed-bias 32768.0
+      :ackermann-factor 0.6
       :tire-friction-factor 1.0
-      :tire-static-friction 1.3310001
-      :tire-static-friction-speed (meters 2)
-      :tire-dynamic-friction 0.86515
-      :tire-dynamic-friction-speed (meters 4)
+      :tire-static-friction 1.65
+      :tire-static-friction-speed (meters 2.5)
+      :tire-dynamic-friction 1.15
+      :tire-dynamic-friction-speed (meters 6.5)
       :tire-inv-max-friction-speed 0.000024414063
-      :airfoil-factor 1.0
-      :drag-force-factor 0.35
-      :rolling-resistance 0.08
-      :speed-scrubbing-drag 10.0
+      :airfoil-factor 0.25
+      :drag-force-factor 0.48
+      :rolling-resistance 0.09
+      :speed-scrubbing-drag 8.0
       :speed-limiting-drag 1.0
-      :pitch-control-factor 1.0
-      :roll-control-factor 2.0
-      :jump-thrust-factor 1.0
+      :pitch-control-factor 0.85
+      :roll-control-factor 2.4
+      :jump-thrust-factor 1.3
       :buoyancy-factor 0.03
       :water-drag-factor 0.25
       :player-weight 122880.0
-      :air-roll-torque 81920.0
-      :air-pitch-torque 163840.0
-      :air-angular-damping 0.98
-      :hop-turn-torque 1392640.0
-      :ground-torque-scale 1.0
+      :air-roll-torque 245760.0
+      :air-pitch-torque 491520.0
+      :air-angular-damping 0.985
+      :hop-turn-torque 1228800.0
+      :ground-torque-scale 0.8
       :ai-steering-factor 1.0
       :ai-throttle-factor 1.0
       )
-    :turning-accel (meters 20)
+    :turning-accel (meters 22)
     :camera (new 'static 'vehicle-camera-info
       :string-min-height (meters 4.5)
       :string-max-height (meters 5)
@@ -2348,25 +2362,25 @@
       :engine-thrust-local-pos (new 'static 'vector :w 1.0)
       :brake-local-pos (new 'static 'vector :w 1.0)
       :wheel-count 4
-      :drive-wheel-count 2
+      :drive-wheel-count 4
       :front-wheel (new 'static 'vehicle-wheel-info
         :local-pos (new 'static 'vector :x 1843.2 :y 901.12 :z 7864.32 :w 1.0)
-        :flags (vehicle-wheel-flag vwf1 vwf3 vwf4)
+        :flags (vehicle-wheel-flag vwf0 vwf1 vwf3 vwf4)
         :inertia 6144000.0
         :radius 3399.68
         :susp-arm-length 5939.2
         :steer-arm-length 1638.4
         :scale 1.1
-        :travel 4055.04
-        :probe-y-offset -2580.48
+        :travel 8192.0
+        :probe-y-offset 522.24
         :width 3276.8
-        :suspension-spring 0.6
-        :suspension-damping 0.3
-        :forward-grip 0.9
-        :side-grip 1.0
+        :suspension-spring 0.4
+        :suspension-damping 0.5
+        :forward-grip 1.4
+        :side-grip 1.4
         :max-brake-torque 1.0
         :camber 546.13336
-        :settle-pos 0.78
+        :settle-pos 0.72
         :probe-radius 2457.6
         :tread-texture "tread-interceptor-rhino"
         )
@@ -2378,16 +2392,16 @@
         :susp-arm-length 8069.12
         :steer-arm-length 1638.4
         :scale 1.5
-        :travel 4300.8
-        :probe-y-offset -4710.4
+        :travel 9011.2
+        :probe-y-offset -1177.6
         :width 3276.8
-        :suspension-spring 0.5
-        :suspension-damping 0.3
-        :forward-grip 1.5
-        :side-grip 1.0
+        :suspension-spring 0.42
+        :suspension-damping 0.52
+        :forward-grip 1.6
+        :side-grip 1.3
         :max-brake-torque 1.0
         :camber 1820.4445
-        :settle-pos 0.76
+        :settle-pos 0.7
         :probe-radius 2867.2
         :tread-texture "tread-interceptor-rhino"
         )
@@ -2456,15 +2470,15 @@
     :vehicle-type (vehicle-type-u8 v-x-ride)
     :engine (new 'static 'vehicle-engine-info
       :max-torque 234881020.0
-      :inertia 16384.0
-      :drag 0.2
-      :idle-rpm 900.0
-      :clutch-min-rpm 2000.0
-      :clutch-max-rpm 5500.0
-      :min-rpm 600.0
-      :max-rpm 7500.0
-      :peak-torque-rpm 3800.0
-      :powerband-width-rpm 4100.0
+      :inertia 32768.0
+      :drag 0.4
+      :idle-rpm 500.0
+      :clutch-min-rpm 800.0
+      :clutch-max-rpm 5100.0
+      :min-rpm 300.0
+      :max-rpm 6500.0
+      :peak-torque-rpm 3600.0
+      :powerband-width-rpm 4800.0
       )
     :transmission (new 'static 'vehicle-transmission-info
       :inertia 8192.0
@@ -2491,7 +2505,7 @@
       :ground-probe-distance (meters 3)
       :cos-ground-effect-angle 0.42261827
       :spring-lift-factor 1.0
-      :air-drag-factor 1.0
+      :air-drag-factor 1.2
       :steering-fin-angle 1820.4445
       :steering-thruster-factor 1.0
       :steering-thruster-max-gain 1.0
@@ -3815,6 +3829,13 @@
 ;; WARN: Return type mismatch float vs none.
 (defmethod wvehicle-method-169 ((this wcar-snake-base))
   (set! (-> this i-barrel) (logand (+ (-> this i-barrel) 1) 1))
+  ;; Sand Shark alternates 7- and 8-tick gaps. Over one shot from each barrel,
+  ;; the combined 15 ticks gives each barrel exactly 1200 RPM.
+  (when (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+    (set! (-> this shoot-delay)
+      (the-as uint (if (= (-> this i-barrel) 0) 7 8))
+      )
+    )
   (let ((s5-0 (new 'stack-no-clear 'wcar-proj-init-by-other-params)))
     (set! (-> s5-0 barrel-idx) (-> this i-barrel))
     (set! (-> s5-0 vec0 7 x) 16384.0)

@@ -41,6 +41,10 @@
 (defmethod wvehicle-method-169 ((this v-toad))
   (sound-play "toad-shot-fire")
   (set! (-> this i-barrel) (logand (+ (-> this i-barrel) 1) 1))
+  ;; Fire two-shot bursts: 64 ticks between shots, then a 369-tick cooldown.
+  (set! (-> this shoot-delay)
+    (the-as uint (if (= (-> this i-barrel) 0) 369 64))
+    )
   (let ((gp-1 (new 'stack-no-clear 'wcar-toad-stack-var0)))
     (set! (-> gp-1 barrel-idx) (-> this i-barrel))
     (set! (-> gp-1 vec10 x) 61440.0)
@@ -458,7 +462,8 @@
     )
   (alloc-rbody-control! this *v-toad-constants*)
   (set! (-> this rider-hand-joint-array 0) 14)
-  (set! (-> this shoot-delay) (the-as uint 300))
+  ;; Start with the 281.25 RPM intra-burst interval (64 ticks).
+  (set! (-> this shoot-delay) (the-as uint 64))
   ((method-of-type joint-mod-rotate-local init)
    (-> this jmod-axles 0)
    this

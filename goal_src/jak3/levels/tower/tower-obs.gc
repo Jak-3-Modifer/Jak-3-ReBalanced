@@ -461,7 +461,9 @@
   )
 
 (deftype tow-energy-bridge (process-drawable)
-  ((root  collide-shape :override)
+  ((root             collide-shape :override)
+   (prompt-complete  symbol)
+   (prompt-time      time-frame)
    )
   (:state-methods
     idle
@@ -475,6 +477,24 @@
               ((tow-energy-bridge-lod0-mg (meters 999999)))
               :bounds (static-spherem 0 0 0 20)
               )
+
+(defun tow-energy-bridge-update-darkjak-collision! ((this tow-energy-bridge))
+  "Tower Energy Bridges are solid only while Jak is in Dark Jak form."
+  (let ((prim (-> this root root-prim)))
+    (if (and *target*
+             (focus-test? *target* dark)
+             (nonzero? (-> *target* darkjak)))
+        (begin
+          (set! (-> prim prim-core collide-as) (-> this root backup-collide-as))
+          (set! (-> prim prim-core collide-with) (-> this root backup-collide-with))
+          )
+        (begin
+          (set! (-> prim prim-core collide-as) (collide-spec))
+          (set! (-> prim prim-core collide-with) (collide-spec))
+          )
+        )
+    )
+  )
 
 (defstate idle (tow-energy-bridge)
   :virtual #t
@@ -525,10 +545,7 @@
   :code (behavior ()
     (suspend-for (seconds 0.75)
       )
-    (let ((v1-6 (-> self root root-prim)))
-      (set! (-> v1-6 prim-core collide-as) (-> self root backup-collide-as))
-      (set! (-> v1-6 prim-core collide-with) (-> self root backup-collide-with))
-      )
+    (tow-energy-bridge-update-darkjak-collision! self)
     (sound-play "bridge-expand")
     (logclear! (-> self draw status) (draw-control-status no-draw))
     (let ((f30-0 1.0))
@@ -561,11 +578,50 @@
   :enter (behavior ()
     (ja-post)
     )
-  :code sleep-code
+  :code (behavior ()
+    ;; Keep this live so leaving Dark Jak immediately removes the bridge's
+    ;; collision and Jak falls through it.
+    (until #f
+      (tow-energy-bridge-update-darkjak-collision! self)
+      ;; Bridge 1 is the high-Z bridge at the start of the Tower section.
+      ;; Trigger its instruction once, show it for four seconds, and then keep
+      ;; it consumed for the rest of this mission attempt.
+      (when (and *target*
+                 (> (-> self root trans z) (meters 400))
+                 (< (vector-vector-xz-distance (-> self root trans) (get-trans *target* 0)) (meters 25))
+                 (not (-> self prompt-complete))
+                 (not (and (focus-test? *target* dark) (nonzero? (-> *target* darkjak))))
+                 )
+        (set! (-> self prompt-complete) #t)
+        (set-time! (-> self prompt-time))
+        )
+      (when (and (-> self prompt-complete)
+                 (not (time-elapsed? (-> self prompt-time) (seconds 4)))
+                 )
+        (let ((font-ctx
+                (new 'stack 'font-context *font-default-matrix* 32 290 0.0 (font-color default) (font-flags shadow kerning))
+                )
+              )
+          (set! (-> font-ctx flags) (font-flags shadow kerning middle middle-vert large))
+          (set-width! font-ctx 440)
+          (set-height! font-ctx 80)
+          (set-scale! font-ctx 0.8)
+          (format
+            (clear *temp-string*)
+            "Press ~S to summon Dark Power"
+            (lookup-text! *common-text* (text-id progress-controls-pad-r2) #f)
+            )
+          (print-game-text *temp-string* font-ctx #f 44 (bucket-id hud-draw-hud-alpha))
+          )
+        )
+      (suspend)
+      )
+    )
   )
 
 (defmethod init-from-entity! ((this tow-energy-bridge) (arg0 entity-actor))
   "Set up a newly created process from the entity that created it."
+  (set! (-> this prompt-complete) #f)
   (let ((s4-0 (new 'process 'collide-shape this (collide-list-enum usually-hit-by-player))))
     (set! (-> s4-0 penetrated-by) (penetrate))
     (let ((v1-2 (new 'process 'collide-shape-prim-mesh s4-0 (the-as uint 0) (the-as uint 0))))

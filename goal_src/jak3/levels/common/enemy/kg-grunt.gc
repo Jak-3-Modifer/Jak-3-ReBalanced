@@ -272,15 +272,15 @@
 
 (define *kg-grunt-global-info* (new 'static 'kg-grunt-global-info
                                  :patrol-anim (new 'static 'inline-array kg-grunt-anim-info 4
-                                   (new 'static 'kg-grunt-anim-info :anim-index 11 :travel-speed (meters 4))
-                                   (new 'static 'kg-grunt-anim-info :anim-index 12 :travel-speed (meters 7))
-                                   (new 'static 'kg-grunt-anim-info :anim-index 14 :travel-speed (meters 7))
-                                   (new 'static 'kg-grunt-anim-info :anim-index 15 :travel-speed (meters 7))
+                                   (new 'static 'kg-grunt-anim-info :anim-index 11 :travel-speed (meters 8))
+                                   (new 'static 'kg-grunt-anim-info :anim-index 12 :travel-speed (meters 14))
+                                   (new 'static 'kg-grunt-anim-info :anim-index 14 :travel-speed (meters 14))
+                                   (new 'static 'kg-grunt-anim-info :anim-index 15 :travel-speed (meters 14))
                                    )
                                  :charge-anim (new 'static 'inline-array kg-grunt-anim-info 3
-                                   (new 'static 'kg-grunt-anim-info :anim-index 14 :travel-speed (meters 7))
-                                   (new 'static 'kg-grunt-anim-info :anim-index 15 :travel-speed (meters 7))
-                                   (new 'static 'kg-grunt-anim-info :anim-index 16 :travel-speed (meters 7))
+                                   (new 'static 'kg-grunt-anim-info :anim-index 14 :travel-speed (meters 14))
+                                   (new 'static 'kg-grunt-anim-info :anim-index 15 :travel-speed (meters 14))
+                                   (new 'static 'kg-grunt-anim-info :anim-index 16 :travel-speed (meters 14))
                                    )
                                  :attack-anim (new 'static 'inline-array kg-grunt-anim-info 2
                                    (new 'static 'kg-grunt-anim-info :anim-index 17 :travel-speed (meters 12))
@@ -518,7 +518,7 @@
     :notice-distance (meters 40)
     :notice-distance-delta (meters 10)
     :proximity-notice-distance (meters 20)
-    :default-hit-points 5.0
+    :default-hit-points 15.0
     :gnd-collide-with (collide-spec backgnd obstacle hit-by-others-list)
     :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
     :penetrate-knocked (penetrate
@@ -647,12 +647,12 @@
     :turn-anim -1
     :run-anim 14
     :taunt-anim 20
-    :run-travel-speed (meters 7)
-    :run-acceleration (meters 6)
-    :run-turning-acceleration (meters 50)
-    :walk-travel-speed (meters 4)
-    :walk-acceleration (meters 6)
-    :walk-turning-acceleration (meters 3)
+    :run-travel-speed (meters 14)
+    :run-acceleration (meters 22)
+    :run-turning-acceleration (meters 95)
+    :walk-travel-speed (meters 8)
+    :walk-acceleration (meters 22)
+    :walk-turning-acceleration (meters 22)
     :maximum-rotation-rate (degrees 360)
     :notice-nav-radius (meters 2)
     :frustration-distance (meters 8)
@@ -665,6 +665,36 @@
   )
 
 (set! (-> *kg-grunt-nav-enemy-info* fact-defaults) *fact-info-kg-grunt-defaults*)
+
+;; Match the standard KG-robot resistance table used by Robo Guards and Hovers.
+(defmethod get-damage-from-attack ((this kg-grunt) (arg0 object) (arg1 event-message-block))
+  (let* ((attack (the-as attack-info (-> arg1 param 1)))
+         (damage ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1))
+         (weapon-shot? (or (logtest? (penetrate jak-yellow-shot
+                                               jak-red-shot
+                                               jak-blue-shot
+                                               jak-dark-shot
+                                               jak-red-shockwave
+                                               jak-dark-nuke
+                                               jak-dark-blackhole
+                                               explode)
+                                     (-> attack penetrate-using))
+                            (or (= (-> attack mode) 'eco-red)
+                                (= (-> attack mode) 'eco-red-shove)
+                                (= (-> attack mode) 'eco-yellow)
+                                (= (-> attack mode) 'eco-blue)
+                                (= (-> attack mode) 'eco-dark))))
+         (arc-wielder? (logtest? (penetrate penetrate38) (-> attack penetrate-using)))
+         (special-weapon? (logtest? (penetrate penetrate38 penetrate39 penetrate40 penetrate41)
+                                    (-> attack penetrate-using))))
+    (cond
+      ((not weapon-shot?) damage)
+      ((and arc-wielder? (logtest? (game-secrets gun-upgrade-blue-2) (-> *game-info* secrets))) damage)
+      (special-weapon? (* 1.5 damage))
+      (else damage)
+      )
+    )
+  )
 
 (defmethod get-inv-mass ((this kg-grunt))
   2.0
@@ -752,6 +782,23 @@
   :virtual #t
   :event enemy-event-handler
   :enter (behavior ()
+    ;; Match the Robo Guard's death blast: nearby Jak takes damage and
+    ;; receives the normal explosion reaction before the Grunt breaks apart.
+    (let ((gp-0 (new 'stack-no-clear 'explosion-init-params)))
+      (vector-copy! (-> gp-0 spawn-point) (-> self root trans))
+      (quaternion-identity! (-> gp-0 spawn-quat))
+      (set! (-> gp-0 radius) (meters 8))
+      (set! (-> gp-0 scale) 1.0)
+      (set! (-> gp-0 group) group-kg-explosion)
+      (set! (-> gp-0 collide-with)
+            (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher))
+      (set! (-> gp-0 damage) 2.0)
+      (set! (-> gp-0 damage-scale) 1.0)
+      (set! (-> gp-0 vehicle-damage-factor) 1.0)
+      (set! (-> gp-0 vehicle-impulse-factor) 1.0)
+      (set! (-> gp-0 ignore-proc) (process->handle self))
+      (explosion-spawn gp-0 self)
+      )
     (let ((v1-1 (-> self root root-prim)))
       (set! (-> v1-1 prim-core collide-as) (collide-spec))
       (set! (-> v1-1 prim-core collide-with) (collide-spec))
@@ -1866,6 +1913,9 @@
       )
   (logior! (-> this mask) (process-mask kg-robot))
   (setup-enemy! this (get-nav-enemy-info this))
+  (set! (-> this fact pickup-type) (pickup-type ammo-random))
+  (set! (-> this fact pickup-amount) 10.0)
+  (set! (-> this fact pickup-spawn-amount) 1.0)
   (let ((v1-17 (-> this neck)))
     (set! (-> v1-17 up) (the-as uint 1))
     (set! (-> v1-17 nose) (the-as uint 2))

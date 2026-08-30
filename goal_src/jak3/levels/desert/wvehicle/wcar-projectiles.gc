@@ -207,8 +207,75 @@
     )
   )
 
+(defmethod deal-damage! ((this v-scorp-shot) (arg0 process) (arg1 event-message-block))
+  (let ((owner (handle->process (-> this owner-handle))))
+    (if (and owner
+             (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-scorpion)))
+        (let ((attack (new 'stack 'attack-info)))
+          (set! (-> attack mode) (-> this attack-mode))
+          (set! (-> attack id) (-> this attack-id))
+          (set! (-> attack mask) (attack-mask mode id))
+          (set! (-> attack attacker) (-> this owner-handle))
+          (logior! (-> attack mask) (attack-mask attacker))
+          (when (logtest? (-> this options) (projectile-options po13))
+            (set! (-> attack attacker-velocity quad) (-> this pre-move-transv quad))
+            (logior! (-> attack mask) (attack-mask attacker-velocity))
+            )
+          (set! (-> attack damage) (-> this damage))
+          (set! (-> attack vehicle-damage-factor) (-> this vehicle-damage-factor))
+          (set! (-> attack vehicle-impulse-factor) (-> this vehicle-impulse-factor))
+          (set! (-> attack shove-up) (meters 10))
+          (logior!
+            (-> attack mask)
+            (attack-mask damage vehicle-damage-factor vehicle-impulse-factor shove-up)
+            )
+          (when (logtest? (projectile-options po18) (-> this options))
+            (set! (-> attack invinc-time) (-> this invinc-time))
+            (logior! (-> attack mask) (attack-mask invinc-time))
+            )
+          (the-as symbol
+            (send-event
+              arg0
+              (if (logtest? (projectile-options po19) (-> this options))
+                  'attack-invinc
+                  'attack
+                  )
+              arg1
+              attack
+              )
+            )
+          )
+        (let ((t9-0 (method-of-type projectile deal-damage!)))
+          (t9-0 this arg0 arg1)
+          )
+        )
+    )
+  )
+
 (deftype v-snake-shot (v-scorp-shot)
   ()
+  )
+
+(defmethod init-proj-settings! ((this v-snake-shot))
+  ((method-of-type v-scorp-shot init-proj-settings!) this)
+  (let ((owner (handle->process (-> this owner-handle))))
+    (set! (-> this damage)
+      (if (and owner
+               (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-snake)))
+          0.75
+          (if (and owner
+                   (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-x-ride)))
+              1.5
+              1.0
+              )
+          )
+      )
+    (when (and owner
+               (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-snake)))
+      (set! (-> this vehicle-impulse-factor) 1.5)
+      )
+    )
+  (none)
   )
 
 
@@ -228,7 +295,60 @@
   )
 
 (defmethod deal-damage! ((this v-snake-shot) (arg0 process) (arg1 event-message-block))
-  (let ((gp-0 ((method-of-type v-scorp-shot deal-damage!) this arg0 arg1)))
+  (let* ((owner (handle->process (-> this owner-handle)))
+         (desert-screamer?
+           (and owner
+                (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-x-ride))))
+         (heat-seeker?
+           (and owner
+                (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-fox))))
+         (gp-0
+           (if (or desert-screamer? heat-seeker?)
+               (let ((attack (new 'stack 'attack-info)))
+                 (set! (-> attack mode) (-> this attack-mode))
+                 (set! (-> attack id) (-> this attack-id))
+                 (set! (-> attack mask) (attack-mask mode id))
+                 (set! (-> attack attacker) (-> this owner-handle))
+                 (logior! (-> attack mask) (attack-mask attacker))
+                 (when (logtest? (-> this options) (projectile-options po13))
+                   (set! (-> attack attacker-velocity quad) (-> this pre-move-transv quad))
+                   (logior! (-> attack mask) (attack-mask attacker-velocity))
+                   )
+                 (set! (-> attack damage) (-> this damage))
+                 (set! (-> attack vehicle-damage-factor) (-> this vehicle-damage-factor))
+                 (set! (-> attack vehicle-impulse-factor) (-> this vehicle-impulse-factor))
+                 (logior!
+                   (-> attack mask)
+                   (attack-mask damage vehicle-damage-factor vehicle-impulse-factor)
+                   )
+                 (when desert-screamer?
+                   (set! (-> attack shove-up) (meters 6))
+                   (logior! (-> attack mask) (attack-mask shove-up))
+                   )
+                 (when heat-seeker?
+                   (set! (-> attack shove-back) (meters 5))
+                   (logior! (-> attack mask) (attack-mask shove-back))
+                   )
+                 (when (logtest? (projectile-options po18) (-> this options))
+                   (set! (-> attack invinc-time) (-> this invinc-time))
+                   (logior! (-> attack mask) (attack-mask invinc-time))
+                   )
+                 (the-as symbol
+                   (send-event
+                     arg0
+                     (if (logtest? (projectile-options po19) (-> this options))
+                         'attack-invinc
+                         'attack
+                         )
+                     arg1
+                     attack
+                     )
+                   )
+                 )
+               ((method-of-type v-scorp-shot deal-damage!) this arg0 arg1)
+               )
+           )
+         )
     (when gp-0
       (if (logtest? (process-mask vehicle) (-> arg0 mask))
           (sound-play "snake-riccos")
@@ -520,7 +640,7 @@
       (set! (-> gp-0 collide-with)
             (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher)
             )
-      (set! (-> gp-0 damage) 20.0)
+      (set! (-> gp-0 damage) 6.0)
       (set! (-> gp-0 damage-scale) 3.0)
       (set! (-> gp-0 vehicle-damage-factor) 1.0)
       (set! (-> gp-0 vehicle-impulse-factor) 1.0)

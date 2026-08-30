@@ -110,7 +110,9 @@
     :idle-anim 3
     :notice-anim 6
     :hostile-anim 6
-    :hit-anim 3
+    ;; Match the Beam Reflexor reaction: use the marauder's knocked-back
+    ;; clip instead of the walk/idle-like pose for blaster hits.
+    :hit-anim 20
     :knocked-anim 20
     :knocked-land-anim 21
     :die-anim 34
@@ -491,12 +493,14 @@
     :turn-anim 3
     :run-anim 3
     :taunt-anim -1
-    :run-travel-speed (meters 6)
-    :run-acceleration (meters 14)
-    :run-turning-acceleration (meters 40)
-    :walk-travel-speed (meters 3.5)
-    :walk-acceleration (meters 6)
-    :walk-turning-acceleration (meters 3)
+    ;; Keep the previous 2x tuning, then add 25% more actual movement so
+    ;; Marauders gain ground faster without speeding up their animations.
+    :run-travel-speed (meters 16.25)
+    :run-acceleration (meters 40)
+    :run-turning-acceleration (meters 110)
+    :walk-travel-speed (meters 10)
+    :walk-acceleration (meters 17.5)
+    :walk-turning-acceleration (meters 10)
     :maximum-rotation-rate (degrees 720)
     :notice-nav-radius (meters 100)
     :frustration-distance (meters 120)
@@ -1206,7 +1210,16 @@
         (-> this target-pos)
         (get-trans (the-as process-focusable s4-0) 3)
         s5-1
-        (the-as float (if (rand-vu-percent? 0.66)
+        ;; Arena 3 Marauders use the same spread magnitude, but apply it a
+        ;; little more often (75% rather than 66%) for slightly looser aim.
+        (the-as float (if (rand-vu-percent?
+                            (let ((manager (the-as task-manager (ppointer->process (-> this parent)))))
+                              (if (and manager (= (-> manager node-info task) (game-task arena-fight-3)))
+                                  0.75
+                                  0.66
+                                  )
+                              )
+                            )
                           8192.0
                           0.0
                           )
@@ -1856,6 +1869,15 @@
   (set! (-> self skip-jump) (-> arg1 skip-jump))
   (set-multi-focus self (-> arg1 multi-focus))
   (enemy-init-by-other arg0 arg1)
+  ;; Arena Fight 2 Marauders drop dark eco instead of their normal random
+  ;; ammunition pickup.  Marauders in other missions keep their usual drops.
+  (let ((manager (the-as task-manager (ppointer->process (-> self parent)))))
+    (when (and manager (= (-> manager node-info task) (game-task arena-fight-2)))
+      (set! (-> self fact pickup-type) (pickup-type eco-pill-dark))
+      (set! (-> self fact pickup-amount) 1.0)
+      (set! (-> self fact pickup-spawn-amount) 1.0)
+      )
+    )
   )
 
 ;; WARN: Return type mismatch symbol vs none.

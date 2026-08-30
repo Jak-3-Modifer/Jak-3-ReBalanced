@@ -1384,8 +1384,44 @@
     )
   )
 
+(defun des-beast-turn-speed-factor ((arg0 des-beast))
+  "Preserve each Metal Head Hunt stage's movement increase after a turn."
+  (if (< (-> arg0 hit-points2) 0.0)
+      1.55
+      (cond
+        ((zero? (+ (-> arg0 shoot-delay) (seconds -5))) 0.9)
+        ((zero? (+ (-> arg0 shoot-delay) (seconds -4))) 1.125)
+        ((zero? (+ (-> arg0 shoot-delay) (seconds -3))) 1.215)
+        (else 1.305)
+        )
+      )
+  )
+
 
 (define *beast-camera-slow-motion* (new 'static 'vector))
+
+(defun des-beast-drop-skull-gem ((arg0 des-beast))
+  "Drop one skull gem for a defeated Metal Head Hunt Beast."
+  (when (= (-> arg0 level) (level-get *level* 'deshover))
+    (let ((gem-pos (new 'stack-no-clear 'vector)))
+      (vector-copy! gem-pos (-> arg0 root trans))
+      (+! (-> gem-pos y) (meters 1.5))
+      (let ((gem-drop
+              (as-type
+                (ppointer->process
+                  (birth-pickup-at-point gem-pos (pickup-type gem) 1.0 #t *entity-pool* (-> arg0 fact))
+                  )
+                gem
+                )
+              ))
+        (when gem-drop
+          (set! (-> gem-drop gem-pool) (the-as uint (get-gem-pool-idx arg0)))
+          )
+        )
+      )
+    )
+  (none)
+  )
 
 (defbehavior des-beast-active-post des-beast ()
   (let ((s5-0 *target*)
@@ -1420,6 +1456,8 @@
     (set! (-> self oomass) 1.0)
     (set-time! (-> self next-shoot))
     (set-time! (-> self state-time))
+    ;; Start a fresh behind-target timer whenever this beast resumes its run.
+    (set-time! (-> self behind-time))
     )
   :exit (behavior ()
     '()
@@ -1462,19 +1500,9 @@
             )
         (set! (-> s5-1 y) 0.0)
         (vector-normalize! s5-1 1.0)
-        (let ((s4-3 (vector-! (new 'stack-no-clear 'vector) (-> self root trans) (camera-pos)))
-              (s3-2 (new 'stack-no-clear 'vector))
-              )
-          (set! (-> s4-3 y) 0.0)
-          (vector-normalize! s4-3 1.0)
-          (vector-rotate-around-y! s3-2 *z-vector* (camera-angle))
-          (cond
-            ((and (< 0.9 (vector-dot s4-3 s3-2)) (< 0.8 (vector-dot s5-1 gp-1)))
-             )
-            (else
-              (set-time! (-> self behind-time))
-              )
-            )
+        ;; Keep the timer running only while Jak remains behind the beast.
+        (when (not (< 0.8 (vector-dot s5-1 gp-1)))
+          (set-time! (-> self behind-time))
           )
         )
       )
@@ -1527,12 +1555,13 @@
           (let ((a1-6 (new 'stack-no-clear 'vector)))
             (vector-copy! a1-6 (-> self root trans))
             (set! (-> a1-6 w) 409600.0)
-            (if (or (des-beast-method-167 self a1-6) (and (-> self can-turn?)
-                                                          (time-elapsed? (-> self state-time) (seconds 6))
-                                                          (>= (+ (current-time) (seconds -0.1)) (-> self behind-time))
-                                                          (< 15.0 (-> self hit-points))
-                                                          )
-                    )
+            (if (or (des-beast-method-167 self a1-6)
+                    (and (-> self can-turn?)
+                         ;; Turn only after Jak has stayed behind this beast for two seconds.
+                         (time-elapsed? (-> self behind-time) (seconds 2))
+                         (< 15.0 (-> self hit-points))
+                         )
+                )
                 (go-virtual turn-back)
                 )
             )
@@ -1560,8 +1589,10 @@
       )
     (set! (-> self path-pos) (- (-> self path-pos) (-> self path-pos-speed)))
     (des-beast-method-163 self)
-    (set! (-> self main-speed-factor) 0.9)
-    (set! (-> self main-speed-factor-dest) 0.9)
+    (let ((turn-speed-factor (des-beast-turn-speed-factor self)))
+      (set! (-> self main-speed-factor) turn-speed-factor)
+      (set! (-> self main-speed-factor-dest) turn-speed-factor)
+      )
     (set! (-> self path-pos-speed) (- (-> self path-pos-speed)))
     (set! (-> self run-start-frame) 18.0)
     (go-virtual idle)
@@ -1604,6 +1635,8 @@
       (des-beast-method-162 self)
       (suspend)
       )
+    ;; The first three mission Beasts finish in die-run rather than die.
+    (des-beast-drop-skull-gem self)
     (when (-> self minimap)
       (logior! (-> self minimap flags) (minimap-flag fade-out))
       (set! (-> self minimap) #f)
@@ -1622,7 +1655,8 @@
   :virtual #t
   :event enemy-event-handler
   :exit (behavior ()
-    (set! (-> self hit-points) 75.0)
+    ;; This transition is only reached by the final Beast's second phase.
+    (set! (-> self hit-points) 225.0)
     (set! (-> self hit-points2) -1.0)
     )
   :code (behavior ()
@@ -1662,8 +1696,9 @@
       )
     (set! (-> self path-pos) (- (-> self path-pos) (-> self path-pos-speed)))
     (des-beast-method-163 self)
-    (set! (-> self main-speed-factor) 0.8)
-    (set! (-> self main-speed-factor-dest) 0.8)
+    ;; The final Beast's phase two runs 55% faster than vanilla.
+    (set! (-> self main-speed-factor) 1.55)
+    (set! (-> self main-speed-factor-dest) 1.55)
     (set! (-> self path-pos-speed) (- (-> self path-pos-speed)))
     (set! (-> self run-start-frame) 18.0)
     (go-virtual idle)
@@ -1695,6 +1730,7 @@
       (des-beast-method-162 self)
       (suspend)
       )
+    (des-beast-drop-skull-gem self)
     (when (-> self minimap)
       (logior! (-> self minimap flags) (minimap-flag fade-out))
       (set! (-> self minimap) #f)
@@ -1734,7 +1770,14 @@
      )
     (('shoot-delay)
      (let ((v0-0 (the-as object (-> arg3 param 0))))
-       (set! (-> this shoot-delay) (the-as time-frame v0-0))
+       ;; Once the final Beast enters phase two, halve its two-second delay.
+       (set! (-> this shoot-delay)
+             (if (and (< (-> this hit-points2) 0.0)
+                      (= (the-as time-frame v0-0) (seconds 2)))
+                 (seconds 1)
+                 (the-as time-frame v0-0)
+                 )
+             )
        v0-0
        )
      )
@@ -1887,7 +1930,7 @@
                            'attack
                            (the-as uint s4-1)
                            (static-attack-info :mask (vehicle-impulse-factor) ((id (-> this attack-id))
-                                                                               (damage 2.0)
+                                                                                (damage 2.0)
                                                                                (vehicle-damage-factor 0.01)
                                                                                (vehicle-impulse-factor (/ f30-2 (meters 2)))
                                                                                (attacker-velocity s3-4)
@@ -2397,6 +2440,8 @@
   (set! (-> this path-pos-speed) 1.0)
   (set! (-> this run-start-frame) 0.0)
   (set! (-> this main-speed-factor) 0.0)
+  ;; The first Metal Head Hunt stage begins at vanilla movement speed. The
+  ;; mission manager raises this as the number of living Beasts decreases.
   (set! (-> this main-speed-factor-dest) 1.0)
   (set! (-> this can-turn?) #f)
   (cond

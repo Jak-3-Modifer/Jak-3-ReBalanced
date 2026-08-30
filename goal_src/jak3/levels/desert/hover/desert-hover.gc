@@ -55,6 +55,20 @@
    )
   )
 
+(define *desert-hover-checkpoint-mask* (the-as uint 0))
+
+(define *desert-hover-checkpoint-valid* (the-as object #f))
+
+(defmethod on-fail ((this task-manager-desert-hover) (arg0 symbol))
+  ;; Target death goes straight through task-manager's event handler, so save
+  ;; the earned three-Beast checkpoint here before the life reset begins.
+  (when (nonzero? *desert-hover-checkpoint-mask*)
+    (set! *desert-hover-checkpoint-valid* #t)
+    (format 0 "DESERT-HOVER: preserving Beast checkpoint mask #x~X~%" *desert-hover-checkpoint-mask*)
+    )
+  ((method-of-type task-manager on-fail) this arg0)
+  )
+
 
 (defstate active (task-manager-desert-hover)
   :virtual #t
@@ -64,9 +78,15 @@
       (set-setting! 'vehicles 'set (shr t1-1 32) t1-1)
       )
     (set! (-> self vehicle-h) (the-as handle #f))
-    (set-setting! 'music 'deshover 0.0 0)
+    (set-setting! 'music #f 0.0 0)
+    (play-main-music
+      "music/metal_head_hunt.flac"
+      (the int (* 25.0 (-> *setting-control* user-default music-volume))))
     (set-setting! 'allow-logo #f 0.0 0)
     (spawn-dust-storm-randomizer self)
+    )
+  :exit (behavior ()
+    (stop-main-music)
     )
   :code sleep-code
   )
@@ -90,6 +110,23 @@
           ((and v0-6 (nonzero? (-> sv-16 elt-count)))
            (set! (-> this actor-group-count) (the-as int (-> sv-16 elt-count)))
            (set! (-> this actor-group) (the-as (pointer actor-group) v0-6))
+           ;; A death after the third kill retries with those same three Beasts
+           ;; defeated. A fresh mission attempt clears the saved kill mask.
+           (if *desert-hover-checkpoint-valid*
+               (begin
+                 (format 0 "DESERT-HOVER: restoring Beast checkpoint mask #x~X~%" *desert-hover-checkpoint-mask*)
+                 (dotimes (checkpoint-index (length (-> this actor-group 0)))
+                   (when (logtest? *desert-hover-checkpoint-mask* (ash 1 checkpoint-index))
+                     (let ((beast-entity (-> this actor-group 0 data checkpoint-index actor)))
+                       (toggle-status beast-entity (entity-perm-status dead) #t)
+                       (kill! beast-entity)
+                       )
+                     )
+                   )
+                 )
+               (set! *desert-hover-checkpoint-mask* (the-as uint 0))
+               )
+           (set! *desert-hover-checkpoint-valid* (the-as object #f))
            )
           (else
             (format 0 "ERROR: ~s: entity missing actor-group!~%" (game-task->string (-> this node-info task)))
@@ -116,34 +153,73 @@
         )
     (let ((a0-12 (as-type (handle->process (-> *vehicle-info* handle-by-vehicle-type 13)) process-focusable)))
       (if (and a0-12 (focus-test? (the-as process-focusable a0-12) dead))
-          (send-event this 'fail)
+          (begin
+            (when (nonzero? *desert-hover-checkpoint-mask*)
+              (set! *desert-hover-checkpoint-valid* #t)
+              )
+            (send-event this 'fail)
+            )
           )
       )
     (let ((s5-1 0))
-      (let ((s4-0 2400))
+      ;; Metal Head Hunt firing cadence and movement speed scale with the number
+      ;; of living Beasts.
+      (let ((s4-0 (seconds 5))
+            (beast-speed-factor 1.0)
+            )
         (dotimes (s3-0 (length (-> this actor-group 0)))
           (if (not (logtest? (-> this actor-group 0 data s3-0 actor extra perm status) (entity-perm-status dead)))
               (+! s5-1 1)
               )
           )
+        ;; The checkpoint is earned once three of the four Beasts are dead.
+        ;; Record their actor-group slots so retries restore the exact kills.
+        (when (and (= s5-1 1) (zero? *desert-hover-checkpoint-mask*))
+          (dotimes (checkpoint-index (length (-> this actor-group 0)))
+            (when (logtest? (-> this actor-group 0 data checkpoint-index actor extra perm status)
+                            (entity-perm-status dead))
+              (logior! *desert-hover-checkpoint-mask* (ash 1 checkpoint-index))
+              )
+            )
+          (format 0 "DESERT-HOVER: earned Beast checkpoint mask #x~X~%" *desert-hover-checkpoint-mask*)
+          )
         (case s5-1
           ((1)
-           (set! s4-0 600)
+           ;; The final Beast's existing death logic recognizes this value and
+           ;; enters its fall/get-up second phase instead of dying outright.
+           (set! s4-0 (seconds 2))
+           (set! beast-speed-factor 1.45)
            )
           ((2)
-           (set! s4-0 630)
+           (set! s4-0 (seconds 3))
+           (set! beast-speed-factor 1.35)
            )
           ((3)
-           (set! s4-0 1200)
+           (set! s4-0 (seconds 4))
+           (set! beast-speed-factor 1.25)
            )
           ((4)
-           (set! s4-0 2400)
+           (set! s4-0 (seconds 5))
+           (set! beast-speed-factor 1.0)
            )
           )
         (dotimes (s3-1 (length (-> this actor-group 0)))
           (let ((v1-49 (-> this actor-group 0 data s3-1))
                 (a1-4 (new 'stack-no-clear 'event-message-block))
                 )
+            (let ((beast (as-type (if (-> v1-49 actor)
+                                      (-> v1-49 actor extra process)
+                                      #f)
+                                  des-beast)))
+              ;; A negative secondary health value marks the final Beast's
+              ;; phase two, whose 1.55 speed must remain untouched.
+              (when (and beast
+                         (< 0.0 (-> beast hit-points2))
+                         (!= (-> beast shoot-delay) s4-0)
+                         )
+                (set! (-> beast main-speed-factor-dest) beast-speed-factor)
+                )
+              )
             (set! (-> a1-4 from) (process->ppointer pp))
             (set! (-> a1-4 num-params) 1)
             (set! (-> a1-4 message) 'shoot-delay)

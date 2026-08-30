@@ -621,20 +621,17 @@
   (cond
     ((< (the-as uint 8) (the-as uint (-> *time-of-day-context* mode)))
      (palette-select-special arg0)
-     )
+    )
     (else
       (let ((gp-0 (the-as object (-> arg0 state))))
+        (set! (-> arg0 times 0 w) 0.0)
         (set! (-> arg0 times 1 w) 1.0)
-        (set! (-> arg0 times 2 w) 1.0)
-        (set! (-> arg0 times 3 w) (if (< 36408.89 (-> (the-as freehq-states gp-0) flicker))
-                                      0.95
-                                      1.0
-                                      )
-              )
+        (set! (-> arg0 times 2 w) 0.25)
+        (set! (-> arg0 times 3 w) 1.0)
         (set! (-> arg0 times 4 w) 1.0)
-        (set! (-> arg0 times 5 w) 1.0)
-        (set! (-> arg0 times 6 w) 1.0)
-        (set! (-> arg0 times 7 w) 1.0)
+        (set! (-> arg0 times 5 w) 0.0)
+        (set! (-> arg0 times 6 w) 0.0)
+        (set! (-> arg0 times 7 w) 0.0)
         (when (not (paused?))
           (let ((f0-9 (+ (-> (the-as freehq-states gp-0) flicker) (* 196608.0 (seconds-per-frame)))))
             (set! (-> (the-as freehq-states gp-0) flicker) (- f0-9 (* (the float (the int (/ f0-9 65536.0))) 65536.0)))

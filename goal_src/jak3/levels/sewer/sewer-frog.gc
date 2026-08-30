@@ -28,7 +28,7 @@
 
 
 (define *fact-info-sewer-frog-defaults*
-  (new 'static 'fact-info-enemy-defaults :idle-distance (meters 80) :pickup-type 9)
+  (new 'static 'fact-info-enemy-defaults :idle-distance (meters 80) :pickup-type 8 :pickup-amount 20.0)
   )
 
 (define *sewer-frog-nav-enemy-info*

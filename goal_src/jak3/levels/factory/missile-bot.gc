@@ -1151,6 +1151,7 @@
         (the-as enemy-flag (logior (enemy-flag no-initial-move-to-ground) (-> this enemy-flags)))
         )
   (setup-enemy! this *missile-bot-nav-enemy-info*)
+  (logior! (-> this mask) (process-mask kg-robot))
   (set! (-> this top-angle) 0.0)
   (set! (-> this top-spin-jm) (new 'process 'joint-mod (joint-mod-mode joint-set*) this 4))
   (set! (-> this top-spin-jm track-mode) (track-mode no-trans no-scale))

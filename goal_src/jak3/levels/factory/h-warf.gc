@@ -594,7 +594,8 @@
 (defmethod control-hook-player ((this h-warf))
   (b! (focus-test? *target* dead grabbed) cfg-39 :delay (nop!))
   (let ((s5-0 (new 'stack-no-clear 'matrix)))
-    (matrix-rotate-y! s5-0 (* 182.04445 (seconds-per-frame) (* 180.0 (-> this controls steering))))
+    ;; Slightly calmer player yaw: 145 deg/s instead of 180 deg/s.
+    (matrix-rotate-y! s5-0 (* 182.04445 (seconds-per-frame) (* 145.0 (-> this controls steering))))
     (vector-rotate*! (-> this forward) (-> this forward) s5-0)
     )
   (call-parent-method this)

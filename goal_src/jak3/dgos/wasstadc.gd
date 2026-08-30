@@ -1,6 +1,7 @@
 ("WASSTADC.DGO"
  ("marauder.o"
   "wasstadc-obs.o"
+  "wasstada-part.o"
   "tpage-1090.go"
   "tpage-1251.go"
   "tpage-1252.go"

@@ -3,6 +3,38 @@
 #include "Loader.h"
 
 #include "common/global_profiler/GlobalProfiler.h"
+#include "common/log/log.h"
+#include "common/util/FileUtil.h"
+#include "common/versions/versions.h"
+
+#include "game/runtime.h"
+
+#include "third-party/stb_image/stb_image.h"
+
+namespace {
+std::optional<fs::path> find_texture_replacement(const tfrag3::Texture& tex) {
+  const auto project_dir = file_util::get_jak_project_dir();
+  const std::array roots = {
+      project_dir / "custom_assets" / game_version_names[g_game_version] /
+          "texture_replacements",
+      project_dir / "data" / "texture_replacements",
+  };
+
+  for (const auto& root : roots) {
+    const std::array candidates = {
+        root / tex.debug_tpage_name / (tex.debug_name + ".png"),
+        root / "_all" / (tex.debug_name + ".png"),
+    };
+    for (const auto& candidate : candidates) {
+      if (fs::exists(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return std::nullopt;
+}
+}  // namespace
 
 constexpr float LOAD_BUDGET = 4.5f;
 
@@ -10,13 +42,35 @@ constexpr float LOAD_BUDGET = 4.5f;
  * Upload a texture to the GPU, and give it to the pool.
  */
 u64 add_texture(TexturePool& pool, const tfrag3::Texture& tex, bool is_common) {
+  const u8* upload_data = reinterpret_cast<const u8*>(tex.data.data());
+  stbi_uc* replacement_data = nullptr;
+
+  if (const auto replacement_path = find_texture_replacement(tex)) {
+    int replacement_w = 0;
+    int replacement_h = 0;
+    replacement_data =
+        stbi_load(replacement_path->string().c_str(), &replacement_w, &replacement_h, nullptr, 4);
+    if (!replacement_data) {
+      lg::warn("Failed to load texture replacement {}", replacement_path->string());
+    } else if (replacement_w != tex.w || replacement_h != tex.h) {
+      lg::warn("Ignoring texture replacement with mismatched dimensions: {} ({}x{}, expected {}x{})",
+               replacement_path->string(), replacement_w, replacement_h, tex.w, tex.h);
+      stbi_image_free(replacement_data);
+      replacement_data = nullptr;
+    } else {
+      upload_data = replacement_data;
+      lg::info("Using texture replacement {}/{}", tex.debug_tpage_name, tex.debug_name);
+    }
+  }
+
   GLuint gl_tex;
   glActiveTexture(GL_TEXTURE0);
   glGenTextures(1, &gl_tex);
   glBindTexture(GL_TEXTURE_2D, gl_tex);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, tex.w, tex.h, 0, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV,
-               tex.data.data());
+               upload_data);
   glGenerateMipmap(GL_TEXTURE_2D);
+  stbi_image_free(replacement_data);
   float aniso = 0.0f;
   glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &aniso);
   glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, aniso);

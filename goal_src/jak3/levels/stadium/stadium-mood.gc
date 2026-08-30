@@ -24,6 +24,15 @@
     (update-mood-flames arg0 6 1 8 1.0 0.000390625 1.5)
     (set! (-> arg0 times 7 w) 1.0)
     )
+  ;; Palace Ruins begins in the Stadium tunnel level before transitioning to
+  ;; Stadium A, so it needs the same palette mix as Stadium A.
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
+  (set! (-> arg0 times 0 w) 0.25)
+  (set! (-> arg0 times 4 w) 1.0)
+  (set! (-> arg0 times 6 w) 1.0)
+  (set! (-> arg0 times 7 w) 1.0)
   0
   (none)
   )

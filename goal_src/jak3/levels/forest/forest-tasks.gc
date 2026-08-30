@@ -240,7 +240,6 @@
     (t9-0 this)
     )
   (set-setting! 'extra-bank '((forest1 forest7) (forest2 forest8) (forest3 forest9)) 0.0 0)
-  (set-setting! 'music 'formach 0.0 0)
   (set! (-> this manager-entity) #f)
   (set! (-> this actor-group-count) 0)
   (set! (-> this max-neo-spawned-enemies) -1)

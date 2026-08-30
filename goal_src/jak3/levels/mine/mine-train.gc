@@ -8,7 +8,7 @@
 ;; DECOMP BEGINS
 
 (define *min-bomb-train-times*
-  (new 'static 'boxed-array :type float 12.0 15.0 27.0 33.0 55.0 59.0 90.0 92.0 106.0 127.0 131.0 143.0 146.0)
+  (new 'static 'boxed-array :type float 8.0588 8.8235 14.8824 18.4118 29.3529 30.7059 45.9 48.0 55.4 66.0 67.1 74.0 74.8)
   )
 
 (deftype min-bomb-train (process-focusable)
@@ -359,13 +359,13 @@
           (static-sound-name "bomb-train")
           (-> self sound-loop-id)
           1024
-          (the int (* 1524.0 (lerp-scale -0.25 0.0 (-> self speed) 28672.0 57344.0)))
+          (the int (* 1524.0 (lerp-scale -0.25 0.0 (-> self speed) 57344.0 114688.0)))
           0
           (sound-group)
           #t
           )
         )
-    (let ((f1-1 (* 28672.0 ((method-of-type res-lump get-property-value-float)
+    (let ((f1-1 (* 57344.0 ((method-of-type res-lump get-property-value-float)
                             (-> self entity)
                             'speed
                             'interp
@@ -382,7 +382,7 @@
         (set! f0-10 (-> self suck-level))
         (set! f1-1 (* f1-1 f0-10))
         )
-      (let ((f0-14 (seek (-> self speed) f1-1 (* 7168.0 (seconds-per-frame) (square f0-10)))))
+      (let ((f0-14 (seek (-> self speed) f1-1 (* 14336.0 (seconds-per-frame) (square f0-10)))))
         (set! (-> self speed) f0-14)
         (set! (-> self speed) f0-14)
         )

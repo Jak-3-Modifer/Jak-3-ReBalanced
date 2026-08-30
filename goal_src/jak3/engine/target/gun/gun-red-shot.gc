@@ -73,7 +73,8 @@
     (set! (-> s5-0 no-reaction)
           (the-as (function collide-shape-moving collide-query vector vector object) nothing)
           )
-    (set! (-> s5-0 penetrate-using) (penetrate explode))
+    ;; Mark Plasmite RPG shots for KG-robot resistance handling.
+    (set! (-> s5-0 penetrate-using) (penetrate explode penetrate40))
     (let ((v1-7 (new 'process 'collide-shape-prim-sphere s5-0 (the-as uint 0))))
       (set! (-> v1-7 prim-core action) (collide-action solid))
       (set-vector! (-> v1-7 local-sphere) 0.0 0.0 0.0 819.2)
@@ -238,7 +239,7 @@
                                                                                     (vehicle-impulse-factor 1.0)
                                                                                     (mode 'explode)
                                                                                     (attacker-velocity s0-2)
-                                                                                    (penetrate-using (penetrate explode))
+                                                                                    (penetrate-using (penetrate explode penetrate40))
                                                                                     )
                                                     )
                                 )
@@ -273,9 +274,9 @@
                                                                             (damage 12.0)
                                                                             (vehicle-damage-factor 3.0)
                                                                             (vehicle-impulse-factor 1.0)
-                                                                            (mode 'explode)
+                                                                            (mode 'instant-death)
                                                                             (attacker-velocity s5-2)
-                                                                            (penetrate-using (penetrate explode))
+                                                                            (penetrate-using (penetrate explode penetrate40))
                                                                             )
                                             )
                         )
@@ -661,8 +662,9 @@
          )
     0.0
     (set! (-> v1-2 y) 0.0)
-    (let* ((f0-3 (* (-> this base-damage) (-> this current-intensity)))
-           (f0-4 (fmax 1.0 f0-3))
+    (let* ((f1-3 (if (logtest? (game-secrets gun-upgrade-red-2) (-> *game-info* secrets)) 2.0 1.0))
+           (f0-3 (* (-> this base-damage) (-> this current-intensity) f1-3))
+           (f0-4 (fmax f1-3 f0-3))
            (a0-4 'eco-red)
            )
       (if (not arg1)
@@ -704,7 +706,7 @@
     (set! (-> self ammo-drained) 0.0)
     )
   :exit (behavior ()
-    (send-event (ppointer->process (-> self parent)) 'release)
+    (send-event (ppointer->process (-> self parent)) 'release (-> self strength))
     (send-event (handle->process (-> self charge-part-tracker)) 'die)
     (sound-stop (-> self snd-charge))
     )
@@ -1356,7 +1358,7 @@
           (cond
             ((logtest? (game-secrets gun-upgrade-red-2) (-> *game-info* secrets))
              (let ((f0-8 (fmin (-> self current-stage-t) (* 1.5 (-> self current-stage-t) (-> self current-stage-t)))))
-               (fmax 0.3 (lerp (-> self strength) 0.0 f0-8))
+               (fmax 0.2 (lerp (-> self strength) 0.0 f0-8))
                )
              )
             (else
@@ -1574,6 +1576,10 @@
                         (when s1-1
                           (when (and (!= *target* s1-1)
                                      (not (focus-test? (the-as process-focusable s1-1) disable dead inactive gun-no-target))
+                                     ;; The Factory Assault car is a protected mission vehicle, not a valid
+                                     ;; Peace Maker aim-assist / chain target.
+                                     (not (and (-> s1-1 entity)
+                                               (= (-> s1-1 entity) (entity-by-name "faccar-1"))))
                                      ;; og:preserve-this
                                      (pc-check-focus-fix s1-1)
                                      (or (logtest? (process-mask crate enemy vehicle civilian) (-> s1-1 mask))
@@ -1919,8 +1925,8 @@
   (let ((v1-0 (as-type arg0 process-drawable)))
     (when v1-0
       (let* ((s5-2 (vector-! (new 'stack-no-clear 'vector) (-> v1-0 root trans) (-> this start-pos)))
-             (f30-0 (* (if (< (vector-length s5-2) 24576.0)
-                           3.0
+             (f30-0 (* (if (< (vector-length s5-2) (meters 8))
+                           6.0
                            2.0
                            )
                        (if (logtest? (game-feature feature22) (-> *game-info* features))

@@ -22,6 +22,19 @@
    )
   )
 
+(defun factory-assault-plasmite-hint-box? ((arg0 vector))
+  "Factory Assault floor trigger: (90.57,433.98,-160.48), (103.07,434.12,-174.12),
+   (116.37,434.12,-160.82), (103.25,433.98,-149.00)."
+  (let ((dx (- (-> arg0 x) (meters 103.315)))
+        (dz (+ (-> arg0 z) (meters 161.105)))
+        )
+    ;; Test in the box's rotated local X/Z axes, with a small vertical tolerance.
+    (and (<= (fabs (- (-> arg0 y) (meters 434.05))) (meters 6.0))
+         (<= (fabs (+ (* dx 0.999913) (* dz -0.01318))) (meters 13.0))
+         (<= (fabs (+ (* dx 0.007166) (* dz 0.999974))) (meters 12.7))
+         )
+    )
+  )
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod task-manager-method-26 ((this task-manager-factory-assault))
@@ -99,6 +112,23 @@
             )
           )
         )
+      )
+  )
+  ;; Teach the Plasmite RPG shortcut inside the Factory Assault floor trigger.
+  (when (and *target*
+             (not (focus-test? *target* pilot-riding))
+             (factory-assault-plasmite-hint-box? (target-pos 0))
+             )
+    (let ((font (new 'stack 'font-context *font-default-matrix* 32 290 0.0
+                     (font-color default)
+                     (font-flags shadow kerning))))
+      (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+      (set-width! font 440)
+      (set-height! font 80)
+      (set-scale! font 0.8)
+      (format (clear *temp-string*) "Press <PAD_DPAD_UP> 3x to use the <COLOR_RED>Plasmite RPG")
+      (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+      (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
       )
     )
   (none)

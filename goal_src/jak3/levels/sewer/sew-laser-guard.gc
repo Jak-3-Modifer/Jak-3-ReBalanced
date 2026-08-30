@@ -664,6 +664,8 @@
         (f28-0 (res-lump-float (-> this entity) 'rotmax :default 8192.0))
         (f26-0 (res-lump-float (-> this entity) 'rotmin :default -8192.0))
         (s5-1 (new 'stack-no-clear 'sync-info-params))
+        (guard-name (res-lump-struct (-> this entity) 'name string))
+        (sweep-period (the-as uint 120))
         )
     (if (!= f30-0 0.0)
         (quaternion-rotate-y! (-> this root quat) (-> this root quat) f30-0)
@@ -678,9 +680,23 @@
       (set! (-> s5-1 sync-flags) (the-as sync-flags v1-20))
       )
     (set! (-> s5-1 entity) (-> this entity))
-    (set! (-> s5-1 period) (the-as uint 1200))
+    ;; Keep the fast sweep for most guards, but give these three placed guards
+    ;; their own sweep cycles: 2 = 1.0s, 8 = 1.05s, and 9 = 1.07s.
+    (when (string= guard-name "sew-laser-guard-2")
+      (set! sweep-period (the-as uint 1000))
+      )
+    (when (string= guard-name "sew-laser-guard-8")
+      (set! sweep-period (the-as uint 1050))
+      )
+    (when (string= guard-name "sew-laser-guard-9")
+      (set! sweep-period (the-as uint 1070))
+      )
+    (set! (-> s5-1 period) sweep-period)
     (set! (-> s5-1 percent) 0.0)
     (initialize! (-> this sync-orient) s5-1)
+    ;; Placed guards carry a `sync` lump that normally overwrites the period
+    ;; during initialize!.  Reapply the selected period after that override.
+    (set! (-> this sync-orient period) sweep-period)
     )
   (set! (-> this last-play-sweep-dir-positive?) #t)
   (set! (-> this last-play-sweep-sync) (get-norm! (-> this sync-orient) 0))

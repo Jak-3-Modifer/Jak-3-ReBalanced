@@ -156,7 +156,7 @@
     :notice-distance (meters 50)
     :notice-distance-delta (meters 20)
     :proximity-notice-distance (meters 30)
-    :default-hit-points 10.0
+    :default-hit-points 15.0
     :gnd-collide-with (collide-spec backgnd)
     :overlaps-others-collide-with-filter (collide-spec jak civilian enemy vehicle-sphere hit-by-others-list player-list)
     :penetrate-knocked (penetrate
@@ -303,6 +303,36 @@
   )
 
 (set! (-> *roboguard-city-nav-enemy-info* fact-defaults) *fact-info-enemy-defaults*)
+
+;; Match standard Robo Guard weapon resistances for the city variant.
+(defmethod get-damage-from-attack ((this roboguard-city) (arg0 object) (arg1 event-message-block))
+  (let* ((attack (the-as attack-info (-> arg1 param 1)))
+         (damage ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1))
+         (weapon-shot? (or (logtest? (penetrate jak-yellow-shot
+                                               jak-red-shot
+                                               jak-blue-shot
+                                               jak-dark-shot
+                                               jak-red-shockwave
+                                               jak-dark-nuke
+                                               jak-dark-blackhole
+                                               explode)
+                                     (-> attack penetrate-using))
+                            (or (= (-> attack mode) 'eco-red)
+                                (= (-> attack mode) 'eco-red-shove)
+                                (= (-> attack mode) 'eco-yellow)
+                                (= (-> attack mode) 'eco-blue)
+                                (= (-> attack mode) 'eco-dark))))
+         (arc-wielder? (logtest? (penetrate penetrate38) (-> attack penetrate-using)))
+         (exception? (or arc-wielder?
+                         (logtest? (penetrate jak-dark-shot jak-dark-nuke) (-> attack penetrate-using)))))
+    (cond
+      ((not weapon-shot?) damage)
+      ((and arc-wielder? (logtest? (game-secrets gun-upgrade-blue-2) (-> *game-info* secrets))) damage)
+      (exception? (* 1.5 damage))
+      (else (* 0.5 damage))
+      )
+    )
+  )
 
 (defpart 4696
   :init-specs ((:texture (pal-lightning level-default-sprite))
@@ -1657,6 +1687,23 @@
   :virtual #t
   :enter (behavior ()
     (sound-play "robo-explode")
+    ;; Robo Guard death blast: damage Jak within a 5-meter radius.
+    ;; The radial explosion supplies the upward hit reaction/knockback.
+    (let ((gp-0 (new 'stack-no-clear 'explosion-init-params)))
+      (vector-copy! (-> gp-0 spawn-point) (-> self root trans))
+      (quaternion-identity! (-> gp-0 spawn-quat))
+      (set! (-> gp-0 radius) (meters 5))
+      (set! (-> gp-0 scale) 1.0)
+      (set! (-> gp-0 group) group-kg-explosion)
+      (set! (-> gp-0 collide-with)
+            (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher))
+      (set! (-> gp-0 damage) 2.0)
+      (set! (-> gp-0 damage-scale) 1.0)
+      (set! (-> gp-0 vehicle-damage-factor) 1.0)
+      (set! (-> gp-0 vehicle-impulse-factor) 1.0)
+      (set! (-> gp-0 ignore-proc) (process->handle self))
+      (explosion-spawn gp-0 self)
+      )
     (let ((v1-2 (-> self root root-prim)))
       (set! (-> v1-2 prim-core collide-as) (collide-spec))
       (set! (-> v1-2 prim-core collide-with) (collide-spec))
@@ -1908,6 +1955,13 @@
       (los-control-method-9 (-> this los) s5-0 (-> this focus-pos) 819.2 4096.0)
       )
     )
+  ;; Detonate when Jak enters the Robo Guard's 5-meter blast radius.
+  (when (and (not (logtest? (-> this focus-status) (focus-status dead)))
+             (let ((s5-1 (the-as process-focusable (handle->process (-> this focus handle)))))
+               (and s5-1
+                    (< (vector-vector-distance (-> this root trans) (get-trans s5-1 3)) (meters 5)))))
+    (go-die this)
+    )
   (vector-! (-> this me-to-focus-dir) (-> this focus-pos) (-> this root trans))
   (set! (-> this me-to-focus-dir y) 0.0)
   (vector-xz-normalize! (-> this me-to-focus-dir) 1.0)
@@ -2015,28 +2069,10 @@
   (set! (-> this torso-angle) 0.0)
   (set! (-> this torso-seek-speed) 0.0)
   (set! (-> this torso-to-focus-angle) 0.0)
-  (let* ((v1-9 (/ (the-as int (rand-uint31-gen *random-generator*)) 256))
-         (v1-10 (the-as number (logior #x3f800000 v1-9)))
-         (f0-10 (+ -1.0 (the-as float v1-10)))
-         )
-    (cond
-      ((< f0-10 0.1)
-       (set! (-> this fact pickup-type) (pickup-type eco-pill-light))
-       (set! (-> this fact pickup-amount) 1.0)
-       (set! (-> this fact pickup-spawn-amount) 1.0)
-       )
-      ((< f0-10 0.26)
-       (set! (-> this fact pickup-type) (pickup-type health))
-       (set! (-> this fact pickup-amount) 1.0)
-       (set! (-> this fact pickup-spawn-amount) 1.0)
-       )
-      (else
-        (set! (-> this fact pickup-type) (pickup-type ammo-random))
-        (set! (-> this fact pickup-amount) 10.0)
-        (set! (-> this fact pickup-spawn-amount) 1.0)
-        )
-      )
-    )
+  ;; City Robo Guards also drop ammunition only.
+  (set! (-> this fact pickup-type) (pickup-type ammo-random))
+  (set! (-> this fact pickup-amount) 10.0)
+  (set! (-> this fact pickup-spawn-amount) 1.0)
   (set! (-> this attack-distance) (rnd-float-range this 49152.0 106496.0))
   (set! (-> this attack-dist-scalar) 1.0)
   (set! (-> this last-attack-time) 0)

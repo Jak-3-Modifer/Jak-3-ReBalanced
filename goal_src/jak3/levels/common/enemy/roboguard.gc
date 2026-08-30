@@ -236,10 +236,10 @@
     :neck-joint -1
     :look-at-joint 6
     :bullseye-joint 4
-    :notice-distance (meters 50)
+    :notice-distance (meters 60)
     :notice-distance-delta (meters 20)
-    :proximity-notice-distance (meters 30)
-    :default-hit-points 8.0
+    :proximity-notice-distance (meters 40)
+    :default-hit-points 15.0
     :gnd-collide-with (collide-spec backgnd obstacle hit-by-others-list)
     :overlaps-others-collide-with-filter (collide-spec jak bot enemy vehicle-sphere hit-by-others-list player-list)
     :penetrate-knocked (penetrate
@@ -368,8 +368,8 @@
     :turn-anim 4
     :run-anim 14
     :taunt-anim -1
-    :run-travel-speed (meters 8)
-    :run-acceleration (meters 2)
+    :run-travel-speed (meters 10)
+    :run-acceleration (meters 3)
     :run-turning-acceleration (meters 30)
     :walk-travel-speed (meters 3)
     :walk-acceleration (meters 1)
@@ -377,7 +377,7 @@
     :maximum-rotation-rate (degrees 360)
     :notice-nav-radius (meters 16)
     :frustration-distance (meters 8)
-    :frustration-time (seconds 4)
+    :frustration-time (seconds 2)
     :blocked-time (seconds 0.3)
     :circle-dist-lo 20480.0
     :circle-dist-hi 61440.0
@@ -386,6 +386,39 @@
   )
 
 (set! (-> *roboguard-nav-enemy-info* fact-defaults) *fact-info-roboguard-defaults*)
+
+;; KG robots receive the shared 50% weapon modifier in enemy.gc.  These
+;; exceptions restore selected weapon classes to 75%. Robot Shock is already
+;; tuned to a final 5x multiplier after the shared resistance is applied.
+(defmethod get-damage-from-attack ((this roboguard) (arg0 object) (arg1 event-message-block))
+  (let* ((attack (the-as attack-info (-> arg1 param 1)))
+         (damage ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1))
+         (weapon-shot? (or (logtest? (penetrate jak-yellow-shot
+                                               jak-red-shot
+                                               jak-blue-shot
+                                               jak-dark-shot
+                                               jak-red-shockwave
+                                               jak-dark-nuke
+                                               jak-dark-blackhole
+                                               explode)
+                                     (-> attack penetrate-using))
+                            (or (= (-> attack mode) 'eco-red)
+                                (= (-> attack mode) 'eco-red-shove)
+                                (= (-> attack mode) 'eco-yellow)
+                                (= (-> attack mode) 'eco-blue)
+                                (= (-> attack mode) 'eco-dark))))
+         (arc-wielder? (logtest? (penetrate penetrate38) (-> attack penetrate-using)))
+         (special-weapon? (logtest? (penetrate penetrate38 penetrate39 penetrate40 penetrate41)
+                                    (-> attack penetrate-using))))
+    (cond
+      ((not weapon-shot?) damage)
+      ((and arc-wielder? (logtest? (game-secrets gun-upgrade-blue-2) (-> *game-info* secrets))) damage)
+      ;; The shared modifier has already reduced these to 50%; raise them to 75%.
+      (special-weapon? (* 1.5 damage))
+      (else damage)
+      )
+    )
+  )
 
 (defpart 913
   :init-specs ((:texture (pal-lightning level-default-sprite))
@@ -714,13 +747,17 @@
       )
     (when (time-elapsed? (-> self state-time) (-> self reaction-time))
       (cond
-        ((< (vector-vector-xz-distance (-> self root trans) (-> self formation-position)) 8192.0)
-         (go-virtual hostile-stand)
-         )
-        ((and (< (fabs (-> self torso-to-focus-angle)) 3640.889)
-              (and (get-focus! self) (>= 24576.0 (vector-vector-xz-distance (-> self root trans) (-> self focus-pos))))
+        ;; At close range, commit to melee even if the turret is still turning.
+        ((and (get-focus! self)
+              (< (vector-vector-xz-distance (-> self root trans) (-> self focus-pos)) 8192.0)
               )
          (go-virtual close-attack)
+         )
+        ((and (< (fabs (-> self torso-to-focus-angle)) 3640.889)
+              (and (get-focus! self) (>= (vector-vector-xz-distance (-> self root trans) (-> self focus-pos)) 8192.0))
+              (should-check-los? (-> self los) (seconds 0.2))
+              )
+         (go-virtual shoot-attack)
          )
         )
       )
@@ -729,9 +766,18 @@
     (seek! (-> self torso-aim-blend) 0.0 (seconds-per-frame))
     (seek! (-> self arm-rot-mult 0) 0.0 (* 10.0 (seconds-per-frame)))
     (seek! (-> self arm-rot-mult 1) 0.0 (* 10.0 (seconds-per-frame)))
-    (roboguard-method-195 self)
+    ;; Reposition only periodically: briefly move toward a refreshed formation
+    ;; point, then return to holding position while the turret keeps tracking.
+    (when (time-elapsed? (-> self last-attack-time) (seconds 3.0))
+      (roboguard-method-195 self)
+      (set! (-> self last-attack-time) (the-as time-frame (current-time)))
+      )
     (let ((a0-4 (-> self nav state))
-          (v1-8 (-> self formation-position))
+          (v1-8 (new 'stack-no-clear 'vector))
+          )
+      (if (time-elapsed? (-> self last-attack-time) (seconds 0.75))
+          (vector-copy! v1-8 (-> self root trans))
+          (vector-copy! v1-8 (-> self formation-position))
           )
       (logclear! (-> a0-4 flags) (nav-state-flag directional-mode))
       (logior! (-> a0-4 flags) (nav-state-flag target-poly-dirty))
@@ -748,28 +794,22 @@
   :enter (behavior ()
     (set-time! (-> self state-time))
     (set! (-> self stand-angle-threshold) 9102.223)
-    (nav-enemy-method-180 self 8192.0 (the-as float #f))
+    (nav-enemy-method-180 self 0.0 (the-as float #f))
     )
   :exit (behavior ()
     (nav-enemy-method-179 self)
     )
   :trans (behavior ()
     (when (and (time-elapsed? (-> self state-time) (-> self reaction-time)) (ja-done? 0))
-      (if (or (and (< 65536.0 (vector-vector-xz-distance (-> self focus-pos) (-> self root trans)))
-                   (< 2048.0 (vector-vector-xz-distance (-> self root trans) (-> self formation-position)))
-                   )
-              (< 14336.0 (vector-vector-xz-distance (-> self root trans) (-> self formation-position)))
-              )
-          (go-virtual hostile)
-          )
       (when (and (time-elapsed? (-> self state-time) (seconds 0.3))
-                 (and (< (fabs (-> self torso-to-focus-angle)) 3640.889) (get-focus! self))
+                 (get-focus! self)
                  )
         (cond
-          ((>= 24576.0 (vector-vector-xz-distance (-> self root trans) (-> self focus-pos)))
+          ((< (vector-vector-xz-distance (-> self root trans) (-> self focus-pos)) 8192.0)
            (go-virtual close-attack)
            )
-          ((should-check-los? (-> self los) (seconds 0.4))
+          ((and (< (fabs (-> self torso-to-focus-angle)) 3640.889)
+                (should-check-los? (-> self los) (seconds 0.2)))
            (go-virtual shoot-attack)
            )
           )
@@ -791,14 +831,14 @@
   :enter (behavior ()
     (set-time! (-> self state-time))
     (set-time! (-> self fire-time))
-    (nav-enemy-method-180 self 8192.0 (the-as float #f))
+    (nav-enemy-method-180 self 0.0 (the-as float #f))
     )
   :exit (behavior ()
     (nav-enemy-method-179 self)
     )
   :code (behavior ()
     (let ((f30-0
-            (lerp-scale 0.0 1.0 (vector-vector-xz-distance (-> self root trans) (-> self focus-pos)) 12288.0 20480.0)
+            (lerp-scale 0.0 1.0 (vector-vector-xz-distance (-> self root trans) (-> self focus-pos)) 4096.0 8192.0)
             )
           )
       (ja-channel-push! 2 (seconds 0.3))
@@ -873,8 +913,9 @@
     (set! (-> self fire-count) (the-as uint 0))
     (set! (-> self last-torso-frame-num) 0.0)
     (set! (-> self stand-angle-threshold) 16384.0)
-    (set! (-> self update-focus-pos) #f)
-    (nav-enemy-method-180 self 8192.0 (the-as float #f))
+    ;; Keep the aim point updated while firing so the turret tracks moving Jak.
+    (set! (-> self update-focus-pos) #t)
+    (nav-enemy-method-180 self 0.0 (the-as float #f))
     )
   :exit (behavior ()
     (when (> (-> self skel float-channels) 0)
@@ -887,11 +928,11 @@
     )
   :trans (behavior ()
     (when (and (time-elapsed? (-> self state-time) (seconds 0.2)) (zero? (-> self skel float-channels)))
-      (if (or (= (-> self fire-count) 8) (los-control-method-11 (-> self los) (seconds 0.1)))
+          (if (or (= (-> self fire-count) 8) (los-control-method-11 (-> self los) (seconds 0.05)))
           (go-virtual hostile-stand)
           )
       (let ((f0-0 (vector-vector-xz-distance (-> self focus-pos) (-> self root trans))))
-        (if (>= 24576.0 f0-0)
+        (if (< f0-0 8192.0)
             (go-virtual close-attack)
             )
         )
@@ -932,12 +973,13 @@
     (let ((gp-1 (vector-! (new 'stack-no-clear 'vector) (-> self root trans) (-> self focus-pos))))
       (let ((s5-0 vector-normalize!)
             (s4-0 gp-1)
-            (f0-8 -8192.0)
+            ;; Use a smaller forward aim offset so the projectile path stays straighter.
+            (f0-8 -4096.0)
             (v1-7 gp-1)
             )
         (s5-0 s4-0 (fmin
                      (+ f0-8 (sqrtf (+ (* (-> v1-7 x) (-> v1-7 x)) (* (-> v1-7 z) (-> v1-7 z)))))
-                     (lerp-scale 0.0 32768.0 (the float (- (current-time) (-> self state-time))) 600.0 60.0)
+            (lerp-scale 0.0 32768.0 (the float (- (current-time) (-> self state-time))) 600.0 60.0)
                      )
               )
         )
@@ -971,7 +1013,8 @@
                                                               )
                                                 )
                                   )
-                            (* 65536.0 (seconds-per-frame))
+                            ;; Faster arm response improves tracking during the burst.
+                            (* 98304.0 (seconds-per-frame))
                             )
                           )
                     )
@@ -1100,6 +1143,23 @@
   :event enemy-event-handler
   :enter (behavior ()
     (sound-play "robo-explode")
+    ;; Robo Guard death blast: damage Jak within an 8-meter radius.
+    ;; The radial explosion supplies the upward hit reaction/knockback.
+    (let ((gp-0 (new 'stack-no-clear 'explosion-init-params)))
+      (vector-copy! (-> gp-0 spawn-point) (-> self root trans))
+      (quaternion-identity! (-> gp-0 spawn-quat))
+      (set! (-> gp-0 radius) (meters 8))
+      (set! (-> gp-0 scale) 1.0)
+      (set! (-> gp-0 group) group-kg-explosion)
+      (set! (-> gp-0 collide-with)
+            (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher))
+      (set! (-> gp-0 damage) 2.0)
+      (set! (-> gp-0 damage-scale) 1.0)
+      (set! (-> gp-0 vehicle-damage-factor) 1.0)
+      (set! (-> gp-0 vehicle-impulse-factor) 1.0)
+      (set! (-> gp-0 ignore-proc) (process->handle self))
+      (explosion-spawn gp-0 self)
+      )
     (let ((v1-2 (-> self root root-prim)))
       (set! (-> v1-2 prim-core collide-as) (collide-spec))
       (set! (-> v1-2 prim-core collide-with) (collide-spec))
@@ -1274,7 +1334,7 @@
       this
       v1-2
       (vector+! (new 'stack-no-clear 'vector) v1-2 a3-1)
-      819200.0
+      921600.0
       (the-as vector #f)
       )
     )
@@ -1595,7 +1655,15 @@
           )
         )
       )
-    (vector-! (-> this me-to-focus-dir) (-> this focus-pos) (-> this root trans))
+  ;; Enter the close melee attack when Jak enters the Robo Guard's blast radius.
+  ;; Proximity no longer triggers the death/explosion state.
+  (when (and (not (logtest? (-> this focus-status) (focus-status dead)))
+             (let ((s5-1 (the-as process-focusable (handle->process (-> this focus handle)))))
+               (and s5-1
+                    (< (vector-vector-distance (-> this root trans) (get-trans s5-1 5)) (meters 2)))))
+    (go (method-of-object this close-attack))
+    )
+  (vector-! (-> this me-to-focus-dir) (-> this focus-pos) (-> this root trans))
     (set! (-> this me-to-focus-dir y) 0.0)
     (vector-xz-normalize! (-> this me-to-focus-dir) 1.0)
     (let* ((a1-9 (-> this rotation-matrix fvec))
@@ -1629,6 +1697,11 @@
         (the-as enemy-flag (logior (enemy-flag no-initial-move-to-ground) (-> this enemy-flags)))
         )
   (setup-enemy! this *roboguard-nav-enemy-info*)
+  ;; Robo Guards drop ammunition only; prevent level/entity defaults from
+  ;; selecting eco or health pickups.
+  (set! (-> this fact pickup-type) (pickup-type ammo-random))
+  (set! (-> this fact pickup-amount) 10.0)
+  (set! (-> this fact pickup-spawn-amount) 1.0)
   (init-los!
     (-> this los)
     this

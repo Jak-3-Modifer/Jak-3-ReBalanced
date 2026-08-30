@@ -88,6 +88,20 @@
                               )
         )
 
+(defun eco-mine-grunt-speed-scale ((this grunt))
+  "Make the Eco Mine grunts faster without changing this shared enemy in other levels."
+  (let ((v1-0 (level-get-target-inside *level*)))
+    (if (and v1-0 (= (-> v1-0 name) 'minec)) 1.6 1.0)
+    )
+  )
+
+(defun eco-mine-grunt-animation-scale ((this grunt))
+  "Slow the Eco Mine grunt's leg animation without reducing its movement speed."
+  (let ((v1-0 (level-get-target-inside *level*)))
+    (if (and v1-0 (= (-> v1-0 name) 'minec)) 1.25 1.0)
+    )
+  )
+
 (define *grunt-nav-enemy-info*
   (new 'static 'nav-enemy-info
     :use-die-falling #t
@@ -287,7 +301,7 @@
     :notice-distance (meters 40)
     :notice-distance-delta (meters 10)
     :proximity-notice-distance (meters 20)
-    :default-hit-points 5.0
+    :default-hit-points 12.0
     :gnd-collide-with (collide-spec backgnd)
     :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
     :penetrate-knocked (penetrate
@@ -390,8 +404,10 @@
     :knocked-yellow-vxz-hi (meters 12)
     :knocked-yellow-vy-lo (meters 14)
     :knocked-yellow-vy-hi (meters 20)
-    :knocked-red-vxz-lo (meters 6)
-    :knocked-red-vxz-hi (meters 48)
+    ;; Scatter Gun/red-shot knockback: approximately 5 m of horizontal
+    ;; ragdoll travel under the grunt's existing upward launch and gravity.
+    :knocked-red-vxz-lo (meters 10)
+    :knocked-red-vxz-hi (meters 12)
     :knocked-red-vy-lo (meters 18)
     :knocked-red-vy-hi (meters 28)
     :knocked-blue-vxz-lo (meters 10)
@@ -1103,7 +1119,7 @@
           )
         )
       )
-    (let ((f30-0 (rnd-float-range self 0.9 1.1)))
+    (let ((f30-0 (* (rnd-float-range self 0.9 1.1) (eco-mine-grunt-animation-scale self))))
       (until #f
         (set! (-> self patrol-anim) (-> *grunt-global-info* patrol-anim (rnd-int self 4)))
         (let ((v1-28 (-> self nav)))
@@ -1259,7 +1275,7 @@
           )
         )
       )
-    (let ((f30-0 (rnd-float-range self 0.9 1.1)))
+    (let ((f30-0 (* (rnd-float-range self 0.9 1.1) (eco-mine-grunt-animation-scale self))))
       (let ((v1-19 (-> self use-charge-anim-index)))
         (cond
           ((>= v1-19 0)
@@ -1340,7 +1356,7 @@
       )
     0
     (let ((gp-0 (-> self draw art-group data (-> self attack-anim anim-index)))
-          (f30-0 (rnd-float-range self 0.9 1.1))
+          (f30-0 (* (rnd-float-range self 0.9 1.1) (eco-mine-grunt-animation-scale self)))
           )
       (let ((v1-17 (ja-group)))
         (if (not (and v1-17 (= v1-17 gp-0)))
@@ -1436,7 +1452,7 @@
   :code (behavior ()
     (set! (-> self attack-anim) (-> *grunt-global-info* attack-anim (rnd-int self 2)))
     (let ((gp-0 (-> self draw art-group data (-> self attack-anim anim-index)))
-          (f30-0 (rnd-float-range self 0.9 1.1))
+          (f30-0 (* (rnd-float-range self 0.9 1.1) (eco-mine-grunt-animation-scale self)))
           )
       (let ((v1-13 (ja-group)))
         (if (not (and v1-13 (= v1-13 gp-0)))
@@ -1514,7 +1530,7 @@
               )
           )
         (let ((s5-0 (rnd-int self 8))
-              (f30-0 (rnd-float-range self 0.9 1.1))
+              (f30-0 (* (rnd-float-range self 0.9 1.1) (eco-mine-grunt-animation-scale self)))
               )
           (while (nonzero? s5-0)
             (+! s5-0 -1)
@@ -1578,7 +1594,7 @@
         )
       )
     (set! (-> self patrol-anim) (-> *grunt-global-info* patrol-anim (rnd-int self 4)))
-    (let ((f30-0 (rnd-float-range self 0.9 1.1))
+    (let ((f30-0 (* (rnd-float-range self 0.9 1.1) (eco-mine-grunt-animation-scale self)))
           (gp-0 (-> self draw art-group data (-> self patrol-anim anim-index)))
           )
       (let ((v1-28 self))
@@ -1635,7 +1651,7 @@
       (set! (-> v1-14 target-speed) (-> self patrol-anim travel-speed))
       )
     0
-    (let ((f30-0 (rnd-float-range self 0.9 1.1))
+    (let ((f30-0 (* (rnd-float-range self 0.9 1.1) (eco-mine-grunt-animation-scale self)))
           (gp-0 (-> self draw art-group data (-> self patrol-anim anim-index)))
           )
       (let ((v1-24 (ja-group)))
@@ -1705,14 +1721,15 @@
 (defstate knocked-recover (grunt)
   :virtual #t
   :code (behavior ()
-    (local-vars (v1-49 symbol))
+    (local-vars (v1-49 symbol) (f30-0 float))
+    (set! f30-0 (if (= (-> self incoming knocked-type) (knocked-type yellow-shot)) 1.9 1.0))
     (ja-channel-push! 1 0)
     (let ((gp-0 (-> (the-as ragdoll-proc (handle->process (-> self ragdoll-proc))) ragdoll)))
       (when gp-0
         (let ((a0-5 (-> gp-0 ragdoll-joints)))
           (if (< 0.0 (vector-dot (-> self node-list data (-> a0-5 0 joint-index) bone transform fvec) *y-vector*))
-              (ja-no-eval :group! grunt-getup-front-ja :num! (seek!) :frame-num 0.0)
-              (ja-no-eval :group! grunt-getup-back-ja :num! (seek!) :frame-num 0.0)
+              (ja-no-eval :group! grunt-getup-front-ja :num! (seek! max f30-0) :frame-num 0.0)
+              (ja-no-eval :group! grunt-getup-back-ja :num! (seek! max f30-0) :frame-num 0.0)
               )
           )
         (enable-ragdoll! gp-0 self)
@@ -1720,7 +1737,7 @@
       )
     (until v1-49
       (suspend)
-      (ja :num! (seek!))
+      (ja :num! (seek! max f30-0))
       (set! v1-49 (and (ja-done? 0) (let ((a0-15 (handle->process (-> self ragdoll-proc))))
                                       (or (not a0-15) (ragdoll-proc-method-19 (the-as ragdoll-proc a0-15)))
                                       )
@@ -1882,7 +1899,7 @@
     (set! (-> v1-6 ignore-angle) 30947.555)
     )
   (let ((v1-8 (-> this nav)))
-    (set! (-> v1-8 speed-scale) 1.0)
+    (set! (-> v1-8 speed-scale) (eco-mine-grunt-speed-scale this))
     )
   0
   (set-gravity-length (-> this root dynam) 573440.0)

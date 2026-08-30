@@ -45,6 +45,51 @@
   (none)
   )
 
+(defun sewer-kg-met-section? ((arg0 int))
+  "True for the five streamed pieces used by Sewer Mission 2 (sewer-kg-met)."
+  (let ((name (-> *level* level arg0 name)))
+    (or (= name 'sewg)
+        (= name 'sewh)
+        (= name 'sewi)
+        (= name 'sewj)
+        (= name 'sewk))))
+
+(defun sewer-hum-kg-section? ((arg0 int))
+  "True for the five streamed pieces used by Sewer Mission 1 (sewer-hum-kg)."
+  (let ((name (-> *level* level arg0 name)))
+    (or (= name 'sewb)
+        (= name 'sewc)
+        (= name 'sewd)
+        (= name 'sewe)
+        (= name 'sewf))))
+
+(defun sewer-hum-kg-select-palette-1! ((arg0 mood-context))
+  "Apply Palette 1 locally without changing the global palette mode."
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
+  (set! (-> arg0 times 1 w) 1.0)
+  )
+
+(defun sewer-kg-met-select-palettes-1-and-2! ((arg0 mood-context))
+  "Apply a local Palette 1 and Palette 2 blend without changing global palette mode."
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
+  (set! (-> arg0 times 1 w) 1.0)
+  (set! (-> arg0 times 2 w) 1.0)
+  )
+
+(defun sewer-sewd-select-palettes-1-2-and-7! ((arg0 mood-context))
+  "Apply SEWD's local palette blend: subtle Palette 1 under Palettes 2 and 7."
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
+  (set! (-> arg0 times 1 w) 0.20)
+  (set! (-> arg0 times 2 w) 1.0)
+  (set! (-> arg0 times 7 w) 1.0)
+  )
+
 (defbehavior update-mood-sewa time-of-day-proc ((arg0 mood-context) (arg1 float) (arg2 int))
   (update-mood-interior arg0 #f)
   (update-sewer-lights arg0)
@@ -104,6 +149,12 @@
       (update-mood-pulse arg0 7 0 1.0 0.25 (* 65536.0 (seconds-per-frame)) 0.0)
       )
     )
+  (when (sewer-kg-met-section? arg2)
+    (sewer-kg-met-select-palettes-1-and-2! arg0)
+    )
+  (when (sewer-hum-kg-section? arg2)
+    (sewer-hum-kg-select-palette-1! arg0)
+    )
   0
   (none)
   )
@@ -150,6 +201,12 @@
             )
         )
       )
+    )
+  (when (sewer-kg-met-section? arg2)
+    (sewer-kg-met-select-palettes-1-and-2! arg0)
+    )
+  (when (sewer-hum-kg-section? arg2)
+    (sewer-hum-kg-select-palette-1! arg0)
     )
   0
   (none)
@@ -198,6 +255,7 @@
         )
       )
     )
+  (sewer-sewd-select-palettes-1-2-and-7! arg0)
   0
   (none)
   )
@@ -253,6 +311,9 @@
             )
         )
       )
+    )
+  (when (sewer-kg-met-section? arg2)
+    (sewer-kg-met-select-palettes-1-and-2! arg0)
     )
   0
   (none)
@@ -312,6 +373,9 @@
         )
       )
     )
+  (when (sewer-kg-met-section? arg2)
+    (sewer-kg-met-select-palettes-1-and-2! arg0)
+    )
   0
   (none)
   )
@@ -368,6 +432,9 @@
             )
         )
       )
+    )
+  (when (sewer-kg-met-section? arg2)
+    (sewer-kg-met-select-palettes-1-and-2! arg0)
     )
   0
   (none)

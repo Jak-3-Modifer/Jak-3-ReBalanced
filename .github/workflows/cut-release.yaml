@@ -3,6 +3,16 @@ name: Cut Mod Release ⭐
 on:
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: 'Explicit Release Tag (leave blank for an automatic semver bump)'
+        required: false
+        default: 'v0.1.0-beta.1'
+        type: string
+      prerelease:
+        description: 'Mark as a GitHub pre-release?'
+        required: true
+        default: true
+        type: boolean
       bump:
         description: 'Semver Bump Type'
         required: true
@@ -24,7 +34,7 @@ on:
       jak1:
         description: 'Supports Jak 1?'
         required: true
-        default: 'true'
+        default: 'false'
         type: boolean
       jak2:
         description: 'Supports Jak 2?'
@@ -34,7 +44,7 @@ on:
       jak3:
         description: 'Supports Jak 3?'
         required: true
-        default: 'false'
+        default: 'true'
         type: boolean
       jakx:
         description: 'Supports Jak X?'
@@ -73,6 +83,8 @@ jobs:
     uses: ./.github/workflows/mod-release-pipeline.yml
     with:
       semverBump: ${{ inputs.bump }}
+      releaseTag: ${{ inputs.release_tag }}
+      prerelease: ${{ inputs.prerelease }}
       metadataSupportedGames: ${{ needs.prep_vars.outputs.supported_games }}
       buildBinaries: ${{ inputs.binary_source == 'build_binaries'}}
       toolingRepo: ${{ needs.prep_vars.outputs.tooling_repo }}

@@ -800,7 +800,7 @@
   )
 
 (defpart 978
-  :init-specs ((:texture (gun-yellow-muzzleflash level-default-sprite))
+  :init-specs ((:texture (gun-blue-beam level-default-sprite))
     (:birth-func 'birth-func-set-quat)
     (:num 1.0)
     (:scale-x (meters 2) (meters 5))

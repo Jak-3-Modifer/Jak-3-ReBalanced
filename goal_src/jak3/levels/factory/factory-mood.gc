@@ -52,6 +52,16 @@
    )
   )
 
+(defun factory-boss-select-palettes-1-through-4! ((arg0 mood-context))
+  "Use only palettes 1, 2, 3, and 4 in the Factory boss level."
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
+  (dotimes (palette-index 4)
+    (set! (-> arg0 times (+ palette-index 1) w) 1.0)
+    )
+  )
+
 
 (defbehavior update-mood-factoryd time-of-day-proc ((arg0 mood-context) (arg1 float) (arg2 int))
   (update-mood-interior arg0 #f)
@@ -78,6 +88,7 @@
       (set! (-> arg0 times 5 w) 1.0)
       (set! (-> arg0 times 6 w) 1.0)
       (set! (-> arg0 times 7 w) 1.0)
+      (factory-boss-select-palettes-1-through-4! arg0)
       )
     )
   0

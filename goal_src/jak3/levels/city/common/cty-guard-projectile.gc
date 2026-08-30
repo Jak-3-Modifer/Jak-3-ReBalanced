@@ -578,6 +578,10 @@
   )
 
 (defmethod deal-damage! ((this guard-lazer-shot) (arg0 process) (arg1 event-message-block))
+  ;; Freedom League guard fire cannot damage Jak in any level.
+  (when (= arg0 *target*)
+    (set! (-> this damage) 0.0)
+    )
   (if (logtest? (process-mask kg-robot) (-> arg0 mask))
       (set! (-> this damage) 5.0)
       )

@@ -199,9 +199,73 @@
 
 (set! (-> *neo-wasp-enemy-info* fact-defaults) *fact-info-neo-wasp-defaults*)
 
+(defun neo-wasp-dark-attack? ((arg0 event-message-block))
+  "True for Dark Morph-Gun shots and Dark Jak attacks."
+  (let ((attack (the-as attack-info (-> arg0 param 1))))
+    (or (= (-> attack mode) 'gravity-end)
+        (logtest? (penetrate
+                    dark-skin
+                    dark-punch
+                    dark-bomb
+                    dark-smack
+                    jak-dark-shot
+                    jak-dark-blackhole
+                    )
+                  (-> attack penetrate-using)
+                  )
+        )
+    )
+  )
+
+(defun neo-wasp-lightjak-melee-attack? ((arg0 process) (arg1 event-message-block))
+  "True for Light Jak's normal punch, spin, air spin, and uppercut attacks."
+  (let ((attack (the-as attack-info (-> arg1 param 1))))
+    (and (= arg0 *target*)
+         (nonzero? (-> *target* lightjak))
+         (focus-test? *target* light)
+         (or (= (-> attack mode) 'punch)
+             (= (-> attack mode) 'spin)
+             (= (-> attack mode) 'spin-air)
+             (= (-> attack mode) 'uppercut))
+         (not (logtest? (penetrate dark-skin dark-punch dark-bomb dark-smack)
+                        (-> attack penetrate-using))))))
+
+(defun neo-wasp-darkjak-target? ((arg0 process))
+  "True only while the attack recipient is actively in Dark Jak form."
+  (and (= arg0 *target*)
+       (nonzero? (-> *target* darkjak))
+       (focus-test? *target* dark)))
+
+(defmethod send-attack-from-tshape ((this neo-wasp) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
+  "Neo Wasps cannot hurt active Dark Jak, but retain their normal attacks otherwise."
+  (if (neo-wasp-darkjak-target? arg0)
+      #f
+      ((method-of-type enemy send-attack-from-tshape) this arg0 arg1 arg2)))
+
 (defmethod event-handler ((this neo-wasp) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
   "Commmon handler for events."
   (case arg2
+    (('attack 'attack-no-avoid 'attack-invinc)
+     (cond
+       ((and (= arg0 *target*) (nonzero? (-> *target* lightjak shield-start-time)))
+        (let ((attack (the-as attack-info (-> arg3 param 1))))
+           (set! (-> attack damage) 2.0)
+           (set! (-> attack shove-back) (* (-> attack shove-back) 0.6))
+           (set! (-> attack shove-up) (* (-> attack shove-up) 0.6))
+           ((method-of-type hover-enemy event-handler) this arg0 arg1 arg2 arg3)
+           )
+        )
+       ((neo-wasp-lightjak-melee-attack? arg0 arg3)
+        (let ((attack (the-as attack-info (-> arg3 param 1))))
+          (set! (-> attack damage) (* (-> attack damage) 2.0))
+          ((method-of-type hover-enemy event-handler) this arg0 arg1 arg2 arg3)
+          )
+        )
+       ((not (neo-wasp-dark-attack? arg3))
+        ((method-of-type hover-enemy event-handler) this arg0 arg1 arg2 arg3)
+        )
+       )
+     )
     (('hit 'hit-knocked)
      (logclear! (-> this mask) (process-mask actor-pause))
      (logclear! (-> this focus-status) (focus-status dangerous))
@@ -1083,6 +1147,13 @@
     )
   (hover-enemy-method-170 this)
   (setup-enemy! this (get-enemy-info this))
+  ;; Tower Destroy enemies always provide Dark Eco, without changing this
+  ;; enemy's drops in other levels.
+  (when (= (level-status? *level* 'towera #f) 'active)
+    (set! (-> this fact pickup-type) (pickup-type eco-pill-dark))
+    (set! (-> this fact pickup-amount) 1.0)
+    (set! (-> this fact pickup-spawn-amount) 1.0)
+    )
   (hover-enemy-method-176 this)
   (set! (-> this mech-flame-texture-id)
         (the-as sound-id (lookup-texture-id-by-name "mech-flame" (the-as string #f)))

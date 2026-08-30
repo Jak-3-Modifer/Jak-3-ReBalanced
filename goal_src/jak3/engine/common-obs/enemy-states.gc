@@ -682,7 +682,14 @@
       (else
         (let ((gp-1 (new 'stack-no-clear 'enemy-knocked-info)))
           (let ((s5-0 0))
-            (set! (-> gp-1 anim-speed) (rnd-float-range self 0.9 1.1))
+            ;; Player Blaster-family hits use incoming intensity -0.5. Play their
+            ;; knocked and landing animations 90% faster than vanilla, while
+            ;; preserving each enemy's random playback-speed variance.
+            (set! (-> gp-1 anim-speed)
+                  (* (rnd-float-range self 0.9 1.1)
+                     (if (= (-> self incoming intensity) -0.5) 1.9 1.0)
+                     )
+                  )
             (set! (-> gp-1 on-surface-count) 0)
             (set! (-> gp-1 move-count) 0)
             (until (done-being-knocked? self gp-1)

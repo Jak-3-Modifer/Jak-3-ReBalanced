@@ -55,14 +55,16 @@
 (set! (-> *v-marauder-b-turret-control-info* shot-type) v-marauder-shot)
 
 (define *v-marauder-b-turret-guard-settings* (new 'static 'squad-unit-settings
-                                               :shot-count 2
-                                               :rand-shot-count 2
-                                               :inaccuracy 0.25
-                                               :acquire-delay (seconds 0.2)
-                                               :shot-delay (seconds 0.15)
-                                               :burst-delay (seconds 0.5)
-                                               :rand-burst-delay (seconds 1)
-                                               :rand-shot-delay (seconds 0.2)
+                                               ;; This B variant is used only by the
+                                               ;; four mission-target Marauders.
+                                               :shot-count 4
+                                               :rand-shot-count 0
+                                               :inaccuracy 0.13
+                                               :acquire-delay (seconds 0.1)
+                                               :shot-delay (seconds 0.08)
+                                               :burst-delay (seconds 0.25)
+                                               :rand-burst-delay (seconds 0.25)
+                                               :rand-shot-delay (seconds 0.05)
                                                )
         )
 

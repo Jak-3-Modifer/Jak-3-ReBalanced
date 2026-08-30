@@ -409,6 +409,12 @@
     )
   :trans (behavior ()
     ((-> (method-of-type task-manager active) trans))
+    ;; A room handoff can fail to report `reached-destination`, leaving the
+    ;; assault player controller locked forever.  Preserve the normal
+    ;; event-driven handoff, but restore combat control after a short timeout.
+    (if (time-elapsed? (-> self state-time) (seconds 5))
+        (go-virtual combat)
+        )
     )
   :code (behavior ()
     (suspend)
@@ -604,25 +610,31 @@
        (compute-player-ammo (the-as pickup-type (-> this ammo-special gun-type)))
        (the-as pickup-type (-> this ammo-special ammo-type))
        )
-     (let ((t1-0 (logclear
-                   (game-feature
-                     gun-red-1
-                     gun-red-2
-                     gun-red-3
-                     gun-yellow-1
-                     gun-yellow-2
-                     gun-yellow-3
-                     gun-blue-1
-                     gun-blue-2
-                     gun-blue-3
-                     gun-dark-1
-                     gun-dark-2
-                     gun-dark-3
-                     )
-                   (gun-pickup-type->game-feature (the-as pickup-type (-> this ammo-special gun-type)))
-                   )
-                 )
-           )
+     (let* ((selected-feature
+              (gun-pickup-type->game-feature (the-as pickup-type (-> this ammo-special gun-type)))
+              )
+            (t1-0 (logclear
+                    (game-feature
+                      gun-red-1
+                      gun-red-2
+                      gun-red-3
+                      gun-yellow-1
+                      gun-yellow-2
+                      gun-yellow-3
+                      gun-blue-1
+                      gun-blue-2
+                      gun-blue-3
+                      gun-dark-1
+                      gun-dark-2
+                      gun-dark-3
+                      )
+                    selected-feature
+                    )
+                  )
+            )
+       ;; Scripted mission pickups may be available before their story unlock.
+       ;; Enable the selected gun in mission settings before clearing the rest.
+       (set-setting! 'features 'set (shr (the-as int selected-feature) 32) selected-feature)
        (set-setting! 'features 'clear (shr (the-as int t1-0) 32) t1-0)
        )
      (apply-settings *setting-control*)
@@ -662,7 +674,8 @@
     (set-setting! 'disable-parking-spots? #t 0.0 0)
     (set! (-> *game-info* eco-pill-light) 0.0)
     (set-setting! 'pilot #f 0.0 0)
-    (set-setting! 'hide-crates? #t 0.0 0)
+    ;; Keep Protect HQ crates visible so their health pickups can spawn.
+    (set-setting! 'hide-crates? #f 0.0 0)
     (set-setting! 'sound-ear-scale 'abs 0.25 0)
     (set! (-> self bombbot-dead?) #f)
     (set! (-> self final-bombbot?) #f)
@@ -674,6 +687,7 @@
     (set-setting! 'gun-special-mode #t 0.0 0)
     (set-setting! 'calm #f 0.0 0)
     (set-setting! 'minimap 'clear 0.0 (minimap-flag minimap))
+    ;; Use the Blaster as the mission's default weapon.
     (send-event self 'ammo-special 15 29)
     (set-setting! 'exclusive-task #f 0.0 (-> self node-info task))
     (set! (-> self h-player-controller) (the-as handle #f))
@@ -1469,7 +1483,10 @@
   )
 
 (defmethod spawn-special-pickup ((this task-manager-city-port-assault) (arg0 pickup-type))
-  (when (or (= arg0 (pickup-type health)) (logtest? (-> *game-info* features) (gun-pickup-type->game-feature arg0)))
+  (when (or (= arg0 (pickup-type health))
+            (= arg0 (pickup-type gun-red-1))
+            (logtest? (-> *game-info* features) (gun-pickup-type->game-feature arg0))
+            )
     (set-next-powerup-spawn-time this)
     (let* ((s4-2 (-> this current-room center-pos))
            (f30-0 0.75)
@@ -1533,20 +1550,39 @@
 
 (defmethod task-manager-city-port-assault-method-44 ((this task-manager-city-port-assault))
   (when *target*
-    (let ((s4-0 (new 'static 'boxed-array :type int32 15 16 17 18))
-          (s5-0 0)
+    ;; The Blaster is the mission's infinite-ammo fallback weapon.  Picked-up
+    ;; weapons keep their normal finite ammo and return to the Blaster at zero.
+    (when (= (-> this ammo-special gun-type) (pickup-type gun-yellow-1))
+      (let ((blaster-ammo (get-remaining-player-ammo (pickup-type ammo-yellow))))
+        (when (< blaster-ammo 200.0)
+          (adjust-player-ammo (- 200.0 blaster-ammo) (pickup-type ammo-yellow))
           )
-      (dotimes (s3-0 (-> s4-0 length))
-        (+! s5-0 (the int (get-remaining-player-ammo (the-as pickup-type (-> s4-0 s3-0)))))
         )
-      (if (and (or (= s5-0 0)
-                   (and (< s5-0 2) (= (-> this ammo-special gun-type) 30))
-                   (and (< s5-0 11) (= (-> this ammo-special gun-type) 31))
-                   )
-               (not (and (focus-test? *target* dark) (nonzero? (-> *target* darkjak))))
-               )
-          (send-event this 'ammo-special 15 29)
+      )
+    (let ((remaining-ammo
+            (get-remaining-player-ammo (the-as pickup-type (-> this ammo-special ammo-type)))
+            )
           )
+      ;; Check the selected finite weapon's own ammo pool. Beam Reflexor needs
+      ;; two yellow ammo, Gyro Burster needs eleven, and Arc Welder needs one
+      ;; blue ammo to fire again. Arc Welder drains ammo continuously and may
+      ;; leave a positive remainder below one.
+      (when (and (!= (-> this ammo-special gun-type) (pickup-type gun-yellow-1))
+                 (or (<= remaining-ammo 0.0)
+                     (and (= (-> this ammo-special gun-type) (pickup-type gun-yellow-2))
+                          (< remaining-ammo 2.0)
+                          )
+                     (and (= (-> this ammo-special gun-type) (pickup-type gun-yellow-3))
+                          (< remaining-ammo 11.0)
+                          )
+                     (and (= (-> this ammo-special gun-type) (pickup-type gun-blue-2))
+                          (< remaining-ammo 1.0)
+                          )
+                     )
+                 (not (and (focus-test? *target* dark) (nonzero? (-> *target* darkjak))))
+                 )
+        (send-event this 'ammo-special 15 29)
+        )
       )
     (when (and (or (> (-> this ammo-special end-lock-time) 0) (!= (-> *game-info* gun-type) (-> this ammo-special gun-type)))
                (and (time-elapsed? (-> this ammo-special end-lock-time) (seconds 0.1))

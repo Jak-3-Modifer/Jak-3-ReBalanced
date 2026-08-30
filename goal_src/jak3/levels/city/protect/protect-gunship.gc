@@ -3156,7 +3156,9 @@
              (v1-45 (the-as number (logior #x3f800000 v1-44)))
              )
         (set! (-> self laser-rotate-speed)
-              (+ f30-0 (* (+ -1.0 (the-as float v1-45)) (+ -8192.0 (lerp 15473.777 17294.223 (-> self difficulty)))))
+              (* 4.0
+                 (+ f30-0 (* (+ -1.0 (the-as float v1-45)) (+ -8192.0 (lerp 15473.777 17294.223 (-> self difficulty)))))
+                 )
               )
         )
       (if (not (logtest? (rand-uint31-gen *random-generator*) 1))

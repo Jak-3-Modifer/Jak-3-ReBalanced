@@ -85,7 +85,7 @@
     :notice-distance (meters 40)
     :notice-distance-delta (meters 10)
     :proximity-notice-distance (meters 20)
-    :default-hit-points 5.0
+    :default-hit-points 12.0
     :gnd-collide-with (collide-spec backgnd)
     :overlaps-others-collide-with-filter (collide-spec jak civilian enemy vehicle-sphere hit-by-others-list player-list)
     :penetrate-knocked (penetrate

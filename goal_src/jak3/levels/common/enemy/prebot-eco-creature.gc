@@ -688,6 +688,86 @@
 
 (set! (-> *prebot-large-eco-creature-nav-enemy-info* fact-defaults) *fact-info-enemy-defaults*)
 
+(defun eco-creature-blocked-penetrate? ((arg0 penetrate))
+  "True for resolved Morph-Gun and Dark Jak penetration flags."
+  (logtest? (penetrate
+              dark-skin
+              dark-punch
+              dark-bomb
+              dark-smack
+              jak-yellow-shot
+              jak-red-shot
+              jak-blue-shot
+              jak-dark-shot
+              jak-red-shockwave
+              jak-dark-nuke
+              jak-dark-blackhole
+              )
+            arg0)
+  )
+
+(defun eco-creature-blocked-attack? ((arg0 event-message-block))
+  "True for Jak's Morph-Gun shots and Dark Jak attacks."
+  (let ((attack (the-as attack-info (-> arg0 param 1))))
+    (or (= (-> attack mode) 'gravity-end)
+        (eco-creature-blocked-penetrate? (-> attack penetrate-using))
+        )
+    )
+  )
+
+(defun eco-creature-lightjak-melee-attack? ((arg0 process) (arg1 event-message-block))
+  "True for Light Jak's normal punch, spin, air spin, and uppercut attacks."
+  (let ((attack (the-as attack-info (-> arg1 param 1))))
+    (and (= arg0 *target*)
+         (nonzero? (-> *target* lightjak))
+         (focus-test? *target* light)
+         (or (= (-> attack mode) 'punch)
+             (= (-> attack mode) 'spin)
+             (= (-> attack mode) 'spin-air)
+             (= (-> attack mode) 'uppercut))
+         (not (logtest? (penetrate dark-skin dark-punch dark-bomb dark-smack)
+                         (-> attack penetrate-using))))))
+
+(defun eco-creature-darkjak-target? ((arg0 process))
+  "True only while the attack recipient is actively in Dark Jak form."
+  (and (= arg0 *target*)
+       (nonzero? (-> *target* darkjak))
+       (focus-test? *target* dark)))
+
+(defmethod knocked-handler ((this prebot-large-eco-creature) (arg0 vector))
+  "Reduce the completed knock vector from regular Jak melee for every Eco Creature size."
+  ((method-of-type enemy knocked-handler) this arg0)
+  (when (and (= (handle->process (-> this incoming attacker-handle)) *target*)
+             (not (focus-test? *target* light))
+             (not (focus-test? *target* dark))
+             (logtest? (penetrate generic-attack lunge flop punch spin roll uppercut)
+                       (-> this incoming penetrate-using)))
+    (vector-float*! arg0 arg0 0.35)
+    )
+  (none)
+  )
+
+(defmethod send-attack-from-tshape ((this prebot-large-eco-creature) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
+  "Eco Creatures cannot hurt active Dark Jak, but retain their normal attacks otherwise."
+  (if (eco-creature-darkjak-target? arg0)
+      #f
+      ((method-of-type enemy send-attack-from-tshape) this arg0 arg1 arg2)))
+
+(defmethod get-damage-from-attack ((this prebot-large-eco-creature) (arg0 object) (arg1 event-message-block))
+  "All Eco Creature sizes take zero damage from resolved gun and Dark Jak hits."
+  (if (or (eco-creature-blocked-attack? arg1)
+          (eco-creature-blocked-penetrate? (-> this incoming penetrate-using)))
+      0.0
+      ((method-of-type enemy get-damage-from-attack) this arg0 arg1))
+  )
+
+(defmethod msg-for-incoming-attack ((this prebot-large-eco-creature) (arg0 process) (arg1 event-message-block) (arg2 float))
+  "Do not enter a hit, black-hole, or nuke-death state for blocked attacks."
+  (if (eco-creature-blocked-penetrate? (-> this incoming penetrate-using))
+      #f
+      ((method-of-type enemy msg-for-incoming-attack) this arg0 arg1 arg2))
+  )
+
 (defmethod go-ambush ((this prebot-large-eco-creature))
   "May go to ambush-delay first, if set in the res-lump."
   (if (type? (ppointer->process (-> this parent)) prebot-large-eco-creature)
@@ -714,48 +794,69 @@
   )
 
 (defmethod event-handler ((this prebot-large-eco-creature) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
-  "Commmon handler for events."
+  "Common handler for every size of Eco Creature."
   (case arg2
-    (('attack)
-     (let ((s4-0 (the-as object (-> arg3 param 1))))
-       (cond
-         ((or (not (logtest? (attack-mask penetrate-using) (-> (the-as attack-info s4-0) mask)))
-              (logand (penetrate
-                        vehicle
-                        dark-skin
-                        dark-punch
-                        dark-bomb
-                        dark-smack
-                        explode
-                        jak-yellow-shot
-                        jak-red-shot
-                        jak-blue-shot
-                        jak-dark-shot
-                        jak-red-shockwave
-                        jak-dark-nuke
-                        jak-dark-blackhole
-                        )
-                      (-> (the-as attack-info s4-0) penetrate-using)
-                      )
-              )
-          ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
-          )
-         (else
-           (send-event arg0 'attack #f (static-attack-info :mask (vehicle-impulse-factor) ((id (new-attack-id))
-                                                                                           (damage 2.0)
-                                                                                           (vehicle-damage-factor 1.0)
-                                                                                           (vehicle-impulse-factor 1.0)
-                                                                                           (shove-up (meters 1))
-                                                                                           (shove-back (meters 3))
-                                                                                           )
-                                                           )
-                       )
-           (when (and (logtest? (-> (the-as attack-info s4-0) mask) (attack-mask id))
-                      (!= (-> (the-as attack-info s4-0) id) (-> this incoming attack-id))
-                      )
-             (set! (-> this incoming attack-id) (-> (the-as attack-info s4-0) id))
-             #t
+    (('attack 'attack-no-avoid 'attack-invinc)
+     (cond
+       ((eco-creature-darkjak-target? arg0)
+        #f
+        )
+       ((eco-creature-blocked-attack? arg3)
+        #f
+        )
+       (else
+         (let ((s4-0 (the-as object (-> arg3 param 1))))
+           (when (and (= arg0 *target*) (nonzero? (-> *target* lightjak shield-start-time)))
+             (set! (-> (the-as attack-info s4-0) damage) 2.0)
+             (set! (-> (the-as attack-info s4-0) shove-back) (* (-> (the-as attack-info s4-0) shove-back) 0.6))
+             (set! (-> (the-as attack-info s4-0) shove-up) (* (-> (the-as attack-info s4-0) shove-up) 0.6))
              )
+           (when (eco-creature-lightjak-melee-attack? arg0 arg3)
+             (set! (-> (the-as attack-info s4-0) damage) (* (-> (the-as attack-info s4-0) damage) 2.0))
+             )
+           (if (!= arg2 'attack)
+               ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
+               (cond
+                 ((or (not (logtest? (attack-mask penetrate-using) (-> (the-as attack-info s4-0) mask)))
+                      (logand (penetrate
+                                vehicle
+                                dark-skin
+                                dark-punch
+                                dark-bomb
+                                dark-smack
+                                explode
+                                jak-yellow-shot
+                                jak-red-shot
+                                jak-blue-shot
+                                jak-dark-shot
+                                jak-red-shockwave
+                                jak-dark-nuke
+                                jak-dark-blackhole
+                                )
+                              (-> (the-as attack-info s4-0) penetrate-using)
+                              )
+                      )
+                  ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
+                  )
+                 (else
+                   (send-event arg0 'attack #f (static-attack-info :mask (vehicle-impulse-factor) ((id (new-attack-id))
+                                                                                                   (damage 2.0)
+                                                                                                   (vehicle-damage-factor 1.0)
+                                                                                                   (vehicle-impulse-factor 1.0)
+                                                                                                   (shove-up (meters 1))
+                                                                                                   (shove-back (meters 3))
+                                                                                                   )
+                                                                   )
+                               )
+                   (when (and (logtest? (-> (the-as attack-info s4-0) mask) (attack-mask id))
+                              (!= (-> (the-as attack-info s4-0) id) (-> this incoming attack-id))
+                              )
+                     (set! (-> this incoming attack-id) (-> (the-as attack-info s4-0) id))
+                     #t
+                     )
+                   )
+                 )
+               )
            )
          )
        )
@@ -1649,6 +1750,10 @@
     (the-as pair 0)
     )
   (setup-enemy! this *prebot-large-eco-creature-nav-enemy-info*)
+  ;; Eco Creatures always drop Dark Eco, regardless of their size or level.
+  (set! (-> this fact pickup-type) (pickup-type eco-pill-dark))
+  (set! (-> this fact pickup-amount) 1.0)
+  (set! (-> this fact pickup-spawn-amount) 1.0)
   (logior! (-> this draw global-effect) (draw-control-global-effect rim-lights2))
   (let ((v1-8 (-> this neck)))
     (set! (-> v1-8 up) (the-as uint 1))
@@ -2553,6 +2658,9 @@
     (the-as pair 0)
     )
   (setup-enemy! this *prebot-medium-eco-creature-nav-enemy-info*)
+  (set! (-> this fact pickup-type) (pickup-type eco-pill-dark))
+  (set! (-> this fact pickup-amount) 1.0)
+  (set! (-> this fact pickup-spawn-amount) 1.0)
   (logior! (-> this draw global-effect) (draw-control-global-effect rim-lights2))
   (let ((v1-8 (-> this neck)))
     (set! (-> v1-8 up) (the-as uint 1))
@@ -3347,6 +3455,9 @@
     (the-as pair 0)
     )
   (setup-enemy! this *prebot-small-eco-creature-nav-enemy-info*)
+  (set! (-> this fact pickup-type) (pickup-type eco-pill-dark))
+  (set! (-> this fact pickup-amount) 1.0)
+  (set! (-> this fact pickup-spawn-amount) 1.0)
   (logior! (-> this draw global-effect) (draw-control-global-effect rim-lights2))
   (let ((v1-8 (-> this neck)))
     (set! (-> v1-8 up) (the-as uint 1))

@@ -53,11 +53,14 @@
       (set! (-> a0-1 dir0 direction w) 0.0)
       )
     (set-vector! (-> v1-0 0 dir0 color) 0.72 0.667 0.667 1.0)
-    (set-vector! (-> v1-0 0 ambi color) 0.3 0.35 0.3 1.0)
+    ;; The player renderer uses this Tower mood group together with the level's
+    ;; light hash and nearby realtime lights.  Lowering the base ambient makes
+    ;; Jak dark in unlit areas while torches and other lights still illuminate him.
+    (set-vector! (-> v1-0 0 ambi color) 0.14 0.17 0.14 1.0)
     (set! (-> v1-0 0 dir0 extra x) 1.0)
     (set! (-> v1-0 0 dir1 extra x) 0.0)
     (set! (-> v1-0 0 dir2 extra x) 0.0)
-    (set! (-> v1-0 0 ambi extra x) 1.0)
+    (set! (-> v1-0 0 ambi extra x) 0.55)
     )
   (none)
   )
@@ -65,22 +68,8 @@
 (defbehavior update-mood-tower time-of-day-proc ((arg0 mood-context) (arg1 float) (arg2 int))
   (update-mood-interior arg0 #f)
   (update-tower-lights arg0)
-  (cond
-    ((< (the-as uint 8) (the-as uint (-> *time-of-day-context* mode)))
-     (palette-select-special arg0)
-     )
-    (else
-      (-> arg0 state)
-      (set! (-> arg0 times 0 w) 1.0)
-      (set! (-> arg0 times 1 w) 1.0)
-      (set! (-> arg0 times 2 w) 1.0)
-      (update-mood-pulse arg0 3 0 1.0 0.25 (* 32768.0 (seconds-per-frame)) 0.0)
-      (set! (-> arg0 times 4 w) 1.0)
-      (set! (-> arg0 times 5 w) 1.0)
-      (set! (-> arg0 times 6 w) 1.0)
-      (set! (-> arg0 times 7 w) 1.0)
-      )
-    )
+  (set! (-> *time-of-day-context* mode) (time-of-day-palette-id palette-1))
+  (palette-select-special arg0)
   0
   (none)
   )

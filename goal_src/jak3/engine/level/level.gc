@@ -3611,7 +3611,26 @@
             )
           (when (and (= s3-0 s5-2)
                      (begin
-                       (set! (-> *setting-control* user-default music) (-> s3-0 info music-bank))
+                       ;; Haven Forest uses a custom main-music file instead of the
+                       ;; normal forplkil sound bank.  Keep a sentinel in the music
+                       ;; setting so the level update cannot reload the vanilla bank
+                       ;; every frame while the custom file is playing.
+                       (if (= (-> s3-0 info taskname) 'forest)
+                           (begin
+                             (when (!= (-> *setting-control* user-default music) 'forest-custom-main-music)
+                               (sound-music-unload)
+                               (stop-main-music)
+                               (play-main-music
+                                 "music/Haven_Forest.flac"
+                                 (the int (* 25.0 (-> *setting-control* user-default music-volume))))
+                               )
+                             (set! (-> *setting-control* user-default music) 'forest-custom-main-music)
+                             (set! (-> *setting-control* user-current music) 'forest-custom-main-music)
+                             )
+                           (begin
+                             (set! (-> *setting-control* user-default music) (-> s3-0 info music-bank))
+                             )
+                           )
                        (set! (-> *setting-control* user-default sound-reverb) (-> s3-0 info sound-reverb))
                        #t
                        )

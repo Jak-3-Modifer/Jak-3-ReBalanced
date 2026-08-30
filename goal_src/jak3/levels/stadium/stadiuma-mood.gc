@@ -24,6 +24,14 @@
     (update-mood-flames arg0 6 1 8 1.0 0.000390625 1.5)
     (set! (-> arg0 times 7 w) 1.0)
     )
+  ;; Stadium B palette mix: 0 and 1 remain subtle under 2 and 6.
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
+  (set! (-> arg0 times 0 w) 0.25)
+  (set! (-> arg0 times 1 w) 0.25)
+  (set! (-> arg0 times 2 w) 1.0)
+  (set! (-> arg0 times 6 w) 1.0)
   0
   (none)
   )
@@ -55,6 +63,15 @@
     (update-mood-electricity arg0 6 8 1.2 1.7)
     (update-mood-electricity arg0 7 24 1.2 1.7)
     )
+  ;; Palace Ruins Patrol / Stadium Ruins palette mix.  The mission-start node
+  ;; closes once its intro finishes, so this belongs to the level mood itself.
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
+  (set! (-> arg0 times 0 w) 0.25)
+  (set! (-> arg0 times 4 w) 1.0)
+  (set! (-> arg0 times 6 w) 1.0)
+  (set! (-> arg0 times 7 w) 1.0)
   0
   (none)
   )

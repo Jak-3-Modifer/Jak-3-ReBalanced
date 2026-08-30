@@ -111,6 +111,12 @@
         (set! (-> arg0 times 6 w) 1.0)
         )
     )
+  ;; Keep the streamed Volcano entry piece on the Palette 5-dominant grade.
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
+  (set! (-> arg0 times 5 w) 1.0)
+  (set! (-> arg0 times 3 w) 0.35)
   0
   (none)
   )

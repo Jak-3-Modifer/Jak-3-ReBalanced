@@ -368,6 +368,8 @@
 (defmethod init-proj-settings! ((this gun-blue-shot-3))
   (+! (-> *game-info* shots-fired 2) 1.0)
   (set! (-> this attack-mode) 'eco-blue)
+  ;; Mark Peace Maker shots for KG-robot resistance handling.
+  (set! (-> this root penetrate-using) (penetrate jak-blue-shot penetrate39))
   (set! (-> this max-speed) 327680.0)
   (set! (-> this move) gun-blue-shot-3-move)
   (set! (-> this timeout) (seconds 3))
@@ -2172,9 +2174,9 @@
                                (gun-fire-blue-2)
                                )
                               (((pickup-type gun-blue-3))
-                               (let ((f0-0 -2.0))
+                               (let ((f0-0 -6.0))
                                  (if (logtest? (game-secrets gun-upgrade-blue-3) (-> *game-info* secrets))
-                                     (set! f0-0 -1.5)
+                                     (set! f0-0 -3.0)
                                      )
                                  (adjust-player-ammo f0-0 (pickup-type ammo-blue))
                                  )
@@ -2234,7 +2236,9 @@
       )
   (when (logtest? (game-secrets gun-upgrade-blue-2) (-> *game-info* secrets))
     (if (logtest? (process-mask kg-robot) (-> arg0 mask))
-        (set! (-> this damage) (* 2.0 (-> this damage)))
+        ;; KG robots apply their shared 50% resistance after this, producing
+        ;; a final Robot Shock multiplier of 5x base damage.
+        (set! (-> this damage) (* 10.0 (-> this damage)))
         )
     )
   (if (< (mod (the-as int (rand-uint31-gen *random-generator*)) 11) 2)
@@ -2458,7 +2462,12 @@
     (set! (-> s5-0 no-reaction)
           (the-as (function collide-shape-moving collide-query vector vector object) nothing)
           )
-    (set! (-> s5-0 penetrate-using) (penetrate jak-blue-shot))
+    ;; Mark Arc Wielder (blue shot 2) separately so robot-specific damage
+    ;; resistance can distinguish it from Vulcan and other blue shots.
+    (set! (-> s5-0 penetrate-using)
+          (if (type? this gun-blue-shot-2)
+              (penetrate jak-blue-shot penetrate38)
+              (penetrate jak-blue-shot)))
     (let ((s4-0 (new 'process 'collide-shape-prim-group s5-0 (the-as uint 2) 0)))
       (set! (-> s5-0 total-prims) (the-as uint 3))
       (set! (-> s4-0 prim-core collide-as) (collide-spec projectile))
@@ -2531,7 +2540,8 @@
     (set! (-> this timeout) 1)
     (set! (-> this move) gun-blue-shot-move)
     (vector-reset! (-> this collide-normal))
-    (set! (-> this damage) 2.5)
+    ;; Blue Gun 2 deals 1 damage without its upgrade.
+    (set! (-> this damage) 1.0)
     (set! (-> this vehicle-damage-factor) 2.0)
     (set! (-> this vehicle-impulse-factor) 0.5)
     (logior! (-> this options) (projectile-options po13))

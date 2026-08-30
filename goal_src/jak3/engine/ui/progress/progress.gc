@@ -3391,6 +3391,13 @@
                            (logclear (logxor (-> *game-info* secrets) (the-as uint (-> s3-0 secret))) (-> s3-0 mask-secrets))
                            )
                      (sound-play "generic-beep")
+                     ;; The Jak 2 model is selected while the player target is
+                     ;; created, so reload the current mission after this toggle.
+                     (when (= (-> s3-0 secret) (game-secrets jak-is-jak2))
+                       (sound-volume-off)
+                       (restart-mission)
+                       (set-next-state arg0 'go-away 0)
+                       )
                      )
                     ((and (= (-> s3-0 secret) 1) (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
                      (set! (-> *progress-work* hero-mode-save) #t)

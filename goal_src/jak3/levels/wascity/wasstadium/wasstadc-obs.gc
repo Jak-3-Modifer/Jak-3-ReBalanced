@@ -126,7 +126,18 @@
   (let ((s4-0 (new 'static 'fact-info :pickup-type (pickup-type ammo-red) :pickup-spawn-amount 20.0))
         (s5-0 (new 'stack-no-clear 'vector))
         )
-    (set! (-> s4-0 pickup-type) (pickup-type ammo-random))
+    (let* ((platform (ppointer->process (-> this parent)))
+           (manager (as-type (and platform (ppointer->process (-> platform parent))) task-manager))
+           )
+      ;; Arena 2's refill doors provide Dark Eco instead of ammunition. Keep
+      ;; the shared Arena 1 and Arena 3 refill behavior unchanged.
+      (set! (-> s4-0 pickup-type)
+            (if (and manager (= (-> manager node-info task) (game-task arena-fight-2)))
+                (pickup-type eco-pill-dark)
+                (pickup-type ammo-random)
+                )
+            )
+      )
     (vector-copy! s5-0 (-> this root trans))
     (when (or (zero? (-> this crate-h)) (not (handle->process (-> this crate-h))))
       (let ((s5-1 (as-type
@@ -486,6 +497,40 @@
                                 )
         )
 
+;; Persistent Arena 3 ember locations, authored in the level-coordinate
+;; values printed by the in-game orb/position debugger.
+(define *arena-3-ember-pos* (new 'static 'boxed-array :type vector
+                              (new 'static 'vector :x (meters 2325.5698) :y (meters 11.5978) :z (meters -448.2692) :w 1.0)
+                              (new 'static 'vector :x (meters 2325.1857) :y (meters 12.2895) :z (meters -425.2511) :w 1.0)
+                              (new 'static 'vector :x (meters 2348.4809) :y (meters 12.0662) :z (meters -424.4194) :w 1.0)
+                              (new 'static 'vector :x (meters 2371.3564) :y (meters 12.0617) :z (meters -425.2846) :w 1.0)
+                              (new 'static 'vector :x (meters 2371.3664) :y (meters 11.9655) :z (meters -447.9875) :w 1.0)
+                              (new 'static 'vector :x (meters 2370.7214) :y (meters 12.0744) :z (meters -470.7877) :w 1.0)
+                              (new 'static 'vector :x (meters 2348.3325) :y (meters 11.8733) :z (meters -470.7496) :w 1.0)
+                              (new 'static 'vector :x (meters 2371.5141) :y (meters 12.1262) :z (meters -493.8817) :w 1.0)
+                              (new 'static 'vector :x (meters 2371.0932) :y (meters 11.8851) :z (meters -516.6726) :w 1.0)
+                              (new 'static 'vector :x (meters 2348.3591) :y (meters 11.8767) :z (meters -516.5748) :w 1.0)
+                              (new 'static 'vector :x (meters 2325.3237) :y (meters 12.3022) :z (meters -516.4019) :w 1.0)
+                              (new 'static 'vector :x (meters 2325.4216) :y (meters 11.8125) :z (meters -493.5979) :w 1.0)
+                              (new 'static 'vector :x (meters 2301.8640) :y (meters 12.1408) :z (meters -516.3272) :w 1.0)
+                              (new 'static 'vector :x (meters 2278.9899) :y (meters 11.8195) :z (meters -516.4385) :w 1.0)
+                              (new 'static 'vector :x (meters 2279.4794) :y (meters 12.3006) :z (meters -494.0035) :w 1.0)
+                              (new 'static 'vector :x (meters 2279.4499) :y (meters 11.7783) :z (meters -470.6731) :w 1.0)
+                              (new 'static 'vector :x (meters 2279.5842) :y (meters 12.2053) :z (meters -448.1093) :w 1.0)
+                              (new 'static 'vector :x (meters 2279.4645) :y (meters 12.0597) :z (meters -424.6769) :w 1.0)
+                              (new 'static 'vector :x (meters 2302.2751) :y (meters 11.8654) :z (meters -424.4628) :w 1.0)
+                              (new 'static 'vector :x (meters 2301.8979) :y (meters 11.4763) :z (meters -470.6122) :w 1.0)
+                              )
+        )
+
+(defun launch-arena-3-embers ()
+  (dotimes (index (-> *arena-3-ember-pos* length))
+    (launch-particles (-> *part-id-table* 494) (-> *arena-3-ember-pos* index))
+    )
+  0
+  (none)
+  )
+
 (deftype wstd-fight-plat (base-plat)
   ((basepos           vector   :inline)
    (box               handle   4)
@@ -711,7 +756,18 @@
   :code (behavior ()
     (set! (-> self spawn-lava?) #t)
     (let ((gp-0 (current-time)))
-      (until (or (-> self go-up) (time-elapsed? gp-0 (seconds 5)))
+      ;; Only Arena Fight 2 uses the extended 60-second lava duration.
+      (until (or (-> self go-up)
+                 (time-elapsed?
+                   gp-0
+                   (if (let ((parent (as-type (ppointer->process (-> self parent)) task-manager)))
+                         (and parent (= (-> parent node-info task) (game-task arena-fight-2)))
+                         )
+                       (seconds 60)
+                       (seconds 5)
+                       )
+                   )
+                 )
         (when (>= (+ (current-time) (seconds -0.3)) (-> self next-lava-sound))
           (set-time! (-> self next-lava-sound))
           (sound-play "lava-bubbles")
@@ -2154,6 +2210,9 @@
 (defstate active (task-manager-arena-fight)
   :virtual #t
   :enter (behavior ()
+    ;; Lower the camera's look target slightly so arena gameplay has a
+    ;; modestly more top-down view without changing its distance or FOV.
+    (set-setting! 'target-height 'abs (meters 1.0) 0)
     (let ((t9-0 (-> (method-of-type task-manager active) enter)))
       (if t9-0
           (t9-0)
@@ -2218,6 +2277,9 @@
       )
     )
   :trans (behavior ()
+    ;; The lava sequence has its own state, so continue the Arena Fight 1
+    ;; countdown instead of pausing it until the platform rises again.
+    (hud-timer-handler self)
     (task-manager-arena-fight-base-method-33 self)
     (task-manager-arena-fight-base-method-34 self)
     (if (and (zero? (-> self count-alive)) (zero? (-> self count)))
@@ -2253,6 +2315,12 @@
   :parent (task-manager-arena-fight active)
   :enter (behavior ()
     (task-node-close! (game-task-node arena-fight-1-fight) 'event)
+    ;; The fight is won: stop the countdown and remove its HUD element.
+    (logclear! (-> self info mask) (task-manager-mask time-limit))
+    (when (handle->process (-> self hud-timer))
+      (send-event (handle->process (-> self hud-timer)) 'hide-and-die)
+      (set! (-> self hud-timer) (the-as handle #f))
+      )
     (let ((gp-0 (entity-by-name "wstd-arena-plat-10")))
       (when gp-0
         (send-event (-> gp-0 extra process) 'show)
@@ -2335,7 +2403,8 @@
             (vector+! s5-1 s5-1 (-> s3-0 root trans))
             (+! (-> s5-1 y) 32768.0)
             (when (send-event (handle->process (-> s3-0 door (-> this angle))) 'open)
-              (spawn-marauder this s5-1 s4-0 (the-as actor-id #xab7e) #t #f)
+              ;; Arena Marauders should select Jak only, never another Marauder.
+              (spawn-marauder this s5-1 s4-0 (the-as actor-id #xab7e) #f #f)
               (set! (-> this next-spawn) (+ (current-time) (seconds 1)))
               (+! (-> this angle) 1)
               (when (= (-> this angle) 4)
@@ -2483,11 +2552,16 @@
           (t9-0)
           )
       )
+    ;; Fight 2 uses a raised target for a stable high-angle arena view.
+    (set-setting! 'target-height 'abs (meters 4.5) 0)
     )
   )
 
 (defstate wait-start (task-manager-arena-fight-2)
   :virtual #t
+  :enter (behavior ()
+    (set-time! (-> self state-time))
+    )
   :exit (behavior ()
     (set! (-> self play-hint) #t)
     (set-time! (-> self hint-time))
@@ -2504,9 +2578,25 @@
           (ppointer->handle (process-spawn hud-marauder :init hud-init-by-other :name "hud-marauder" :to self))
           )
     (set! (-> self next-go-down) (+ (current-time) (seconds 15)))
+    ;; Arena Fight 2 begins here: any later incoming hit fails the challenge.
+    (set! (-> self start-time) (-> *game-info* hit-time))
     )
   :code (behavior ()
     (until #f
+      ;; Show the Arena Fight 2 no-damage challenge for three seconds.
+      (when (not (time-elapsed? (-> self state-time) (seconds 3)))
+        (let ((s5-0
+                (new 'stack 'font-context *font-default-matrix* 32 290 0.0 (font-color default) (font-flags shadow kerning))
+                )
+              )
+          (set! (-> s5-0 flags) (font-flags shadow kerning middle middle-vert large))
+          (set-width! s5-0 440)
+          (set-height! s5-0 80)
+          (set-scale! s5-0 0.8)
+          (format (clear *temp-string*) "Kill 30 marauders without taking damage!")
+          (print-game-text *temp-string* s5-0 #f 44 (bucket-id hud-draw-hud-alpha))
+          )
+        )
       (if (not (handle->process (-> self arrow-h)))
           (go-virtual active)
           )
@@ -2530,7 +2620,15 @@
                 )
           )
         (set! s5-0
-              (and (< (vector-vector-distance (-> (the-as process-drawable gp-0) root trans) (target-pos 0)) 12288.0) s5-0)
+              (and (< (vector-vector-distance (-> (the-as process-drawable gp-0) root trans) (target-pos 0)) 12288.0)
+                   s5-0
+                   ;; Only Arena 3 requires a non-empty Blue Ammo pool before
+                   ;; its entry sequence can begin.  Arena 2 retains its
+                   ;; existing start behavior.
+                   (or (!= (-> self node-info task) (game-task arena-fight-3))
+                       (> (-> *game-info* gun-ammo 2) 0.0)
+                       )
+                   )
               )
         (when s5-0
           (send-event gp-0 'leave)
@@ -2681,6 +2779,11 @@
   (let ((t9-1 (method-of-type task-manager task-manager-method-26)))
     (t9-1 this)
     )
+  ;; Fail immediately if Jak has taken damage since Arena Fight 2 began.
+  (when (and (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+             (> (-> *game-info* hit-time) (-> this start-time)))
+    (go-fail this)
+    )
   (task-manager-arena-fight-base-method-33 this)
   (let ((v1-5 (-> this dj-train)))
     (cond
@@ -2728,8 +2831,11 @@
          (set-height! s5-1 80)
          (set-scale! s5-1 0.7)
          (let ((s4-1 print-game-text))
-           (format (clear *temp-string*) (lookup-text! *common-text* (text-id dark-bomb-how-to) #f))
-           (s4-1 *temp-string* s5-1 #f 44 (bucket-id hud-draw-hud-alpha))
+           (format (clear *temp-string*) "Dark Combo: <PAD_SQUARE> + <PAD_X> or <PAD_X> + <PAD_SQUARE>")
+           ;; Convert the markup into the controller glyphs, as the original
+           ;; localized prompt did before it was drawn on the HUD.
+           (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+           (s4-1 *pc-encoded-temp-string* s5-1 #f 44 (bucket-id hud-draw-hud-alpha))
            )
          )
        (if (-> this darkbomb)
@@ -2786,7 +2892,9 @@
           (set! (-> s5-5 w) 1.0)
           (let ((s4-4 (new 'stack-no-clear 'quaternion)))
             (when (and s3-4 (< (-> this next-go-down) (current-time)) (> (-> this count) 0))
-              (set! (-> this next-go-down) (+ (current-time) (seconds 20)))
+              ;; Once the first platform has dropped, start each following
+              ;; Arena Fight 2 lava event seven seconds later.
+              (set! (-> this next-go-down) (+ (current-time) (seconds 7)))
               (send-event s3-4 'go-down 24576.0)
               (dotimes (s2-4 3)
                 (when (handle->process (-> this crate-h s2-4))
@@ -2804,7 +2912,8 @@
                   (vector-orient-by-quat! s5-5 s5-5 (-> (the-as process-drawable s3-5) root quat))
                   (vector+! s5-5 s5-5 (-> (the-as process-drawable s3-5) root trans))
                   (quaternion-copy! s4-4 (-> (the-as process-drawable s3-5) root quat))
-                  (spawn-marauder this s5-5 s4-4 (the-as actor-id #xb63b) #t #f)
+                  ;; Arena Marauders should select Jak only, never another Marauder.
+                  (spawn-marauder this s5-5 s4-4 (the-as actor-id #xb63b) #f #f)
                   (set! (-> this next-spawn) (+ (current-time) (seconds 1)))
                   )
                 )
@@ -3005,6 +3114,21 @@
   ()
   )
 
+(defstate active (task-manager-arena-fight-3)
+  :virtual #t
+  :enter (behavior ()
+    (let ((t9-0 (-> (method-of-type task-manager-arena-fight-2 active) enter)))
+      (if t9-0
+          (t9-0)
+          )
+      )
+    ;; The inherited field is a zero/nonzero fight-state marker.  It is set
+    ;; only after the entry crates have supplied Blue Ammo.
+    (set! (-> self time-limit) (seconds 98))
+    (set-time! (-> self start-time))
+    (set! (-> self check-timer) 0)
+    )
+  )
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod task-manager-method-26 ((this task-manager-arena-fight-3))
@@ -3013,6 +3137,26 @@
     )
   (task-manager-arena-fight-base-method-34 this)
   (task-manager-arena-fight-base-method-33 this)
+  ;; Switching weapons is allowed.  A failure occurs only when the player
+  ;; presses fire with something other than Vulcan Fury, or Blue Ammo reaches
+  ;; zero after Arena 3 has entered its active state.
+  (when (nonzero? (-> this start-time))
+    ;; Refresh the lightweight arena fire/ember effect at each authored
+    ;; position.  This remains local to the active Arena 3 fight.
+    (when (time-elapsed? (-> this check-timer) (seconds 0.75))
+      (set-time! (-> this check-timer))
+      (launch-arena-3-embers)
+      )
+    (when (or (<= (-> *game-info* gun-ammo 2) 0.0)
+              (and (cpad-pressed? 0 r1)
+                   (or (not *target*)
+                       (!= (-> *target* gun using-gun-type) (pickup-type gun-blue-1))
+                       )
+                   )
+              )
+      (go-fail this)
+      )
+    )
   (when (and (< (-> this next-spawn) (current-time))
              (> (- (-> this count) (-> this count-alive)) 0)
              (< (-> this count-alive) (the-as uint 12))
@@ -3082,6 +3226,12 @@
   :parent (task-manager-arena-fight-3 active)
   :enter (behavior ()
     (send-event (handle->process (-> self platform 0)) 'end)
+    ;; Stop and remove Arena 3's countdown once its fight has been won.
+    (logclear! (-> self info mask) (task-manager-mask time-limit))
+    (when (handle->process (-> self hud-timer))
+      (send-event (handle->process (-> self hud-timer)) 'hide-and-die)
+      (set! (-> self hud-timer) (the-as handle #f))
+      )
     (remove-setting! 'music)
     (task-node-close! (game-task-node arena-fight-3-fight) 'event)
     )
@@ -3095,7 +3245,8 @@
 (defstate wait-start (task-manager-arena-fight-3)
   :virtual #t
   :enter (behavior ()
-    '()
+    ;; Zero marks that the one-time pre-fight warning has not started yet.
+    (set! (-> self check-timer) 0)
     )
   :trans (behavior ()
     (let ((gp-0 (entity-by-name "wstd-arena-plat-10")))
@@ -3111,8 +3262,25 @@
         )
       )
     (let ((gp-2 (new 'static 'vector :x 9526845.0 :y 196812.8 :z -1692794.9 :w 1.0)))
-      (if (< 24576.0 (vector-vector-xz-distance gp-2 (target-pos 0)))
-          (task-node-close! (game-task-node arena-fight-3-training) 'event)
+      (when (< 24576.0 (vector-vector-xz-distance gp-2 (target-pos 0)))
+        (when (zero? (-> self check-timer))
+          (set-time! (-> self check-timer))
+          )
+        (if (time-elapsed? (-> self check-timer) (seconds 4))
+            (task-node-close! (game-task-node arena-fight-3-training) 'event)
+            (let ((font (new 'stack 'font-context *font-default-matrix* 32 290 0.0
+                             (font-color default)
+                             (font-flags shadow kerning))))
+              (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+              (set-width! font 440)
+              (set-height! font 100)
+              (set-scale! font 0.7)
+              (format (clear *temp-string*)
+                      "<COLOR_BLUE>Vulcan<COLOR_WHITE>/Melee use only,~%don't run out of Ammo.")
+              (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+              (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+              )
+            )
           )
       )
     )
@@ -3120,9 +3288,14 @@
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod set-time-limit ((this task-manager-arena-fight-3))
+  ;; Enable the common task timer, then defer its countdown until the Arena 3
+  ;; entry sequence reaches the active fight state.
+  (logior! (-> this info mask) (task-manager-mask time-limit))
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
     (t9-0 this)
     )
+  (set! (-> this start-time) 0)
+  (set! (-> this time-limit) (seconds 98))
   (set! (-> this count) (the-as uint 30))
   (set! (-> this angle) (the-as uint 0))
   (if (kiosk?)
@@ -3181,7 +3354,7 @@
                 this
                 (vector+! (new 'stack-no-clear 'vector) s5-4 (new 'static 'vector :x 4915.2 :z 4915.2 :w 1.0))
                 (quaternion-vector-angle! (new 'stack-no-clear 'quaternion) *y-vector* 6189.511)
-                (pickup-type ammo-random)
+                (pickup-type ammo-blue)
                 )
               )
         (set! (-> this crate-h 1)
@@ -3189,7 +3362,7 @@
                 this
                 (vector+! (new 'stack-no-clear 'vector) s5-4 (new 'static 'vector :x 5734.4 :z -4505.6 :w 1.0))
                 (quaternion-vector-angle! (new 'stack-no-clear 'quaternion) *y-vector* 27852.8)
-                (pickup-type ammo-random)
+                (pickup-type ammo-blue)
                 )
               )
         (set! (-> this crate-h 2)
@@ -3197,7 +3370,7 @@
                 this
                 (vector+! (new 'stack-no-clear 'vector) s5-4 (new 'static 'vector :x -5324.8 :z -6963.2 :w 1.0))
                 (quaternion-vector-angle! (new 'stack-no-clear 'quaternion) *y-vector* -14745.6)
-                (pickup-type ammo-random)
+                (pickup-type ammo-blue)
                 )
               )
         )

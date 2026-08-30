@@ -106,9 +106,9 @@
     :bullseye-joint 6
     :sound-hit (static-sound-name "rat-squeal")
     :sound-die (static-sound-name "rat-die")
-    :notice-distance (meters 40)
-    :notice-distance-delta (meters 10)
-    :proximity-notice-distance (meters 5)
+    :notice-distance (meters 60)
+    :notice-distance-delta (meters 15)
+    :proximity-notice-distance (meters 10)
     :default-hit-points 5.0
     :gnd-collide-with (collide-spec backgnd)
     :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
@@ -606,11 +606,11 @@
     :turn-anim -1
     :run-anim 11
     :taunt-anim -1
-    :run-travel-speed (meters 8)
-    :run-acceleration (meters 6)
+    :run-travel-speed (meters 14)
+    :run-acceleration (meters 12)
     :run-turning-acceleration (meters 60)
-    :walk-travel-speed (meters 3)
-    :walk-acceleration (meters 6)
+    :walk-travel-speed (meters 6)
+    :walk-acceleration (meters 12)
     :walk-turning-acceleration (meters 2)
     :maximum-rotation-rate (degrees 360)
     :notice-nav-radius (meters 2)
@@ -1143,7 +1143,7 @@
           )
       )
     (if (and (time-elapsed? (-> self state-time) (-> self reaction-time))
-             (and (< (vector-vector-xz-distance (-> self focus-pos) (-> self root trans)) 20480.0) (get-focus! self))
+             (and (< (vector-vector-xz-distance (-> self focus-pos) (-> self root trans)) (meters 8)) (get-focus! self))
              )
         (go-virtual attack)
         )
@@ -1657,7 +1657,7 @@
 (defmethod ragdoll-settled? ((this rat))
   "Has the ragdoll stopped moving?"
   (with-pp
-    (and (or (time-elapsed? (-> this state-time) (seconds 3)) (let ((a1-0 (new 'stack-no-clear 'event-message-block)))
+    (and (or (time-elapsed? (-> this state-time) (seconds 1.2)) (let ((a1-0 (new 'stack-no-clear 'event-message-block)))
                                                                 (set! (-> a1-0 from) (process->ppointer pp))
                                                                 (set! (-> a1-0 num-params) 0)
                                                                 (set! (-> a1-0 message) 'inside?)
@@ -1690,15 +1690,26 @@
       )
     (set! (-> arg0 y) (lerp 0.0 73728.0 f30-0))
     )
+  (when (and (< 0.01 (-> *setting-control* user-current slow-time))
+             (logtest? (penetrate generic-attack lunge flop punch spin roll uppercut bonk tube)
+                       (-> this incoming penetrate-using)
+                       )
+             )
+    (vector-float*! arg0 arg0 0.35)
+    )
   )
 
 (defmethod apply-incoming-hitpoint-mods ((this rat) (arg0 float))
   "Modify the hitpoints from an incoming attack.
-   Keeps enemy alive for a bit while being shot with a blue gun.
-   This looks cool because you can shoot them many times."
-  (if (= (-> this hit-points) (-> this enemy-info default-hit-points))
-      1.0
-      0.0
+   Any hit from one of Jak's guns kills the rat immediately."
+  (if (logtest? (penetrate jak-yellow-shot jak-red-shot jak-blue-shot jak-dark-shot)
+                (-> this incoming penetrate-using)
+                )
+      (-> this hit-points)
+      (if (= (-> this hit-points) (-> this enemy-info default-hit-points))
+          1.0
+          0.0
+          )
       )
   )
 
@@ -1857,6 +1868,7 @@
         (the-as pair 0)
         )
       (setup-enemy! this *rat-nav-enemy-info*)
+      (set! (-> this reaction-time) (seconds 0.05))
       (let ((v1-5 (-> this neck)))
         (set! (-> v1-5 up) (the-as uint 1))
         (set! (-> v1-5 nose) (the-as uint 2))

@@ -225,7 +225,9 @@
 
 
 (define *fact-info-dp-bipedal-defaults*
-  (new 'static 'fact-info-enemy-defaults :idle-distance (meters 80) :pickup-type 49 :pickup-amount 20.0)
+  ;; Keep pressure on Jak after he moves away instead of dropping pursuit at the
+  ;; original 80 m leash.
+  (new 'static 'fact-info-enemy-defaults :idle-distance (meters 130) :pickup-type 49 :pickup-amount 20.0)
   )
 
 (define *dp-bipedal-nav-enemy-info*
@@ -265,10 +267,10 @@
     :bullseye-joint 5
     :sound-hit (static-sound-name "dpbiped-gethit")
     :sound-die (static-sound-name "dpbiped-death")
-    :notice-distance (meters 120)
-    :notice-distance-delta (meters 10)
-    :proximity-notice-distance (meters 20)
-    :default-hit-points 8.0
+    :notice-distance (meters 150)
+    :notice-distance-delta (meters 20)
+    :proximity-notice-distance (meters 30)
+    :default-hit-points 48.0
     :gnd-collide-with (collide-spec backgnd obstacle hit-by-others-list)
     :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
     :penetrate-knocked (penetrate
@@ -942,14 +944,14 @@
     :turn-anim -1
     :run-anim 4
     :taunt-anim -1
-    :run-travel-speed (meters 6)
-    :run-acceleration (meters 40)
-    :run-turning-acceleration (meters 50)
+    :run-travel-speed (meters 9)
+    :run-acceleration (meters 65)
+    :run-turning-acceleration (meters 75)
     :walk-travel-speed (meters 4)
-    :walk-acceleration (meters 20)
-    :walk-turning-acceleration (meters 20)
+    :walk-acceleration (meters 30)
+    :walk-turning-acceleration (meters 35)
     :maximum-rotation-rate (degrees 720)
-    :notice-nav-radius (meters 59)
+    :notice-nav-radius (meters 75)
     :frustration-distance (meters 8)
     :frustration-time (seconds 4)
     :blocked-time (seconds 0.3)
@@ -1055,6 +1057,83 @@
       ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1)
       )
   )
+
+;; Dark Bipedals can still detect and attack Jak while Dark Invisibility is
+;; active.  Keep the exception inside their normal notice range so it does not
+;; make them acquire Jak from across the level.
+(defmethod can-become-hostile-to? ((this dp-bipedal) (arg0 process-focusable) (arg1 vector))
+  (or (and (= arg0 *target*)
+           (logtest? (target-flags invisible) (-> *target* target-flags))
+           (< (vector-vector-distance (get-trans arg0 0) (-> this root trans))
+              (-> this enemy-info notice-distance))
+           )
+      ((method-of-type nav-enemy can-become-hostile-to?) this arg0 arg1)
+      )
+  )
+
+(defun dp-bipedal-dark-attack? ((arg0 event-message-block))
+  "True for Dark Morph-Gun shots and Dark Jak attacks."
+  (let ((attack (the-as attack-info (-> arg0 param 1))))
+    (or (= (-> attack mode) 'gravity-end)
+        (logtest? (penetrate
+                    dark-skin
+                    dark-punch
+                    dark-bomb
+                    dark-smack
+                    jak-dark-shot
+                    jak-dark-blackhole
+                    )
+                  (-> attack penetrate-using)
+                  )
+        )
+    )
+  )
+
+(defun dp-bipedal-lightjak-melee-attack? ((arg0 process) (arg1 event-message-block))
+  "True for Light Jak's normal punch, spin, air spin, and uppercut attacks."
+  (let ((attack (the-as attack-info (-> arg1 param 1))))
+    (and (= arg0 *target*)
+         (nonzero? (-> *target* lightjak))
+         (focus-test? *target* light)
+         (or (= (-> attack mode) 'punch)
+             (= (-> attack mode) 'spin)
+             (= (-> attack mode) 'spin-air)
+             (= (-> attack mode) 'uppercut))
+         (not (logtest? (penetrate dark-skin dark-punch dark-bomb dark-smack)
+                        (-> attack penetrate-using))))))
+
+(defun darkjak-target? ((arg0 process))
+  "True only while the attack recipient is actively in Dark Jak form."
+  (and (= arg0 *target*)
+       (nonzero? (-> *target* darkjak))
+       (focus-test? *target* dark)))
+
+(defmethod knocked-handler ((this dp-bipedal) (arg0 vector))
+  "Keep regular Jak melee and non-Dark Morph-Gun knockback within a compact range."
+  ((method-of-type enemy knocked-handler) this arg0)
+  (let ((penetrate-using (-> this incoming penetrate-using)))
+    (when (and (= (handle->process (-> this incoming attacker-handle)) *target*)
+               (or (logtest? (penetrate jak-yellow-shot jak-red-shot jak-blue-shot jak-red-shockwave)
+                             penetrate-using)
+                   (and (not (focus-test? *target* light))
+                        (not (focus-test? *target* dark))
+                        (logtest? (penetrate generic-attack lunge flop punch spin roll uppercut bonk tube)
+                                  penetrate-using))))
+      (let ((amount (rnd-float-range this 0.0 1.0)))
+        (set! (-> arg0 y) 0.0)
+        (vector-normalize! arg0 (lerp (meters 3.5) (meters 5.3) amount))
+        (set! (-> arg0 y) (lerp (meters 4) (meters 6) amount))
+        )
+      )
+    )
+  (none)
+  )
+
+(defmethod send-attack-from-tshape ((this dp-bipedal) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
+  "Dark Bipedals cannot hurt active Dark Jak, but retain their normal attacks otherwise."
+  (if (darkjak-target? arg0)
+      #f
+      ((method-of-type enemy send-attack-from-tshape) this arg0 arg1 arg2)))
 
 (defmethod probe-point-for-los-block ((this dp-bipedal) (arg0 vector) (arg1 vector) (arg2 float))
   (let ((gp-0 (new 'stack-no-clear 'collide-query)))
@@ -1197,7 +1276,9 @@
                   )
               (vector-normalize-copy! s2-0 s5-1 1.0)
               (vector-rotate-y! s2-0 s2-0 (-> *dp-bipedal-formation-table* s4-0))
-              (vector-normalize! s2-0 77824.0)
+              ;; A closer combat ring reduces passive standing and makes groups
+              ;; converge on Jak instead of holding a distant formation.
+              (vector-normalize! s2-0 32768.0)
               (vector+! s3-0 (-> self focus-formation-source) s2-0)
               (when (and (closest-point-on-mesh (-> self nav) s3-0 s3-0 (the-as nav-poly #f))
                          (dp-bipedal-method-209 self s3-0 13977.6)
@@ -1264,7 +1345,7 @@
       (b!
         (not (and s5-0
                   (not (focus-test? s5-0 mech turret))
-                  (>= 11832.889 (acos (vector-dot (-> self focus-dir) (-> self rotation-matrix fvec))))
+                  (>= 13653.333 (acos (vector-dot (-> self focus-dir) (-> self rotation-matrix fvec))))
                   (or (< (vector-vector-distance (-> gp-0 trans) (-> self focus-close-attack-pos)) 31948.799)
                       (< (vector-dot
                            (vector-! (new 'stack-no-clear 'vector) (-> self focus-close-attack-pos) (-> gp-0 trans))
@@ -1317,8 +1398,8 @@
          )
         ((and s5-0
               (-> self can-attack-throw?)
-              (should-check-los? (-> self los) (seconds 0.3))
-              (>= 8192.0 (acos (vector-dot (-> self focus-dir) (-> self rotation-matrix fvec))))
+              (should-check-los? (-> self los) (seconds 0.15))
+              (>= 10922.667 (acos (vector-dot (-> self focus-dir) (-> self rotation-matrix fvec))))
               (begin (set! f0-7 (vector-vector-distance (-> gp-0 trans) (-> self focus-throw-attack-pos))) (< 20480.0 f0-7))
               (< f0-7 225280.0)
               )
@@ -1665,22 +1746,15 @@
     (if (focus-close? self)
         (go-virtual attack-close)
         )
-    (if (not (dp-bipedal-method-206 self))
-        (set-time! (-> self shield-timer))
-        )
-    (if (time-elapsed? (-> self shield-timer) (seconds 0.3))
-        (go-virtual shield-out)
-        )
     (when (time-elapsed? (-> self state-time) (seconds 0.05))
       (let ((v1-25 (new 'stack-no-clear 'inline-array 'vector 1)))
         (let ((a2-0 (-> self nav state)))
           (vector-copy! (-> v1-25 0) (-> a2-0 target-pos))
           )
         (when (< (vector-vector-xz-distance (-> self root trans) (-> v1-25 0)) 4096.0)
-          (if (should-check-los? (-> self los) (seconds 0.3))
-              (go-virtual shield-out)
-              (go-virtual hostile-stand)
-              )
+          ;; Reach the combat decision state first.  hostile-stand chooses a
+          ;; close attack or throw before it ever falls back to shielding.
+          (go-virtual hostile-stand)
           )
         )
       )
@@ -1710,12 +1784,9 @@
     )
   :trans (behavior ()
     ((-> (method-of-type nav-enemy hostile) trans))
-    (if (not (dp-bipedal-method-206 self))
-        (set-time! (-> self shield-timer))
-        )
-    (if (time-elapsed? (-> self shield-timer) (seconds 0.05))
-        (go-virtual shield-out)
-        )
+    ;; Do not transition to shield-out here: :trans runs before this state's
+    ;; attack-selection code, which previously made every Bipedal shield before
+    ;; it could choose a melee strike or grenade throw.
     (if (< 49152.0 (vector-vector-xz-distance (-> self root trans) (-> self formation-position)))
         (go-virtual hostile)
         )
@@ -1956,7 +2027,8 @@
       (set! (-> v1-53 enemy-flags) (the-as enemy-flag (logclear (-> v1-53 enemy-flags) (enemy-flag ef38))))
       )
     0
-    (ja-no-eval :group! dp-bipedal-attack-close0-end-ja :num! (seek! max 1.3) :frame-num 0.0)
+    ;; Shorten only the recovery phase, preserving the melee wind-up and hit.
+    (ja-no-eval :group! dp-bipedal-attack-close0-end-ja :num! (seek! max 0.65) :frame-num 0.0)
     (until (ja-done? 0)
       (seek! (-> self effect-rate) 0.05 (seconds-per-frame))
       (nav-enemy-simple-post)
@@ -1998,7 +2070,9 @@
     (let ((a1-7 (vector<-cspace! (new 'stack-no-clear 'vector) (joint-node dp-bipedal-lod0-jg Rhand))))
       (spawn-dp-bipedal-grenade self a1-7 (-> self focus-throw-attack-pos) 122880.0)
       )
-    (ja-no-eval :group! dp-bipedal-attack-throw0-end-ja :num! (seek! (ja-aframe 33.0 0)) :frame-num 0.0)
+    ;; Recover sooner after the grenade release so the next attack decision is
+    ;; not held up by as much of the throw's recovery animation.
+    (ja-no-eval :group! dp-bipedal-attack-throw0-end-ja :num! (seek! (ja-aframe 16.0 0)) :frame-num 0.0)
     (until (ja-done? 0)
       (seek! (-> self effect-rate) 0.0 (seconds-per-frame))
       (suspend)
@@ -2644,7 +2718,9 @@
   (let ((a1-0 (get-focus! this)))
     (and (and a1-0 (not (logtest? (focus-status mech) (-> a1-0 focus-status))))
          (< (cos 11832.889) (vector-dot (-> this focus-dir) (-> this rotation-matrix fvec)))
-         (< (vector-vector-distance (-> this root trans) (-> this focus-pos)) 12247.039)
+         ;; Start the lunge at 6 m instead of waiting until Jak is almost
+         ;; touching the Bipedal.  This stops walk-by escapes.
+         (< (vector-vector-distance (-> this root trans) (-> this focus-pos)) 24576.0)
          )
     )
   )
@@ -2675,11 +2751,11 @@
          )
      (go-stare2 this)
      )
+    ((focus-close? this)
+     (go (method-of-object this attack-close))
+     )
     ((can-enter-turret? this)
      (go (method-of-object this turret-seek))
-     )
-    ((dp-bipedal-method-206 this)
-     (go (method-of-object this shield-out))
      )
     (else
       (go (method-of-object this hostile))
@@ -2996,6 +3072,34 @@
 (defmethod event-handler ((this dp-bipedal) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
   "Commmon handler for events."
   (case arg2
+    (('attack 'attack-no-avoid 'attack-invinc)
+     (cond
+       ;; Light Shield can hurt only these Metal Heads.  Reduce its shove while
+       ;; preserving its normal collision and hit animation.
+       ((and (= arg0 *target*) (nonzero? (-> *target* lightjak shield-start-time)))
+        (let ((attack (the-as attack-info (-> arg3 param 1))))
+          (set! (-> attack damage) 2.0)
+          (set! (-> attack shove-back) (* (-> attack shove-back) 0.6))
+          (set! (-> attack shove-up) (* (-> attack shove-up) 0.6))
+          ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
+          )
+        )
+       ((dp-bipedal-lightjak-melee-attack? arg0 arg3)
+        (let ((attack (the-as attack-info (-> arg3 param 1))))
+          (set! (-> attack damage) (* (-> attack damage) 2.0))
+          ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
+          )
+        )
+       ((not (dp-bipedal-dark-attack? arg3))
+        ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
+        )
+       (else
+         ;; Dark attacks remain non-damaging, but each one raises the Bipedal
+         ;; by one metre so Dark Jak can still manipulate its position.
+         (+! (-> this root trans y) (meters 1))
+         )
+       )
+     )
     (('hit 'hit-knocked 'hit-flinch)
      (logclear! (-> this mask) (process-mask actor-pause))
      (logclear! (-> this focus-status) (focus-status dangerous))
@@ -3079,6 +3183,13 @@
     (the-as pair 0)
     )
   (setup-enemy! this *dp-bipedal-nav-enemy-info*)
+  ;; Tower Destroy enemies always provide Dark Eco, without changing this
+  ;; enemy's drops in other levels.
+  (when (= (level-status? *level* 'towera #f) 'active)
+    (set! (-> this fact pickup-type) (pickup-type eco-pill-dark))
+    (set! (-> this fact pickup-amount) 1.0)
+    (set! (-> this fact pickup-spawn-amount) 1.0)
+    )
   (set! (-> this state-stack) (new 'process 'boxed-array state 4))
   (set! (-> this state-stack length) 0)
   (set! (-> this root pause-adjust-distance) 163840.0)

@@ -72,7 +72,8 @@
     :notice-distance (meters 100)
     :notice-distance-delta (meters 10)
     :proximity-notice-distance (meters 100)
-    :default-hit-points 4.0
+    ;; Freedom League guards use a durable 30 HP base profile.
+    :default-hit-points 30.0
     :gnd-collide-with (collide-spec backgnd)
     :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
     :penetrate-knocked (penetrate

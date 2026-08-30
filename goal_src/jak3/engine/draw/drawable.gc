@@ -1119,6 +1119,16 @@
                  )
                 )
               )
+            ;; Volcano character-lighting test: lower only the neutral ambient
+            ;; fill. Directional and nearby realtime lava/fire lights are
+            ;; applied below and therefore remain fully dynamic.
+            (when (or (= (level-status? *level* 'volcano #f) 'active)
+                      (= (level-status? *level* 'volcanox #f) 'active))
+              (vector-float*!
+                (-> s3-4 ambi color)
+                (-> s3-4 ambi color)
+                0.3)
+              )
             (calc-shadow-masks s3-4 arg1 s1-3)
             (calc-realtime-lights s3-4 arg1 s1-3)
             (vu-lights<-light-group! arg0 s3-4)

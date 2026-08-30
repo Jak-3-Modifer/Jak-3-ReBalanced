@@ -3312,7 +3312,8 @@ and neg-state is greater than or equal to neg.
                             :channel (gui-channel message)
                             :flags (talker-flags play-only-once)
                             :speech #x163
-                            :text-duration (seconds 5)
+                            ;; Keep the Gun Red 2 follow-up tutorial visible for five seconds.
+                            :text-duration (seconds 5.0)
                             :neg #x1
                             :text-message (text-id hold-to-charge-and-then-release-to-fire-bigger-blast)
                             :on-close #f

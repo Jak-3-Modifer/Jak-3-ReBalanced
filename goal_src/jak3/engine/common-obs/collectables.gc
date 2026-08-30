@@ -303,7 +303,11 @@
 
 (defbehavior initialize-eco-by-other eco ((arg0 vector) (arg1 vector) (arg2 fact-info))
   (let ((s3-0 (-> arg2 pickup-type))
-        (f30-0 (-> arg2 pickup-spawn-amount))
+        (f30-0 (if (= (-> arg2 pickup-type) (pickup-type eco-pill-light))
+                   5.0
+                   (-> arg2 pickup-spawn-amount)
+                   )
+               )
         )
     (set! (-> self pickup-amount) f30-0)
     (set! (-> self pickup-type) s3-0)
@@ -2316,6 +2320,13 @@
 ;; WARN: Return type mismatch int vs pickup-type.
 (defun verify-pickup-type ((arg0 pickup-type))
   (case arg0
+    (((pickup-type eco-pill-green) (pickup-type eco-green) (pickup-type health))
+     (set! arg0 (if (logtest? (game-feature lightjak) (-> *game-info* features))
+                    (pickup-type eco-pill-light)
+                    (pickup-type eco-pill-dark)
+                    )
+           )
+     )
     (((pickup-type eco-pill-light))
      (if (not (logtest? (game-feature lightjak) (-> *game-info* features)))
          (set! arg0 (pickup-type none))
@@ -2352,6 +2363,9 @@
     (sv-56 fact-info)
     (sv-64 int)
     (sv-72 int)
+    ;; Yellow ammo pickups give 3 ammo, but retain the vanilla 10-ammo
+    ;; grouping when calculating how many drops a source creates.
+    (sv-80 int)
     )
   (let ((s2-0 (verify-pickup-type arg1)))
     (if (= s2-0 (pickup-type none))
@@ -2386,7 +2400,10 @@
         )
     ;; og:preserve-this pc port cheat
     (#when PC_PORT
-      (when (and (pc-cheats? (-> *pc-settings* cheats) suck-in-all)
+      ;; Keep the pickup-magnet secret out of debug-mode sessions.  The
+      ;; normal cheat remains available during regular gameplay.
+      (when (and (not (= *cheat-mode* 'debug))
+                (pc-cheats? (-> *pc-settings* cheats) suck-in-all)
                 (!= arg1 (pickup-type skill)))
         (logior! (-> sv-56 options) (actor-option suck-in))
         )
@@ -2479,9 +2496,9 @@
                         )
                        ((begin (set! v1-56 s2-0) (= v1-56 (pickup-type eco-pill-dark)))
                         2
-                        )
+                       )
                        ((= v1-56 (pickup-type eco-pill-light))
-                        20
+                        5
                         )
                        (else
                          1
@@ -2512,6 +2529,9 @@
                        ((logtest? (actor-option dont-override-fact) (-> sv-56 options))
                         (the int (-> sv-56 pickup-spawn-amount))
                         )
+                       ((begin (set! v1-68 s2-0) (= v1-68 (pickup-type ammo-yellow)))
+                        3
+                        )
                        ((begin (set! v1-68 s2-0) (= v1-68 (pickup-type ammo-red)))
                         5
                         )
@@ -2524,6 +2544,7 @@
                        )
                )
          (set! (-> sv-56 pickup-spawn-amount) (the float sv-72))
+         (set! sv-80 (if (= s2-0 (pickup-type ammo-yellow)) 10 sv-72))
          (set! sv-40 (process-spawn
                        ammo-collectable
                        :init initialize-ammo-by-other
@@ -2535,7 +2556,7 @@
                        :to arg4
                        )
                )
-         (set! sv-48 (- sv-48 (+ sv-72 -1)))
+         (set! sv-48 (- sv-48 (+ sv-80 -1)))
          )
         (((pickup-type gun-red-1)
           (pickup-type gun-red-2)
@@ -2673,7 +2694,7 @@
   (the-as pickup-type (cond
                         ((logtest? (game-feature lighteco) (-> *game-info* features))
                          (set! (-> arg1 0) (pickup-type eco-pill-light))
-                         (set! (-> arg2 0) 20.0)
+                         (set! (-> arg2 0) 5.0)
                          )
                         (else
                           (set! (-> arg1 0) (pickup-type none))

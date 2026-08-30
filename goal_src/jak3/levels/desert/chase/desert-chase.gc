@@ -685,7 +685,9 @@
         )
       (dotimes (gp-6 4)
         (let ((s5-2 (-> self vehicle gp-6)))
-          (when (and (time-elapsed? (-> s5-2 wait-timer) (seconds 5)) (time-elapsed? (-> self last-shot-time) (seconds 3)))
+          ;; Allow a new catapult shot every 1.5 seconds instead of every 3.
+          ;; The individual catapult's five-second recovery remains unchanged.
+          (when (and (time-elapsed? (-> s5-2 wait-timer) (seconds 5)) (time-elapsed? (-> self last-shot-time) (seconds 1.5)))
             (let ((s4-1 (new 'stack-no-clear 'vector))
                   (s3-0 (-> self target-point gp-6))
                   )
@@ -822,13 +824,10 @@
   (let ((s5-0 (-> this m-free-list)))
     (when (nonzero? (length s5-0))
       (let ((s4-0 (-> s5-0 (+ (length s5-0) -1)))
-            (s3-0 43)
-            (f30-0 10.0)
+            ;; Chase Marauders in the stronghold arena always drop Dark Eco.
+            (s3-0 (pickup-type eco-pill-dark))
+            (f30-0 1.0)
             )
-        (when (and *target* (and (>= 5.0 (-> *target* fact health)) (rand-vu-percent? 0.6)))
-          (set! s3-0 20)
-          (set! f30-0 2.0)
-          )
         (let ((s1-0 (new 'stack-no-clear 'marauder-init-by-other-params)))
           (vector-copy! (-> s1-0 trans) (-> arg0 pos))
           (quaternion-copy! (-> s1-0 quat) (-> arg0 quat))
@@ -1316,7 +1315,6 @@
     )
   )
 
-
 (defmethod task-manager-method-25 ((this desert-chase-chase-manager))
   (let ((t9-0 (method-of-type task-manager task-manager-method-25)))
     (t9-0 this)
@@ -1740,7 +1738,8 @@
       )
     (was-squad-manager-start self)
     (let ((v1-66 *was-squad-control*))
-      (set! (-> v1-66 target-count) 2)
+      ;; Keep twice as many regular Marauder cars active during the chase.
+      (set! (-> v1-66 target-count) 4)
       (set! (-> v1-66 reserve-count) 400)
       (set! (-> v1-66 target-speed) 143360.0)
       )

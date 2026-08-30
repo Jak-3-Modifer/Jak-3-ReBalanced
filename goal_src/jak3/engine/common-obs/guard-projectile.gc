@@ -310,10 +310,19 @@
 
 
 (defmethod deal-damage! ((this guard-shot) (arg0 process) (arg1 event-message-block))
-  (let ((t9-0 (method-of-type projectile deal-damage!)))
-    (when (t9-0 this arg0 arg1)
-      (set! (-> this hit-actor?) #t)
-      #t
+  ;; Freedom Guard rifle shots can cross Jak's path during City Port Assault.
+  ;; Ignore only the base guard-shot hitting Jak; enemy projectile subclasses
+  ;; such as Robo Guard and flying-turret shots retain their normal damage.
+  (if (and (= (-> this type) guard-shot)
+           (= (-> arg0 type) target)
+           (task-node-open? (game-task-node city-port-assault-resolution))
+           )
+      #f
+      (let ((t9-0 (method-of-type projectile deal-damage!)))
+        (when (t9-0 this arg0 arg1)
+          (set! (-> this hit-actor?) #t)
+          #t
+          )
       )
     )
   )

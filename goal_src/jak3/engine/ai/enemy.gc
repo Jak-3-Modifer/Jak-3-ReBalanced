@@ -2101,12 +2101,45 @@
   arg0
   )
 
+(defun kg-robot-player-weapon-or-melee? ((arg0 attack-info))
+  "True for Jak's standard melee attacks and every gun-mod damage type."
+  (logtest?
+    (penetrate
+      generic-attack
+      lunge
+      flop
+      punch
+      spin
+      roll
+      uppercut
+      bonk
+      tube
+      jak-yellow-shot
+      jak-red-shot
+      jak-blue-shot
+      jak-dark-shot
+      jak-red-shockwave
+      jak-dark-nuke
+      jak-dark-blackhole
+      )
+    (-> arg0 penetrate-using)
+    )
+  )
+
 (defmethod get-damage-from-attack ((this enemy) (arg0 object) (arg1 event-message-block))
   "Compute hit point damage for an attack message."
-  (let ((v1-0 (the-as object (-> arg1 param 1))))
-    (if (logtest? (attack-mask damage) (-> (the-as attack-info v1-0) mask))
-        (-> (the-as attack-info v1-0) damage)
-        (penetrate-using->damage (-> this incoming penetrate-using))
+  (let* ((attack (the-as attack-info (-> arg1 param 1)))
+         (damage (if (logtest? (attack-mask damage) (-> attack mask))
+                     (-> attack damage)
+                     (penetrate-using->damage (-> this incoming penetrate-using))
+                     )
+                 )
+         )
+    (if (and (logtest? (process-mask kg-robot) (-> this mask))
+             (kg-robot-player-weapon-or-melee? attack)
+             )
+        (* damage 0.5)
+        damage
         )
     )
   )
@@ -2147,6 +2180,11 @@
        )
       ((and (logtest? (penetrate jak-dark-nuke) (-> this incoming penetrate-using)) (can-be-nuked? this))
        'go-gun-dark-3-nuke
+       )
+      ;; Player yellow-gun shots use the standard hit state so enemies visibly
+      ;; flinch instead of being sent into the full knocked state.
+      ((logtest? (penetrate jak-yellow-shot) gp-0)
+       'hit
        )
       ((logtest? gp-0 (-> this penetrate-flinch))
        'hit-flinch
@@ -2702,6 +2740,12 @@
             (set! (-> arg0 y) (lerp (-> s5-0 knocked-soft-vy-lo) (-> s5-0 knocked-soft-vy-hi) f30-8))
             )
           )
+        )
+      ;; Player Blaster-family projectiles mark incoming control as -0.5.
+      ;; Scale the completed vanilla knock vector, preserving its direction and
+      ;; each mod's existing knocked type while leaving all other attacks alone.
+      (when (= (-> this incoming intensity) -0.5)
+        (vector-float*! arg0 arg0 0.5)
         )
       )
     )

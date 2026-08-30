@@ -36,6 +36,12 @@
 (defbehavior assault-enemy-init-by-other citizen ((arg0 assault-object-spawn-params))
   (set! (-> self level) (level-get *level* (-> arg0 lev)))
   (citizen-init-by-other arg0)
+  ;; Protect HQ enemies drop ammunition only; leave crate pickups unchanged so
+  ;; green eco remains available from crates in this mission.
+  (set! (-> self fact pickup-type) (pickup-type ammo-random))
+  (set! (-> self fact pickup-amount) 10.0)
+  (set! (-> self fact pickup-spawn-amount) 1.0)
+  (none)
   )
 
 (deftype assault-metalhead-grunt (metalhead-grunt)

@@ -25,7 +25,7 @@
 
 
 (define *fact-info-monster-frog-defaults*
-  (new 'static 'fact-info-enemy-defaults :idle-distance (meters 80) :pickup-type 9)
+  (new 'static 'fact-info-enemy-defaults :idle-distance (meters 80) :pickup-type 8 :pickup-amount 20.0)
   )
 
 (define *monster-frog-nav-enemy-info*
@@ -185,6 +185,14 @@
   )
 
 (set! (-> *monster-frog-nav-enemy-info* fact-defaults) *fact-info-monster-frog-defaults*)
+
+(defmethod msg-for-incoming-attack ((this monster-frog) (arg0 process) (arg1 event-message-block) (arg2 float))
+  "Keep the frog's animated knocked/death path for Yellow Gun hits."
+  (if (logtest? (penetrate jak-yellow-shot) (-> this incoming penetrate-using))
+      'hit-knocked
+      ((method-of-type nav-enemy msg-for-incoming-attack) this arg0 arg1 arg2)
+      )
+  )
 
 ;; WARN: new jak 2 until loop case, check carefully
 (defbehavior monster-frog-hop-slow-code monster-frog ()

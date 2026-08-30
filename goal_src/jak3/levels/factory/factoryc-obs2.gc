@@ -980,16 +980,44 @@
   (none)
   )
 
+(defun fac-move-plat-a-lock-guards-defeated? ()
+  "True only after Robo Guards 33, 34, and 35 have been killed."
+  (let ((guard-33 (entity-by-name "roboguard-33"))
+        (guard-34 (entity-by-name "roboguard-34"))
+        (guard-35 (entity-by-name "roboguard-35")))
+    (and guard-33
+         guard-34
+         guard-35
+         (logtest? (-> guard-33 extra perm status) (entity-perm-status subtask-complete))
+         (logtest? (-> guard-34 extra perm status) (entity-perm-status subtask-complete))
+         (logtest? (-> guard-35 extra perm status) (entity-perm-status subtask-complete))
+         )
+    )
+  )
+
+(defun fac-move-plat-a-slow-after-switch! ((arg0 fac-move-plat-a))
+  "Reduce these platforms to 65% of their authored speed once Daxter uses the switch."
+  ;; A 35% speed reduction needs a 20/13 longer cycle.
+  (set! (-> arg0 sync period) (the-as uint (/ (* 20 (-> arg0 sync period)) 13)))
+  )
+
 (defmethod go-initial-state ((this fac-move-plat-a))
   (set! (-> this dead-set-time) (res-lump-float (-> this entity) 'fac-plat-dead-set :default 0.5))
   (cond
     ((or (logtest? (-> this entity extra perm status) (entity-perm-status subtask-complete))
-         (task-closed? (res-lump-struct (-> this entity) 'task-name string))
+         (and (task-closed? (res-lump-struct (-> this entity) 'task-name string))
+              (fac-move-plat-a-lock-guards-defeated?)
+              )
          )
      (fac-move-plat-a-method-39 this)
      (go (method-of-object this plat-idle))
      )
     (else
+      ;; Reloading after the switch preserves the slowed moving phase until
+      ;; the three specified guards have been defeated.
+      (when (task-closed? (res-lump-struct (-> this entity) 'task-name string))
+        (fac-move-plat-a-slow-after-switch! this)
+        )
       (go (method-of-object this plat-path-active))
       )
     )
@@ -1018,7 +1046,8 @@
   :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
     (case message
       (('trigger)
-       (go-virtual locking-down)
+       ;; Daxter's switch now slows the platforms instead of stopping them.
+       (fac-move-plat-a-slow-after-switch! self)
        )
       (else
         (plat-event proc argc message block)
@@ -1042,6 +1071,12 @@
           )
       )
     (plat-trans)
+    ;; Their original lock-down point is now reached only after all three
+    ;; Robo Guards in this encounter have been killed.
+    (when (and (task-closed? (res-lump-struct (-> self entity) 'task-name string))
+               (fac-move-plat-a-lock-guards-defeated?))
+      (go-virtual locking-down)
+      )
     )
   :code (behavior ()
     (until #f
@@ -1125,6 +1160,13 @@
   )
 
 (defmethod go-initial-state ((this fac-move-plat-b))
+  ;; Keep b-4 at its authored timing, but make b-5 exceptionally fast.
+  ;; The b-4 travel limit itself is applied to its path position below.
+  (let ((name (res-lump-struct (-> this entity) 'name string)))
+    (when (string= name "fac-move-plat-b-5")
+      (set! (-> this sync period) (the-as uint (seconds 1.2)))
+      )
+    )
   (let ((f0-0 (res-lump-float (-> this entity) 'fac-plat-dead-start :default -1.0)))
     (if (>= f0-0 0.0)
         (get-point-at-percent-along-path! (-> this path) (-> this basetrans) f0-0 'interp)
@@ -1166,6 +1208,11 @@
     )
   :trans (behavior ()
     (set! (-> self path-pos) (get-norm! (-> self sync) 0))
+    ;; b-4's authored path is 36 m long.  Restrict its normalized path travel
+    ;; to 20 m from its start point while retaining the normal cycle timing.
+    (when (string= (res-lump-struct (-> self entity) 'name string) "fac-move-plat-b-4")
+      (set! (-> self path-pos) (* (-> self path-pos) (/ 20.0 36.0)))
+      )
     (get-point-at-percent-along-path! (-> self path) (-> self basetrans) (-> self path-pos) 'interp)
     (if (< (vector-vector-distance (-> self root trans) (ear-trans 0)) 163840.0)
         (sound-play "move-plat-loop" :id (-> self sound-id) :position (-> self root trans))
@@ -1222,12 +1269,17 @@
   )
 
 (defbehavior fac-rotfan-part-trans fac-rotfan ()
-  (when (not (logtest? (-> self entity extra perm status) (entity-perm-status subtask-complete)))
-    (set! (-> *part-id-table* 2832 init-specs 8 initial-valuef) (-> self effect-opacity))
-    (if (< (-> self effect-opacity) 30.0)
-        (set! (-> *part-id-table* 2832 init-specs 8 random-rangef) 0.0)
+  ;; Light Freeze lets Jak phase through the active fan.  At every other time
+  ;; its solid collision is restored, so it remains a knockback hazard.
+  (let ((pass-through? (and *target* (handle->process (-> *target* lightjak freeze-control))))
+        (fan-root (the-as collide-shape-prim-group (-> self root root-prim)))
         )
-    (spawn-from-cspace (-> self part) (joint-node fac-rotfan-lod0-jg electrified))
+    (let ((collision-mask (if pass-through? (collide-spec) (collide-spec jak bot player-list))))
+      (set! (-> fan-root prim-core collide-with) collision-mask)
+      (set! (-> fan-root child 0 prim-core collide-with) collision-mask)
+      (set! (-> fan-root child 1 prim-core collide-with) collision-mask)
+      (set! (-> fan-root child 2 prim-core collide-with) collision-mask)
+      )
     )
   (none)
   )
@@ -1241,7 +1293,10 @@
        )
       (('touch)
        (let ((gp-0 (as-type proc process-focusable)))
-         (when (and gp-0 (= (-> gp-0 type) target) ((method-of-type touching-shapes-entry prims-touching?)
+         (when (and gp-0
+                    (= (-> gp-0 type) target)
+                    (not (and *target* (handle->process (-> *target* lightjak freeze-control))))
+                    ((method-of-type touching-shapes-entry prims-touching?)
                                                     (the-as touching-shapes-entry (-> block param 0))
                                                     (-> self root)
                                                     (the-as uint 4)
@@ -1258,7 +1313,9 @@
                        (static-attack-info
                          :mask (vehicle-impulse-factor)
                          ((id (the-as uint (-> self attack-id)))
-                          (damage 0.0)
+                          ;; A failed pass through the live fan hurts as well
+                          ;; as throwing normal Jak backward.
+                          (damage 5.0)
                           (vehicle-damage-factor 1.0)
                           (vehicle-impulse-factor 1.0)
                           (mode 'shock)

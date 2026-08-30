@@ -37,7 +37,7 @@
 
 
 (define *fact-info-spiky-frog-defaults*
-  (new 'static 'fact-info-enemy-defaults :idle-distance (meters 80) :pickup-type 7)
+  (new 'static 'fact-info-enemy-defaults :idle-distance (meters 80) :pickup-type 8 :pickup-amount 20.0)
   )
 
 (define *spiky-frog-nav-enemy-info*
@@ -994,6 +994,24 @@
   "Commmon handler for events."
   (case arg2
     (('hit 'hit-flinch 'hit-knocked)
+     ;; The frog's spikes punish direct Jak melee hits. Keep projectile and
+     ;; vehicle attacks unchanged, and reflect damage without extra knockback.
+     (let ((attack (the-as attack-info (-> arg3 param 1))))
+       (when (and (= arg0 *target*)
+                  (logtest? (penetrate generic-attack lunge flop punch spin roll uppercut bonk tube)
+                            (-> attack penetrate-using)))
+         (send-event arg0 'attack #f (static-attack-info
+                                       :mask (vehicle-impulse-factor)
+                                       ((id (new-attack-id))
+                                        (damage 1.0)
+                                        (vehicle-damage-factor 1.0)
+                                        (vehicle-impulse-factor 1.0)
+                                        (mode 'generic)
+                                        )
+                                       )
+                     )
+         )
+       )
      (logclear! (-> this mask) (process-mask actor-pause))
      (logclear! (-> this focus-status) (focus-status dangerous))
      (logclear! (-> this enemy-flags) (enemy-flag use-notice-distance))

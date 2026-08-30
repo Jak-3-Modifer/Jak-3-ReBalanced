@@ -210,7 +210,8 @@
     (ff-squad-control-method-56 *ff-squad-control* 0 0 0)
     (ff-squad-control-method-56 *ff-squad-control* 1 4 4)
     (let ((a1-3 (get-spawn-pos-for-ship self (new 'stack-no-clear 'vector) *zero-vector* #t)))
-      (set! (-> self gunships 0) (spawn-gunship self a1-3 0 0.0))
+      ;; Start the opening gunship at medium difficulty instead of vanilla 0.0.
+      (set! (-> self gunships 0) (spawn-gunship self a1-3 0 0.5))
       )
     )
   :trans (behavior ()
@@ -515,6 +516,10 @@
           )
         )
       )
+    ;; New Haven Protect HQ crates always contain a health pickup.
+    (set! (-> s4-0 pickup-type) (pickup-type health))
+    (set! (-> s4-0 pickup-amount) (-> *FACT-bank* health-default-inc))
+    (set! (-> s4-0 pickup-spawn-amount) (-> *FACT-bank* health-default-inc))
     (let ((s5-1
             (as-type
               (ppointer->process (process-spawn crate (-> this entity) s5-0 'blue s4-0 :name "crate" :to *entity-pool*))

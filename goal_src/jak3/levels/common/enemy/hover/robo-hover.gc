@@ -307,6 +307,36 @@
     )
   )
 
+;; Robo Hovers use the same KG-robot resistance table as Robo Guards.
+(defmethod get-damage-from-attack ((this robo-hover) (arg0 object) (arg1 event-message-block))
+  (let* ((attack (the-as attack-info (-> arg1 param 1)))
+         (damage ((method-of-type enemy get-damage-from-attack) this arg0 arg1))
+         (weapon-shot? (or (logtest? (penetrate jak-yellow-shot
+                                               jak-red-shot
+                                               jak-blue-shot
+                                               jak-dark-shot
+                                               jak-red-shockwave
+                                               jak-dark-nuke
+                                               jak-dark-blackhole
+                                               explode)
+                                     (-> attack penetrate-using))
+                            (or (= (-> attack mode) 'eco-red)
+                                (= (-> attack mode) 'eco-red-shove)
+                                (= (-> attack mode) 'eco-yellow)
+                                (= (-> attack mode) 'eco-blue)
+                                (= (-> attack mode) 'eco-dark))))
+         (arc-wielder? (logtest? (penetrate penetrate38) (-> attack penetrate-using)))
+         (special-weapon? (logtest? (penetrate penetrate38 penetrate39 penetrate40 penetrate41)
+                                    (-> attack penetrate-using))))
+    (cond
+      ((not weapon-shot?) damage)
+      ((and arc-wielder? (logtest? (game-secrets gun-upgrade-blue-2) (-> *game-info* secrets))) damage)
+      (special-weapon? (* 1.5 damage))
+      (else damage)
+      )
+    )
+  )
+
 
 (defskelgroup skel-robo-hover robo-hover robo-hover-lod0-jg -1
               ((robo-hover-lod0-mg (meters 999999)))
@@ -356,7 +386,7 @@
     :notice-distance (meters 70)
     :notice-distance-delta (meters 10)
     :proximity-notice-distance (meters 55)
-    :default-hit-points 4.0
+    :default-hit-points 10.0
     :gnd-collide-with (collide-spec backgnd)
     :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
     :movement-gravity (meters -100)
@@ -1651,6 +1681,9 @@
   "Typical place for shared init code. Runs from entity or process style init."
   (hover-enemy-method-170 this)
   (setup-enemy! this (get-enemy-info this))
+  (set! (-> this fact pickup-type) (pickup-type ammo-random))
+  (set! (-> this fact pickup-amount) 10.0)
+  (set! (-> this fact pickup-spawn-amount) 1.0)
   (hover-enemy-method-176 this)
   (set! (-> this neck up) (the-as uint 1))
   (set! (-> this neck nose) (the-as uint 2))

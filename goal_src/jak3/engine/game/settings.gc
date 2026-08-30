@@ -1400,11 +1400,7 @@
       (set! (-> s5-0 play-hints) (-> s4-0 play-hints))
       (set! (-> s5-0 sound-bank-load) (-> s4-0 sound-bank-load))
       (set! (-> s5-0 subtitle) (-> s4-0 subtitle))
-      (set! (-> s5-0 beard) (if (logtest? (-> *game-info* secrets) (game-secrets toggle-beard))
-                                (not (-> s4-0 beard))
-                                (-> s4-0 beard)
-                                )
-            )
+      (set! (-> s5-0 beard) (-> s4-0 beard))
       (set! (-> s5-0 movie) (-> s4-0 movie))
       (set! (-> s5-0 movie-name) (-> s4-0 movie-name))
       (set! (-> s5-0 restart-info) (-> s4-0 restart-info))
@@ -1603,6 +1599,10 @@
         (when (!= (-> s5-0 music-volume) (-> s4-0 music-volume))
           (seek! (-> s5-0 music-volume) (-> s4-0 music-volume) (-> *display* real-clock seconds-per-frame))
           (sound-set-volume (sound-group music) (* 0.75 (-> s5-0 music-volume)))
+          ;; Main-music files are played outside the regular music sound group.
+          ;; Keep custom main music capped at 38%, while still following the
+          ;; Options music-volume dial in real time.
+          (main-music-volume (the int (* 38.0 (-> s5-0 music-volume))))
           )
         (when (!= (-> s5-0 dialog-volume) (-> s4-0 dialog-volume))
           (seek! (-> s5-0 dialog-volume) (-> s4-0 dialog-volume) (-> *display* real-clock seconds-per-frame))
@@ -1656,6 +1656,23 @@
                  )
         (cond
           ((-> s4-0 music)
+           (when (= (-> s5-0 music) 'forest-custom-main-music)
+             ;; Let the custom Forest track fade underneath the next in-game
+             ;; music bank instead of cutting off as soon as it changes.
+             (process-spawn-function
+               process
+               (lambda :behavior process ()
+                 (let ((volume (the float (* 38.0 (-> *setting-control* user-current music-volume)))))
+                   (dotimes (i 15)
+                     (main-music-volume (the int volume))
+                     (set! volume (- volume 2.5333333))
+                     (suspend)
+                     )
+                   (stop-main-music)
+                   )
+                 )
+               )
+             )
            (format 0 "Load music ~A~%" (-> s4-0 music))
            (set! (-> s5-0 sound-flava) (the-as uint 0))
            (sound-music-load (string->sound-name (symbol->string (-> s4-0 music))))

@@ -334,7 +334,8 @@
   (set! (-> this gun-aim-yaw-vel) 0.0)
   (set! (-> this gun-yaw) 0.0)
   (set! (-> this gun-pitch) 0.0)
-  (set! (-> this shoot-delay) (the-as uint 30))
+  ;; 36 ticks at 300 ticks per second gives 500 RPM.
+  (set! (-> this shoot-delay) (the-as uint 36))
   (set! (-> this lock-turret) #f)
   0
   (none)

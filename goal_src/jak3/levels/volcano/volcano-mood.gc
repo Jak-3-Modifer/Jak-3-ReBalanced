@@ -102,9 +102,12 @@
     (overide-mood-color arg0 arg1 (the-as int *volcano-mood-color-table*) 0.0)
     (overide-mood-fog arg0 arg1 (the-as int *volcano-mood-fog-table*) 0.0)
     )
-  (-> arg0 state)
+  ;; Volcano uses Palette 5 as its dominant grade, with a lighter Palette 3 accent.
+  (dotimes (palette-index 8)
+    (set! (-> arg0 times palette-index w) 0.0)
+    )
   (set! (-> arg0 times 5 w) 1.0)
-  (set! (-> arg0 times 7 w) 1.0)
+  (set! (-> arg0 times 3 w) 0.35)
   0
   (none)
   )

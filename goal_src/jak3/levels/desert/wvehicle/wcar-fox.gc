@@ -66,7 +66,8 @@
   (setup-masks (-> this draw) 0 -1)
   (setup-masks (-> this draw) 1 0)
   (setup-masks (-> this draw) 2 0)
-  (set! (-> this shoot-delay) (the-as uint 18))
+  ;; The guns alternate every 10 ticks, giving each barrel 900 RPM.
+  (set! (-> this shoot-delay) (the-as uint 10))
   (set! (-> this local-gun-pos 0 quad) (-> (new 'static 'vector :x 2048.0 :y 3686.4 :z 14336.0 :w 1.0) quad))
   (vector-copy! (-> this local-gun-pos 1) (new 'static 'vector :x -2048.0 :y 3686.4 :z 14336.0 :w 1.0))
   (set! (-> this rider-hand-joint-array 0) 8)

@@ -135,10 +135,10 @@
                                  :look-at-joint 6
                                  :bullseye-joint 3
                                  :sound-hit (static-sound-name "manta-impact")
-                                 :notice-distance (meters 60)
+                                 :notice-distance (meters 75)
                                  :notice-distance-delta (meters 10)
                                  :proximity-notice-distance (meters 15)
-                                 :default-hit-points 3.0
+                                 :default-hit-points 6.0
                                  :gnd-collide-with (collide-spec backgnd)
                                  :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
                                  :friction 0.8
@@ -199,8 +199,8 @@
                                  :turn-anim -1
                                  :run-anim -1
                                  :taunt-anim -1
-                                 :run-travel-speed (meters 12)
-                                 :run-acceleration (meters 0.2)
+                                 :run-travel-speed (meters 15)
+                                 :run-acceleration (meters 0.5)
                                  :run-turning-acceleration (meters 8)
                                  :walk-travel-speed (meters 4)
                                  :walk-acceleration (meters 0.1)
@@ -847,7 +847,7 @@
       )
     0
     (let ((v1-17 (-> self nav)))
-      (set! (-> v1-17 target-speed) 49152.0)
+      (set! (-> v1-17 target-speed) 61440.0)
       )
     0
     )
@@ -858,7 +858,7 @@
           )
       )
     (when (and (-> self go-enable) (< (fabs (- (-> self focus-pos y) (-> self root gspot-pos y))) 16384.0))
-      (if (and (time-elapsed? (-> self last-attack-time) (seconds 3))
+      (if (and (time-elapsed? (-> self last-attack-time) (seconds 1.5))
                (< (fabs (-> self angle-to-player)) 6371.5557)
                (< (-> self offset-difference) 12288.0)
                (< (vector-vector-xz-distance (-> self root trans) (-> self dest-pos)) 28672.0)
@@ -870,7 +870,7 @@
                )
           (go-virtual attack)
           )
-      (if (and (time-elapsed? (-> self last-attack-time) (seconds 1))
+      (if (and (time-elapsed? (-> self last-attack-time) (seconds 0.75))
                (< (fabs (-> self angle-to-player)) 8192.0)
                (< (current-time) (+ (-> self track-timer) (seconds 0.5)))
                (< (-> self offset-difference) 12288.0)

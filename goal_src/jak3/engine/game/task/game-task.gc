@@ -1774,9 +1774,11 @@
               )
             :on-open #f
             :manager (new 'static 'task-manager-info
-              :mask (task-manager-mask resolution-scene)
+              ;; Arena Fight 1: finish within 75 seconds or use the normal fail/reset flow.
+              :mask (task-manager-mask resolution-scene time-limit)
               :level 'wasstadc
               :type-to-spawn 'task-manager-arena-fight
+              :time-limit (seconds 75)
               :intro-scene #f
               :resolution-scene "arena-fight-1-res"
               :resolution-scene-continue #f
@@ -16900,7 +16902,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasa-1)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-08)
                 :scene "o-bb02i"
                 )
               (new 'static 'game-task-event
@@ -17024,7 +17026,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasa-2)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-08)
                 :scene "o-bb01i"
                 )
               (new 'static 'game-task-event
@@ -17148,7 +17150,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasa-3)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-08)
                 :scene "o-bb02i"
                 )
               (new 'static 'game-task-event
@@ -17272,7 +17274,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasa-4)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-08)
                 :scene "o-bb01i"
                 )
               (new 'static 'game-task-event
@@ -17396,7 +17398,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasb-1)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-08)
                 :scene "o-bb02i"
                 )
               (new 'static 'game-task-event
@@ -17520,7 +17522,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasb-2)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-08)
                 :scene "o-bb01i"
                 )
               (new 'static 'game-task-event
@@ -17644,7 +17646,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasb-3)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-08)
                 :scene "o-bb06i"
                 )
               (new 'static 'game-task-event
@@ -17768,7 +17770,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasb-4)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-08)
                 :scene "o-bb01i"
                 )
               (new 'static 'game-task-event
@@ -17892,7 +17894,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-genb-1)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb05i"
                 )
               (new 'static 'game-task-event
@@ -18015,7 +18017,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-slumb-1)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb03i"
                 )
               (new 'static 'game-task-event
@@ -18139,7 +18141,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-genb-3)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb10i"
                 )
               (new 'static 'game-task-event
@@ -18263,7 +18265,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-genb-4)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb04i"
                 )
               (new 'static 'game-task-event
@@ -18387,7 +18389,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-genb-5)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb06i"
                 )
               (new 'static 'game-task-event
@@ -18511,7 +18513,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-slumb-4)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb07i"
                 )
               (new 'static 'game-task-event
@@ -18635,7 +18637,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-slumc-1)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb04i"
                 )
               (new 'static 'game-task-event
@@ -18759,7 +18761,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-slumc-2)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb05i"
                 )
               (new 'static 'game-task-event
@@ -18883,7 +18885,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-sluma-2)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb03i"
                 )
               (new 'static 'game-task-event
@@ -19007,7 +19009,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-sluma-3)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb05i"
                 )
               (new 'static 'game-task-event
@@ -19131,7 +19133,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-indb-2)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb05i"
                 )
               (new 'static 'game-task-event
@@ -19255,7 +19257,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-indb-3)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb10i"
                 )
               (new 'static 'game-task-event
@@ -19379,7 +19381,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-inda-2)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb03i"
                 )
               (new 'static 'game-task-event
@@ -19503,7 +19505,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-inda-3)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb04i"
                 )
               (new 'static 'game-task-event
@@ -19627,7 +19629,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-inda-4)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb06i"
                 )
               (new 'static 'game-task-event
@@ -19751,7 +19753,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-port-5)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb10i"
                 )
               (new 'static 'game-task-event
@@ -19875,7 +19877,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-port-6)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb04i"
                 )
               (new 'static 'game-task-event
@@ -19999,7 +20001,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-port-7)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb06i"
                 )
               (new 'static 'game-task-event
@@ -20123,7 +20125,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-port-8)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-04)
+                :tex (game-task-icon gaticon-06)
                 :scene "t-bb03i"
                 )
               (new 'static 'game-task-event
@@ -20496,7 +20498,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasb-5)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-08)
+                :tex (game-task-icon gaticon-12)
                 :scene "o-bb11i"
                 )
               (new 'static 'game-task-event
@@ -20621,7 +20623,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasa-5)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-08)
+                :tex (game-task-icon gaticon-12)
                 :scene "o-bb10i"
                 )
               (new 'static 'game-task-event
@@ -20746,7 +20748,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-slumb-3)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-08)
+                :tex (game-task-icon gaticon-10)
                 :scene "t-bb01i"
                 )
               (new 'static 'game-task-event
@@ -20873,7 +20875,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-inda-1)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-08)
+                :tex (game-task-icon gaticon-10)
                 :scene "bb03int"
                 )
               (new 'static 'game-task-event
@@ -21122,7 +21124,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-desa-3)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-08)
+                :tex (game-task-icon gaticon-06)
                 :scene "o-bb19i"
                 )
               (new 'static 'game-task-event
@@ -21246,7 +21248,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasb-6)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-08)
+                :tex (game-task-icon gaticon-10)
                 :scene "o-bb19i"
                 )
               (new 'static 'game-task-event
@@ -21494,7 +21496,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-desd-4)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-08)
+                :tex (game-task-icon gaticon-10)
                 :scene "o-bb08i"
                 )
               (new 'static 'game-task-event
@@ -21620,7 +21622,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasa-6)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-08)
+                :tex (game-task-icon gaticon-14)
                 :scene "o-bb09i"
                 )
               (new 'static 'game-task-event
@@ -22612,7 +22614,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-port-4)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-12)
+                :tex (game-task-icon gaticon-15)
                 :scene "t-bb12i"
                 )
               (new 'static 'game-task-event
@@ -23113,7 +23115,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-inda-5)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-12)
+                :tex (game-task-icon gaticon-15)
                 :scene "bb18int"
                 )
               (new 'static 'game-task-event

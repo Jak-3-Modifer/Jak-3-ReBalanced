@@ -17,6 +17,16 @@ on:
         required: false
         default: "patch"
         type: "string"
+      releaseTag:
+        description: "Optional explicit semantic-version tag, including pre-release suffix (for example v0.1.0-beta.1)."
+        required: false
+        default: ""
+        type: "string"
+      prerelease:
+        description: "Whether to mark the GitHub release as a pre-release."
+        required: false
+        default: false
+        type: "boolean"
       releaseBranches:
         description: "Comma separated list of branches (JavaScript regular expression accepted) that will generate the release tags. You probably want your default branch in this list."
         required: false
@@ -92,9 +102,10 @@ jobs:
       - validate_metadata
     runs-on: ubuntu-latest
     outputs:
-      bundleTagName: ${{ steps.tag_version.outputs.new_tag }}
+      bundleTagName: ${{ steps.explicit_version.outputs.new_tag || steps.tag_version.outputs.new_tag }}
     steps:
       - name: Bump Version and Push Tag
+        if: ${{ inputs.releaseTag == '' }}
         id: tag_version
         uses: mathieudutour/github-tag-action@v6.2
         with:
@@ -103,10 +114,33 @@ jobs:
           default_bump: ${{ inputs.semverBump }}
           release_branches: ${{ inputs.releaseBranches }}
 
+      - name: Validate Explicit Version
+        if: ${{ inputs.releaseTag != '' }}
+        id: explicit_version
+        env:
+          RELEASE_TAG: ${{ inputs.releaseTag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG"
+            exit 1
+          fi
+          echo "new_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         env:
           GITHUB_TOKEN: ${{ secrets.token }}
-        run: gh release create ${{ steps.tag_version.outputs.new_tag }} --generate-notes --draft --repo ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.explicit_version.outputs.new_tag || steps.tag_version.outputs.new_tag }}
+          EXPLICIT_TAG: ${{ inputs.releaseTag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          release_args=(--generate-notes --draft --repo "${{ github.repository }}")
+          if [[ -n "$EXPLICIT_TAG" ]]; then
+            release_args+=(--target "$GITHUB_SHA")
+          fi
+          if [[ "$PRERELEASE" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" "${release_args[@]}"
 
   # if `buildBinaries`, run the workflow to build and generate artifacts
 

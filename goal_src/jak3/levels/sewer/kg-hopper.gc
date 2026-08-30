@@ -160,6 +160,13 @@
     )
   )
 
+(define *fact-info-kg-hopper-defaults*
+  (new 'static 'fact-info-enemy-defaults
+    :idle-distance (meters 80)
+    :pickup-type 48
+    :pickup-amount 1.0)
+  )
+
 (define *kg-hopper-nav-enemy-info* (new 'static 'nav-enemy-info
                                      :use-die-falling #t
                                      :use-victory #f
@@ -216,9 +223,9 @@
                                      :bullseye-joint 4
                                      :sound-hit (static-sound-name "kg-impact")
                                      :sound-die (static-sound-name "kg-explo")
-                                     :notice-distance (meters 40)
-                                     :notice-distance-delta (meters 40)
-                                     :proximity-notice-distance (meters 4)
+                                     :notice-distance (meters 80)
+                                     :notice-distance-delta (meters 10)
+                                     :proximity-notice-distance (meters 20)
                                      :default-hit-points 1.0
                                      :gnd-collide-with (collide-spec backgnd)
                                      :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
@@ -340,7 +347,7 @@
                                      :knocked-off #t
                                      :callback-info #f
                                      :use-momentum #f
-                                     :use-frustration #t
+                                     :use-frustration #f
                                      :use-stop-chase #f
                                      :use-circling #f
                                      :use-pacing #f
@@ -348,12 +355,12 @@
                                      :turn-anim 9
                                      :run-anim 13
                                      :taunt-anim -1
-                                     :run-travel-speed (meters 1)
-                                     :run-acceleration (meters 1)
-                                     :run-turning-acceleration (meters 2)
-                                     :walk-travel-speed (meters 1)
-                                     :walk-acceleration (meters 1)
-                                     :walk-turning-acceleration (meters 3)
+                                     :run-travel-speed (meters 12)
+                                     :run-acceleration (meters 26)
+                                     :run-turning-acceleration (meters 75)
+                                     :walk-travel-speed (meters 7)
+                                     :walk-acceleration (meters 20)
+                                     :walk-turning-acceleration (meters 40)
                                      :maximum-rotation-rate (degrees 720)
                                      :notice-nav-radius (meters 2)
                                      :frustration-distance (meters 8)
@@ -365,7 +372,7 @@
                                      )
         )
 
-(set! (-> *kg-hopper-nav-enemy-info* fact-defaults) *fact-info-enemy-defaults*)
+(set! (-> *kg-hopper-nav-enemy-info* fact-defaults) *fact-info-kg-hopper-defaults*)
 
 (defmethod go-die ((this kg-hopper))
   "Go to the die state."
@@ -375,6 +382,27 @@
 (defstate explode (kg-hopper)
   :virtual #t
   :enter (behavior ()
+    ;; This custom state bypasses enemy's standard die state, so it must run
+    ;; the normal queued drop. Spawn its one ammo pickup immediately instead.
+    (on-dying self)
+    (drop-pickup (-> self fact) #t *entity-pool* (-> self fact) 0 #f)
+    ;; KG Hopper death blast: damage Jak within an 8-meter radius,
+    ;; matching the RoboGuard explosion behavior.
+    (let ((gp-0 (new 'stack-no-clear 'explosion-init-params)))
+      (vector-copy! (-> gp-0 spawn-point) (-> self root trans))
+      (quaternion-identity! (-> gp-0 spawn-quat))
+      (set! (-> gp-0 radius) (meters 8))
+      (set! (-> gp-0 scale) 1.0)
+      (set! (-> gp-0 group) group-kg-explosion)
+      (set! (-> gp-0 collide-with)
+            (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher))
+      (set! (-> gp-0 damage) 2.0)
+      (set! (-> gp-0 damage-scale) 1.0)
+      (set! (-> gp-0 vehicle-damage-factor) 1.0)
+      (set! (-> gp-0 vehicle-impulse-factor) 1.0)
+      (set! (-> gp-0 ignore-proc) (process->handle self))
+      (explosion-spawn gp-0 self)
+      )
     (let ((v1-1 (-> self root root-prim)))
       (set! (-> v1-1 prim-core collide-as) (collide-spec))
       (set! (-> v1-1 prim-core collide-with) (collide-spec))
@@ -1074,8 +1102,8 @@
     (set! (-> v1-37 nav-cull-radius) 61440.0)
     )
   0
-  (set! (-> this fact pickup-type) (pickup-type ammo-light-random))
-  (set! (-> this fact pickup-amount) 5.0)
+  (set! (-> this fact pickup-type) (pickup-type ammo-random))
+  (set! (-> this fact pickup-amount) 1.0)
   (set! (-> this fact pickup-spawn-amount) 1.0)
   (set! (-> this minimap) (add-icon! *minimap* this (the-as uint 108) (the-as int #f) (the-as vector #t) 0))
   0

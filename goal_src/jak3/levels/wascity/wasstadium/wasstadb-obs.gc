@@ -1082,6 +1082,8 @@
 (defstate active (task-manager-arena-training)
   :virtual #t
   :enter (behavior ()
+    ;; Match the arena fights with a slightly more top-down gameplay view.
+    (set-setting! 'target-height 'abs (meters 1.0) 0)
     (cond
       ((task-node-closed? (game-task-node arena-training-1-collect))
        (go-virtual done)

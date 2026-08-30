@@ -720,7 +720,7 @@
                                                           (vehicle-impulse-factor 1.0)
                                                           (mode 'eco-dark)
                                                           (attacker-velocity s5-1)
-                                                          (penetrate-using (penetrate explode jak-dark-nuke))
+                                                          (penetrate-using (penetrate explode jak-dark-nuke penetrate41))
                                                           )
                           )
       )
@@ -3294,6 +3294,12 @@
 
 (defmethod deactivate ((this gun-gravity))
   "Make a process dead, clean it up, remove it from the active pool, and return to dead pool."
+  (when (and (nonzero? (-> this lowest-y)) *target* (= (-> *target* control dynam gravity-length) (meters 8.69)))
+    (set-gravity-length
+      (-> *target* control dynam)
+      (-> *target* control standard-dynamics gravity-length)
+      )
+    )
   (sound-stop (-> this gravity-sound))
   (call-parent-method this)
   (none)
@@ -3302,7 +3308,8 @@
 (defstate expand (gun-gravity)
   :virtual #t
   :enter (behavior ()
-    (set! (-> self lowest-y) (-> self root trans y))
+    ;; lowest-y is otherwise unused by gun-gravity; use it as the player-in-field latch.
+    (set! (-> self lowest-y) 0.0)
     (set-time! (-> self state-time))
     (sound-play "grav-gun" :id (-> self gravity-sound) :position (-> self root trans))
     )
@@ -3317,11 +3324,20 @@
          )
        (gun-gravity-method-22 self #f)
        )
-      (else
-        (if (not (time-elapsed? (-> self state-time) (the int (* 2025.0 (-> self total-time)))))
-            (gun-gravity-method-22 self #t)
-            )
-        )
+       (else
+         (if (not (time-elapsed? (-> self state-time) (the int (* 2025.0 (-> self total-time)))))
+             (gun-gravity-method-22 self #t)
+             (when (nonzero? (-> self lowest-y))
+               (when (and *target* (= (-> *target* control dynam gravity-length) (meters 8.69)))
+                 (set-gravity-length
+                   (-> *target* control dynam)
+                   (-> *target* control standard-dynamics gravity-length)
+                   )
+                 )
+               (set! (-> self lowest-y) 0.0)
+               )
+             )
+         )
       )
     (cond
       ((not (time-elapsed? (-> self state-time) (the int (* 2025.0 (-> self total-time)))))
@@ -3446,7 +3462,7 @@
 
 ;; WARN: Return type mismatch (pointer gravity-spinner) vs none.
 (defmethod gun-gravity-method-22 ((this gun-gravity) (arg0 symbol))
-  (local-vars (v1-29 symbol) (v1-49 symbol))
+  (local-vars (v1-29 symbol))
   (with-pp
     (let ((s5-0 (new 'stack-no-clear 'vector))
           (a1-1 (new 'stack-no-clear 'event-message-block))
@@ -3512,32 +3528,24 @@
             )
           )
         (let ((s3-2 (the-as target (as-type *target* process-focusable))))
-          (when (and s3-2 (< (vector-vector-distance (get-trans s3-2 0) s5-0) (-> s5-0 w)))
-            (when (and (!= *target* s3-2)
-                       (not (focus-test? s3-2 disable dead inactive))
-                       (logtest? (process-mask crate enemy guard vehicle civilian) (-> s3-2 mask))
-                       (!= s4-0 s3-2)
-                       )
-              (let ((f0-8 (vector-vector-distance (get-trans s3-2 3) s5-0)))
-                (when (and (>= f28-0 f0-8) (>= f0-8 f30-0))
-                  (let ((v1-47 (-> s3-2 child)))
-                    (while v1-47
-                      (when (= (-> v1-47 0 type) gravity-spinner)
-                        (set! v1-49 #t)
-                        (goto cfg-79)
-                        )
-                      (set! v1-47 (-> v1-47 0 brother))
-                      )
+          (if (and s3-2
+                   (not (focus-test? s3-2 disable dead inactive))
+                   (>= f28-0 (vector-vector-distance (get-trans s3-2 0) s5-0))
+                   )
+              (begin
+                (set! (-> this lowest-y) 1.0)
+                (set-gravity-length (-> s3-2 control dynam) (meters 8.69))
+                )
+              (when (nonzero? (-> this lowest-y))
+                (when (and s3-2 (= (-> s3-2 control dynam gravity-length) (meters 8.69)))
+                  (set-gravity-length
+                    (-> s3-2 control dynam)
+                    (-> s3-2 control standard-dynamics gravity-length)
                     )
-                  (set! v1-49 #f)
-                  (label cfg-79)
-                  (if (not v1-49)
-                      (spawn-gravity-spinner this s3-2)
-                      )
                   )
+                (set! (-> this lowest-y) 0.0)
                 )
               )
-            )
           )
         )
       )
