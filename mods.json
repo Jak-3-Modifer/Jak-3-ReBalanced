@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0.0",
+  "sourceName": "Jak3ReBalanced",
+  "lastUpdated": "2026-08-30T17:18:17Z",
+  "mods": {
+    "jak-3-rebalanced": {
+      "displayName": "Jak 3 ReBalanced",
+      "description": "A comprehensive Jak 3 gameplay rebalance that revises missions, enemies, weapons, vehicles, encounters, and difficulty.",
+      "authors": [
+        "Jak-3-Modifer"
+      ],
+      "tags": [
+        "challenge",
+        "gameplay-mod"
+      ],
+      "websiteUrl": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced",
+      "supportedGames": [
+        "jak3"
+      ],
+      "versions": [
+        {
+          "version": "0.1.0-beta.1",
+          "publishedDate": "2026-08-30T17:18:17Z",
+          "supportedGames": [
+            "jak3"
+          ],
+          "assets": {
+            "windows": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.1/windows-v0.1.0-beta.1.zip",
+            "linux": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.1/linux-v0.1.0-beta.1.tar.gz",
+            "macos": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.1/macos-intel-v0.1.0-beta.1.tar.gz"
+          }
+        }
+      ],
+      "coverArtUrl": "https://raw.githubusercontent.com/Jak-3-Modifer/Jak-3-ReBalanced/main/ModImage.png",
+      "thumbnailArtUrl": "https://raw.githubusercontent.com/Jak-3-Modifer/Jak-3-ReBalanced/main/ModThumbnail.png",
+      "perGameConfig": {
+        "jak3": {
+          "releaseDate": "2026-08-30"
+        }
+      }
+    }
+  },
+  "texturePacks": {}
+}
