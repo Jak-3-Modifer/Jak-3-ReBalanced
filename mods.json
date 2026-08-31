@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "sourceName": "Jak3ReBalanced",
-  "lastUpdated": "2026-08-30T17:18:17Z",
+  "lastUpdated": "2026-08-31T20:22:14Z",
   "mods": {
     "jak-3-rebalanced": {
       "displayName": "Jak 3 ReBalanced",
@@ -19,15 +19,15 @@
       ],
       "versions": [
         {
-          "version": "0.1.0-beta.1",
+          "version": "0.1.0-alpha.1",
           "publishedDate": "2026-08-30T17:18:17Z",
           "supportedGames": [
             "jak3"
           ],
           "assets": {
-            "windows": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.1/windows-v0.1.0-beta.1.zip",
-            "linux": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.1/linux-v0.1.0-beta.1.tar.gz",
-            "macos": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.1/macos-intel-v0.1.0-beta.1.tar.gz"
+            "windows": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-alpha.1/windows-v0.1.0-alpha.1.zip",
+            "linux": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-alpha.1/linux-v0.1.0-alpha.1.tar.gz",
+            "macos": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-alpha.1/macos-intel-v0.1.0-alpha.1.tar.gz"
           }
         }
       ],

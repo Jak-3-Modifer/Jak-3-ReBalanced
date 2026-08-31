@@ -18,7 +18,7 @@ on:
         default: "patch"
         type: "string"
       releaseTag:
-        description: "Optional explicit semantic-version tag, including pre-release suffix (for example v0.1.0-beta.1)."
+        description: "Optional explicit semantic-version tag, including pre-release suffix (for example v0.1.0-alpha.1)."
         required: false
         default: ""
         type: "string"
