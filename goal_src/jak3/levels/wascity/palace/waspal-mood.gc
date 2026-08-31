@@ -61,12 +61,6 @@
       (update-mood-flames arg0 7 1 8 0.75 0.0009765625 3.0)
       )
     )
-  ;; Main Palace: Palette 2 leads with a lighter Palette 6 accent.
-  (dotimes (palette-index 8)
-    (set! (-> arg0 times palette-index w) 0.0)
-    )
-  (set! (-> arg0 times 2 w) 1.0)
-  (set! (-> arg0 times 6 w) 0.55)
   0
   (none)
   )
