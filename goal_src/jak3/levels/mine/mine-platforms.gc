@@ -256,6 +256,16 @@
     (set! (-> a1-2 period) (the-as uint 3000))
     (set! (-> a1-2 percent) 0.0)
     (initialize! (-> this sync) a1-2)
+    ;; Entity-authored sync data overrides the requested period during
+    ;; initialization, so scale the resulting period afterward.
+    (when (or (string= (-> this name) "min-moving-plat-1")
+              (string= (-> this name) "min-moving-plat-2")
+              (string= (-> this name) "min-moving-plat-3")
+              )
+      (set! (-> this sync period)
+            (the-as uint (/ (the int (-> this sync period)) 8))
+            )
+      )
     )
   (let ((f0-1 (res-lump-float (-> this entity) 'scale :default 1.0)))
     (set! (-> this root scale x) f0-1)
@@ -563,7 +573,13 @@
       (set! (-> a1-2 sync-flags) (the-as sync-flags v1-1))
       )
     (set! (-> a1-2 entity) arg0)
-    (set! (-> a1-2 period) (the-as uint 4500))
+    (if (or (string= (-> this name) "min-rotating-plat-1")
+            (string= (-> this name) "min-rotating-plat-2")
+            )
+        ;; Approximately eight times the original rotation speed once active.
+        (set! (-> a1-2 period) (the-as uint 563))
+        (set! (-> a1-2 period) (the-as uint 4500))
+        )
     (set! (-> a1-2 percent) 0.0)
     (initialize! (-> this sync) a1-2)
     )
@@ -1400,31 +1416,46 @@
         )
     )
   :trans (behavior ()
-    (when (-> self play-anim?)
-      (when (time-elapsed? (-> self state-time) (seconds 0.75))
-        (let ((gp-0 (new 'stack-no-clear 'event-message-block)))
-          (set! (-> gp-0 from) (process->ppointer self))
-          (set! (-> gp-0 num-params) 0)
-          (set! (-> gp-0 message) 'trigger)
-          (let ((s5-0 send-event-function)
-                (v1-7 (entity-actor-lookup (-> self entity) 'alt-actor 0))
-                )
-            (s5-0
-              (if v1-7
-                  (-> v1-7 extra process)
+    (let ((ramp-speed (cond
+                        ((string= (-> self name) "min-ramp-22") 7.75)
+                        ((string= (-> self name) "min-ramp-23") 8.0)
+                        ((string= (-> self name) "min-ramp-24") 8.25)
+                        (else 1.0)
+                        )
+                      )
+          )
+      (when (-> self play-anim?)
+        (when (time-elapsed? (-> self state-time) (the int (/ 225.0 ramp-speed)))
+          (let ((gp-0 (new 'stack-no-clear 'event-message-block)))
+            (set! (-> gp-0 from) (process->ppointer self))
+            (set! (-> gp-0 num-params) 0)
+            (set! (-> gp-0 message) 'trigger)
+            (let ((s5-0 send-event-function)
+                  (v1-7 (entity-actor-lookup (-> self entity) 'alt-actor 0))
                   )
-              gp-0
+              (s5-0
+                (if v1-7
+                    (-> v1-7 extra process)
+                    )
+                gp-0
+                )
               )
             )
           )
-        )
-      (if (= (-> self angle) 0.0)
-          (go-virtual rotated)
-          )
-      (set! (-> self angle)
-            (seek-ease (-> self angle) 0.0 (* 8192.0 (seconds-per-frame)) 3640.889 (* 2048.0 (seconds-per-frame)))
+        (if (= (-> self angle) 0.0)
+            (go-virtual rotated)
             )
-      (rider-trans)
+        (set! (-> self angle)
+              (seek-ease
+                (-> self angle)
+                0.0
+                (* 8192.0 ramp-speed (seconds-per-frame))
+                3640.889
+                (* 2048.0 ramp-speed (seconds-per-frame))
+                )
+              )
+        (rider-trans)
+        )
       )
     )
   :code (behavior ()
@@ -1458,11 +1489,60 @@
 
 (defstate rotated (min-ramp)
   :virtual #t
+  :trans rider-trans
   :code (behavior ()
-    (set! (-> self angle) 0.0)
-    (transform-post)
-    (sleep-code)
+    (if (or (string= (-> self name) "min-ramp-22")
+            (string= (-> self name) "min-ramp-23")
+            (string= (-> self name) "min-ramp-24")
+            )
+        (let ((ramp-speed (cond
+                            ((string= (-> self name) "min-ramp-22") 7.75)
+                            ((string= (-> self name) "min-ramp-23") 8.0)
+                             (else 8.25)
+                             )
+                           )
+              )
+          (until #f
+            ;; Close the ramp.
+            (until (= (-> self angle) 8192.0)
+              (set! (-> self angle)
+                    (seek-ease
+                      (-> self angle)
+                      8192.0
+                      (* 8192.0 ramp-speed (seconds-per-frame))
+                      3640.889
+                      (* 2048.0 ramp-speed (seconds-per-frame))
+                      )
+                    )
+              (suspend)
+              )
+            (suspend-for (seconds 0.25)
+              )
+            ;; Open the ramp.
+            (until (= (-> self angle) 0.0)
+              (set! (-> self angle)
+                    (seek-ease
+                      (-> self angle)
+                      0.0
+                      (* 8192.0 ramp-speed (seconds-per-frame))
+                      3640.889
+                      (* 2048.0 ramp-speed (seconds-per-frame))
+                      )
+                    )
+              (suspend)
+              )
+            (suspend-for (seconds 0.25)
+              )
+            )
+          )
+        (begin
+          (set! (-> self angle) 0.0)
+          (transform-post)
+          (sleep-code)
+          )
+        )
     )
+  :post rider-post
   )
 
 (defun min-ramp-callback ((arg0 cspace) (arg1 transformq))

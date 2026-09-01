@@ -133,7 +133,7 @@ jobs:
           EXPLICIT_TAG: ${{ inputs.releaseTag }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          release_args=(--generate-notes --draft --repo "${{ github.repository }}")
+          release_args=(--draft --repo "${{ github.repository }}" --title "Jak 3 ReBalanced Alpha Version 2" --notes "Jak 3 ReBalanced Alpha Version 2 prerelease build.")
           if [[ -n "$EXPLICIT_TAG" ]]; then
             release_args+=(--target "$GITHUB_SHA")
           fi

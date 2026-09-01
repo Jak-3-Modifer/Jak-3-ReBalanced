@@ -388,7 +388,13 @@
                 'attack
                 #f
                 (static-attack-info :mask (vehicle-impulse-factor) ((id (new-attack-id))
-                                                                    (damage 2.0)
+                                                                     (damage (if (or (string= (-> self name) "sewer-elec-gate-2")
+                                                                                     (string= (-> self name) "sewer-elec-gate-3")
+                                                                                     )
+                                                                                 16.0
+                                                                                 2.0
+                                                                                 )
+                                                                             )
                                                                     (vehicle-damage-factor 1.0)
                                                                     (vehicle-impulse-factor 1.0)
                                                                     (vector (-> s5-0 dir))

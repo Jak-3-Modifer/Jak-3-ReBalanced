@@ -1784,9 +1784,15 @@
     )
   :trans (behavior ()
     ((-> (method-of-type nav-enemy hostile) trans))
-    ;; Do not transition to shield-out here: :trans runs before this state's
-    ;; attack-selection code, which previously made every Bipedal shield before
-    ;; it could choose a melee strike or grenade throw.
+    ;; Moss Knight-style guard cadence: once the Bipedal reaches fighting
+    ;; distance, make it establish its shield before committing to its next
+    ;; melee lunge or arcing grenade response.  The timer prevents the guard
+    ;; from immediately reopening after shield-in hands control back here.
+    (when (and (time-elapsed? (-> self close-attack-timer) (seconds 1.2))
+               (< (vector-vector-xz-distance (-> self root trans) (-> self focus-pos)) 73728.0)
+               )
+      (go-virtual shield-out)
+      )
     (if (< 49152.0 (vector-vector-xz-distance (-> self root trans) (-> self formation-position)))
         (go-virtual hostile)
         )
@@ -1912,7 +1918,10 @@
     (if (and (dp-bipedal-method-206 self) (>= (the-as int (-> self focus aware)) 2))
         (set-time! (-> self shield-timer))
         )
-    (if (time-elapsed? (-> self shield-timer) (seconds 0.3))
+    ;; Hold the guard long enough for Jak to read and challenge it, matching the
+    ;; deliberate defensive beat of a Moss Knight instead of flashing it for a
+    ;; few frames.
+    (if (time-elapsed? (-> self shield-timer) (seconds 0.8))
         (go-virtual shield-in)
         )
     )
@@ -1957,6 +1966,7 @@
       (suspend)
       (ja :num! (seek! max 2.0))
       )
+    (set-time! (-> self close-attack-timer))
     (go-hostile self)
     )
   :post nav-enemy-simple-post
@@ -2039,7 +2049,9 @@
         (logior! (-> self focus-status) (focus-status dangerous))
         (logclear! (-> self focus-status) (focus-status dangerous))
         )
-    (go-hostile self)
+    ;; Return to guard after the committed swing, like the Moss Knight's pause
+    ;; after its final slash.
+    (go-virtual shield-out)
     )
   :post (behavior ()
     (let ((a0-0 self))
@@ -2078,7 +2090,9 @@
       (suspend)
       (ja :num! (seek! (ja-aframe 33.0 0)))
       )
-    (go-hostile self)
+    ;; Treat the arcing grenade as the Bipedal's Thorn Spit analogue, then
+    ;; re-establish guard before choosing another attack.
+    (go-virtual shield-out)
     )
   :post (behavior ()
     (nav-enemy-simple-post)

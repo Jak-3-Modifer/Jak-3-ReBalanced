@@ -347,6 +347,8 @@
    (attack-miss-dist-min   float)
    (attack-miss-dist-max   float)
    (attack-miss-dist-curr  float)
+   (dash-offset            vector                  :inline)
+   (dash-timer             time-frame)
    )
   (:state-methods
     attack
@@ -571,6 +573,29 @@
   (none)
   )
 
+(defbehavior mh-wasp-hostile-post mh-wasp ()
+  ;; Rapidly choose unpredictable aerial targets twenty meters around the
+  ;; formation position without changing the Wasp's preferred range.
+  (when (time-elapsed?
+          (-> self dash-timer)
+          (the int (* 300.0 (rand-vu-float-range 0.35 0.7)))
+          )
+    (let* ((dash-angle (rand-vu-float-range 0.0 360.0))
+           (dash-dir (-> self dash-offset))
+           )
+      (set! (-> dash-dir x) (cos (degrees dash-angle)))
+      (set! (-> dash-dir y) (rand-vu-float-range -0.65 0.65))
+      (set! (-> dash-dir z) (sin (degrees dash-angle)))
+      (set! (-> dash-dir w) 0.0)
+      (vector-normalize! dash-dir (meters 20))
+      )
+    (set-time! (-> self dash-timer))
+    )
+  (vector+! (-> self offset) (-> self offset) (-> self dash-offset))
+  (hover-enemy-hostile-post)
+  (vector-! (-> self offset) (-> self offset) (-> self dash-offset))
+  )
+
 (defstate ambush (mh-wasp)
   :virtual #t
   :enter (behavior ()
@@ -622,7 +647,7 @@
         )
       )
     (set! (-> self last-fire-time) (+ (current-time) (seconds -1.5)))
-    (hover-enemy-hostile-post)
+    (mh-wasp-hostile-post)
     )
   )
 
@@ -662,6 +687,7 @@
         )
       )
     )
+  :post mh-wasp-hostile-post
   )
 
 (defstate attack (mh-wasp)
@@ -687,6 +713,7 @@
            )
          (set! (-> gp-0 timeout) (seconds 4))
          (fire-shot self gp-0 19 17 -1.0)
+         (fire-shot self gp-0 15 15 0.0)
          (fire-shot self gp-0 23 21 1.0)
          )
        (sound-play "wasp-fire" :position (-> self root trans))
@@ -734,7 +761,7 @@
       (-> self attack-miss-dist-max)
       (* 0.5 (seconds-per-frame) (- (-> self attack-miss-dist-max) (-> self attack-miss-dist-min)))
       )
-    (hover-enemy-hostile-post)
+    (mh-wasp-hostile-post)
     )
   )
 
@@ -1260,20 +1287,8 @@
         (set! (-> this entity-group) #f)
         )
     )
-  (let* ((sv-32 (new 'static 'res-tag))
-         (v1-33 (res-lump-data (-> this entity) 'timeout (pointer float) :tag-ptr (& sv-32)))
-         )
-    (cond
-      ((and v1-33 (= (-> sv-32 elt-count) 2))
-       (set! (-> this attack-wait-min) (-> v1-33 0))
-       (set! (-> this attack-wait-max) (-> v1-33 1))
-       )
-      (else
-        (set! (-> this attack-wait-min) 1.0)
-        (set! (-> this attack-wait-max) 3.0)
-        )
-      )
-    )
+  (set! (-> this attack-wait-min) 0.9)
+  (set! (-> this attack-wait-max) 1.4)
   (let* ((f30-0 4096.0)
          (sv-48 (new 'static 'res-tag))
          (v1-40 (res-lump-data (-> this entity) 'min-max pointer :tag-ptr (& sv-48)))
@@ -1298,6 +1313,8 @@
     )
   (set! (-> this path) (new 'process 'path-control this 'intro 0.0 (-> this entity) #f))
   (set! (-> this path-u) 0.0)
+  (vector-reset! (-> this dash-offset))
+  (set! (-> this dash-timer) (+ (current-time) (seconds -1)))
   (logior! (-> this path flags) (path-control-flag display draw-line draw-point draw-text))
   (set! (-> this smoke-part) (create-launch-control group-mh-wasp-gun-smoke this))
   (set! (-> this engine-part) (create-launch-control group-mh-wasp-engine this))

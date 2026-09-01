@@ -1657,22 +1657,11 @@
         (cond
           ((-> s4-0 music)
            (when (= (-> s5-0 music) 'forest-custom-main-music)
-             ;; Let the custom Forest track fade underneath the next in-game
-             ;; music bank instead of cutting off as soon as it changes.
-             (process-spawn-function
-               process
-               (lambda :behavior process ()
-                 (let ((volume (the float (* 38.0 (-> *setting-control* user-current music-volume)))))
-                   (dotimes (i 15)
-                     (main-music-volume (the int volume))
-                     (set! volume (- volume 2.5333333))
-                     (suspend)
-                     )
-                   (stop-main-music)
-                   )
-                 )
-               )
-             )
+              ;; This channel loops independently of streamed level music.  Stop
+              ;; it synchronously so a level transition cannot strand the Forest
+              ;; track if a background fade process is suspended or discarded.
+              (stop-main-music)
+              )
            (format 0 "Load music ~A~%" (-> s4-0 music))
            (set! (-> s5-0 sound-flava) (the-as uint 0))
            (sound-music-load (string->sound-name (symbol->string (-> s4-0 music))))

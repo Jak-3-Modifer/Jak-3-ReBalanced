@@ -272,11 +272,11 @@
         (let* ((v1-36 (vector-! (new 'stack-no-clear 'vector) (-> gp-0 position) (-> self root trans)))
                (f0-2 (vector-length v1-36))
                )
-          (if (< 1228.8 f0-2)
-              ;; og:preserve-this changed for high fps
-              (vector+float*! (-> self root trans) (-> self root trans) v1-36 (* DISPLAY_FPS_RATIO (/ 1228.8 f0-2)))
-              (vector-copy! (-> self root trans) (-> gp-0 position))
-              )
+          (if (< 2457.6 f0-2)
+               ;; og:preserve-this changed for high fps
+               (vector+float*! (-> self root trans) (-> self root trans) v1-36 (* DISPLAY_FPS_RATIO (/ 2457.6 f0-2)))
+               (vector-copy! (-> self root trans) (-> gp-0 position))
+               )
           )
         (let ((s5-3 (quaternion->matrix (new 'stack-no-clear 'matrix) (-> self base-quat)))
               (a2-4

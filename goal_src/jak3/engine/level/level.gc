@@ -3595,6 +3595,13 @@
     )
   (update! *load-state*)
   (let ((s5-2 (level-get-target-inside this)))
+    ;; The Forest track uses the independent looping main-music channel.  Stop
+    ;; it as soon as the target is outside the Forest, including the streaming
+    ;; gap where there is temporarily no target level to request new music.
+    (when (and (= (-> *setting-control* user-default music) 'forest-custom-main-music)
+               (or (not s5-2) (!= (-> s5-2 info taskname) 'forest)))
+      (stop-main-music)
+      )
     (dotimes (s4-1 (-> this length))
       (let ((s3-0 (-> this level s4-1)))
         (when (= (-> s3-0 status) 'active)
