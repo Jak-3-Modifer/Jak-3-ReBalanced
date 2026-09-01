@@ -270,10 +270,21 @@
   0
   )
 
-;; WARN: Return type mismatch int vs search-info-flag.
 (defmethod get-search-info-flag ((this prebot))
   "Get search-info-flag for this process."
-  (the-as search-info-flag 0)
+  ;; Let the Vulcan Fury acquire the Prebot only during the gun-damage phase.
+  (the-as search-info-flag
+          (if (and *target*
+                   (= (-> *target* game gun-type) (pickup-type gun-blue-1))
+                   (-> this next-state)
+                   (= (-> this next-state name) 'watch-critters)
+                   (handle->process (-> this gun))
+                   (> (-> this stage-hit-points) 1.0)
+                   )
+              (search-info-flag attackable enemy)
+              (search-info-flag)
+              )
+          )
   )
 
 ;; WARN: Return type mismatch symbol vs none.

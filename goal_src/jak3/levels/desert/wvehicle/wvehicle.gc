@@ -22,6 +22,13 @@
        )
   )
 
+(defun dune-hopper-awd-enabled? ((this wvehicle))
+  (and (= (-> this info vehicle-type) (vehicle-type-u8 v-toad))
+       *game-info*
+       (logtest? (-> *game-info* secrets) (game-secrets dune-hopper-awd))
+       )
+  )
+
 (defun wvehicle-wheel-driven? ((this wvehicle) (arg0 vehicle-wheel-info))
   (if (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
       (or (dust-demon-4wd-enabled? this)
@@ -33,7 +40,12 @@
               (> (-> arg0 local-pos z) 0.0)
               #t
               )
-      (logtest? (-> arg0 flags) (vehicle-wheel-flag vwf0))
+          (if (= (-> this info vehicle-type) (vehicle-type-u8 v-toad))
+              (or (dune-hopper-awd-enabled? this)
+                  (logtest? (-> arg0 flags) (vehicle-wheel-flag vwf0))
+                  )
+              (logtest? (-> arg0 flags) (vehicle-wheel-flag vwf0))
+              )
           )
       )
   )
@@ -45,6 +57,9 @@
      )
     ((= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
      (if (gila-stomper-fwd-enabled? this) 2 4)
+     )
+    ((= (-> this info vehicle-type) (vehicle-type-u8 v-toad))
+     (if (dune-hopper-awd-enabled? this) 4 2)
      )
     (else
       (-> this info physics-model drive-wheel-count)

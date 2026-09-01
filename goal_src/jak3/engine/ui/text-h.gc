@@ -1611,7 +1611,7 @@
   (trick-board-lightjak-swoop #x136a)
   (trick-board-lightjak-freeze #x136b)
   (trick-board-lightjak-shield #x136c)
-  (progress-secrets-sand-shark-awd #x136d)
+  (progress-secrets-dune-hopper-awd #x136d)
   ;; mod text
   (pad-triangle #x2000)
   (pad-circle #x2001)

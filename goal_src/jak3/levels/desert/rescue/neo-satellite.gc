@@ -1251,7 +1251,7 @@
     :neck-joint -1
     :notice-distance (meters 30)
     :notice-distance-delta (meters 10)
-    :default-hit-points 90.0
+    :default-hit-points 120.0
     :gnd-collide-with (collide-spec backgnd obstacle hit-by-others-list)
     :overlaps-others-collide-with-filter (collide-spec jak bot player-list)
     :movement-gravity (meters -100)
@@ -2122,7 +2122,7 @@
     )
   :trans (behavior ()
     (neo-sat-method-220 self)
-    (if (time-elapsed? (-> self state-time) (seconds 1.5))
+    (if (time-elapsed? (-> self state-time) (seconds 1.0))
         (go-virtual neo-sat-drill-attack)
         )
     (if (-> self hit-player?)
@@ -2146,7 +2146,7 @@
         (neo-sat-method-206 self (-> *neo-sat-laser-array* gp-0 joint) #f)
         )
       )
-    (when (time-elapsed? (-> self state-time) (seconds 1))
+    (when (time-elapsed? (-> self state-time) (seconds 0.65))
       (sound-stop (-> self snd-laser-burn))
       (neo-sat-method-208 self)
       )
@@ -2507,7 +2507,7 @@
   "Given an attack message, apply damage."
   (let ((f30-0 (call-parent-method this arg0 arg1)))
     (let ((f28-0 (-> this hit-points))
-          (f26-0 (* 30.0 (- 3.0 (the float (+ (-> this current-stage) 1)))))
+          (f26-0 (* 40.0 (- 3.0 (the float (+ (-> this current-stage) 1)))))
           )
       (sound-play "sat-hit")
       (when (>= f26-0 f28-0)
@@ -2719,7 +2719,7 @@
         )
       )
     (set! (-> this last-shockwave-radius) (-> this current-shockwave-radius))
-    (+! (-> this current-shockwave-radius) (* 102400.0 (seconds-per-frame)))
+    (+! (-> this current-shockwave-radius) (* 122880.0 (seconds-per-frame)))
     (dotimes (s4-1 (-> this num-yellow-ammo))
       (when (and (>= (-> this current-shockwave-radius) (-> this yellow-ammo-pos s4-1 dist))
                  (< (-> this last-shockwave-radius) (-> this yellow-ammo-pos s4-1 dist))
@@ -2822,9 +2822,9 @@
     )
   :trans (behavior ()
     (neo-sat-method-211 self)
-    (let ((v1-2 450))
+    (let ((v1-2 360))
       (if (= (-> self current-stage) 2)
-          (set! v1-2 675)
+          (set! v1-2 510)
           )
       (if (time-elapsed? (-> self state-time) v1-2)
           (go-virtual neo-sat-sit-and-spin)
@@ -2908,13 +2908,13 @@
     (let ((v1-4 (-> self current-stage)))
       (cond
         ((zero? v1-4)
-         (set! (-> self max-speed) 32768.0)
+         (set! (-> self max-speed) 40960.0)
          )
         ((= v1-4 1)
-         (set! (-> self max-speed) 36864.0)
+         (set! (-> self max-speed) 45056.0)
          )
         ((= v1-4 2)
-         (set! (-> self max-speed) 40960.0)
+         (set! (-> self max-speed) 49152.0)
          )
         )
       )
@@ -3509,7 +3509,7 @@
                  #f
                  (static-attack-info
                    :mask (vehicle-impulse-factor)
-                   ((id (new-attack-id)) (damage 1.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'generic))
+                   ((id (new-attack-id)) (damage 4.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'generic))
                    )
                  )
                (send-event this 'notify 'attack s2-2)
@@ -3583,7 +3583,7 @@
              #f
              (static-attack-info
                :mask (vehicle-impulse-factor)
-               ((id (new-attack-id)) (damage 1.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'shock))
+               ((id (new-attack-id)) (damage 4.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'shock))
                )
              )
            (send-event this 'notify 'attack s2-4)
@@ -3815,7 +3815,7 @@
           #f
           (static-attack-info
             :mask (vehicle-impulse-factor)
-            ((id (new-attack-id)) (damage 1.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'shock))
+            ((id (new-attack-id)) (damage 4.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'shock))
             )
           )
         (send-event this 'notify 'attack (handle->process (-> this focus handle)))
