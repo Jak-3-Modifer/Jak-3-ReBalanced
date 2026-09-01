@@ -7,6 +7,12 @@
 
 ;; DECOMP BEGINS
 
+(defun desert-chase-marauders-active? ()
+  (and (task-node-closed? (game-task-node desert-chase-marauders-ambush))
+       (not (task-node-closed? (game-task-node desert-chase-marauders-resolution)))
+       )
+  )
+
 (deftype des-jump-bridge (process-drawable)
   ()
   (:state-methods
@@ -28,8 +34,11 @@
   :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
     (case message
       (('raise)
-       (logclear! (-> self mask) (process-mask actor-pause))
-       (go-virtual raise)
+       ;; Keep both jump bridges retracted throughout the Marauder Chase.
+       (when (not (desert-chase-marauders-active?))
+         (logclear! (-> self mask) (process-mask actor-pause))
+         (go-virtual raise)
+         )
        )
       )
     )
@@ -124,9 +133,11 @@
     (the-as skeleton-group (art-group-get-by-name *level* "skel-des-jump-bridge" (the-as (pointer level) #f)))
     (the-as pair 0)
     )
-  (if (or (logtest? (-> this entity extra perm status) (entity-perm-status subtask-complete))
-          (task-node-closed? (game-task-node desert-chase-marauders-ambush))
-          )
+  (if (and (not (desert-chase-marauders-active?))
+           (or (logtest? (-> this entity extra perm status) (entity-perm-status subtask-complete))
+               (task-node-closed? (game-task-node desert-chase-marauders-ambush))
+               )
+           )
       (go (method-of-object this up))
       (go (method-of-object this idle))
       )

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "sourceName": "Jak3ReBalanced",
-  "lastUpdated": "2026-09-01T07:59:28Z",
+  "lastUpdated": "2026-09-01T16:47:26Z",
   "mods": {
     "jak-3-rebalanced": {
       "displayName": "Jak 3 ReBalanced",
@@ -18,6 +18,18 @@
         "jak3"
       ],
       "versions": [
+        {
+          "version": "0.1.0-beta.2",
+          "publishedDate": "2026-09-01T16:47:26Z",
+          "supportedGames": [
+            "jak3"
+          ],
+          "assets": {
+            "windows": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.2/windows-v0.1.0-beta.2.zip",
+            "linux": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.2/linux-v0.1.0-beta.2.tar.gz",
+            "macos": "https://github.com/Jak-3-Modifer/Jak-3-ReBalanced/releases/download/v0.1.0-beta.2/macos-intel-v0.1.0-beta.2.tar.gz"
+          }
+        },
         {
           "version": "0.1.0-beta.1",
           "publishedDate": "2026-09-01T07:59:28Z",

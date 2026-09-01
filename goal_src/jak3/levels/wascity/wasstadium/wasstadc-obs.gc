@@ -3268,13 +3268,14 @@
           )
         (if (time-elapsed? (-> self check-timer) (seconds 4))
             (task-node-close! (game-task-node arena-fight-3-training) 'event)
-            (let ((font (new 'stack 'font-context *font-default-matrix* 32 290 0.0
-                             (font-color default)
-                             (font-flags shadow kerning))))
+            (let ((font (new 'stack 'font-context *font-default-matrix* 56 290 0.0
+                              (font-color default)
+                              (font-flags shadow kerning))))
               (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
-              (set-width! font 440)
+              ;; Center the warning inside the 4:3-safe HUD width.
+              (set-width! font 400)
               (set-height! font 100)
-              (set-scale! font 0.7)
+              (set-scale! font 0.6)
               (format (clear *temp-string*)
                       "<COLOR_BLUE>Vulcan<COLOR_WHITE>/Melee use only,~%don't run out of Ammo.")
               (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
