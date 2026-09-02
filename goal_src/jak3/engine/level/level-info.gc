@@ -12818,7 +12818,7 @@
                      :camera-rot (new 'static 'array int16 9 -4495 0 #x7ec7 -9332 #x7a94 -1291 -31082 -9420 -4305)
                      :on-goto #f
                      :vis-nick 'desert
-                     :vehicle-type #xd
+                     :vehicle-type #xc
                      :want-count 4
                      :want (new 'static 'inline-array level-buffer-state-small 4
                        (new 'static 'level-buffer-state-small :name 'wasall :display? 'special)
@@ -12838,7 +12838,7 @@
                      :camera-rot (new 'static 'array int16 9 #x7b07 0 -9030 #xb40 #x794d #x273e #x216e -10449 #x749a)
                      :on-goto #f
                      :vis-nick 'desert
-                     :vehicle-type #xd
+                     :vehicle-type #xc
                      :want-count 4
                      :want (new 'static 'inline-array level-buffer-state-small 4
                        (new 'static 'level-buffer-state-small :name 'wasall :display? 'special)
@@ -12858,7 +12858,7 @@
                      :camera-rot (new 'static 'array int16 9 -17710 0 -27566 #x1dae #x7b07 -4879 #x6782 -9030 -17022)
                      :on-goto #f
                      :vis-nick 'desert
-                     :vehicle-type #xd
+                     :vehicle-type #xc
                      :want-count 4
                      :want (new 'static 'inline-array level-buffer-state-small 4
                        (new 'static 'level-buffer-state-small :name 'wasall :display? 'special)

@@ -358,9 +358,11 @@ if the result of rand-vu-int-range is 1, then DANCE! if it is not 1, then Don't 
   )
 
 (define *spawn-skill-meters-owner* (the-as process #f))
+(define *spawn-skill-meters-index* 0)
 
 (defun set-spawn-skill-meters-owner! ((owner process))
   (set! *spawn-skill-meters-owner* owner)
+  (set! *spawn-skill-meters-index* 0)
   (none)
   )
 
@@ -396,7 +398,13 @@ if the result of rand-vu-int-range is 1, then DANCE! if it is not 1, then Don't 
             (when bob?
               (set! (-> proc bob-amount) 1024.0)
               )
-            (send-event *spawn-skill-meters-owner* 'register-custom-orb (process->handle proc))
+            (send-event
+              *spawn-skill-meters-owner*
+              'register-custom-orb
+              (process->handle proc)
+              *spawn-skill-meters-index*
+              )
+            (+! *spawn-skill-meters-index* 1)
             (send-event proc 'get-notify *spawn-skill-meters-owner*)
             (process->handle proc)
             )

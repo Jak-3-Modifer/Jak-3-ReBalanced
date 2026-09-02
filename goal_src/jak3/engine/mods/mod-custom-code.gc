@@ -23,10 +23,89 @@
 
     ;; Printed Precursor Orb locations for the custom Burning Bush 6 mission.
     ;; These pickups are owned by the mission manager and do not exist outside it.
+    (deftype hud-desert-custom-orbs (hud)
+      ()
+      )
+
+    (defmethod draw ((this hud-desert-custom-orbs))
+      (set-hud-piece-position!
+        (the-as hud-sprite (-> this icons 0 pos))
+        (the int (+ 462.0 (* 130.0 (-> this offset))))
+        145
+        )
+      (set-as-offset-from! (-> this sprites 0) (-> this icons 0 pos) -20 -39)
+      (set! (-> this sprites 0 scale-x) 0.62)
+      ;; Keep the counter compact inside the 4:3 HUD safe area.
+      (format (clear (-> this strings 0 text)) "~D/121" (-> this values 0 current))
+      (set-as-offset-from! (the-as hud-sprite (-> this strings 0 pos)) (-> this icons 0 pos) -24 -5)
+      (when (not (paused?))
+        (let ((spin (new 'stack-no-clear 'quaternion)))
+          (quaternion-axis-angle! spin 0.0 1.0 0.0 (* DISPLAY_FPS_RATIO 364.0889))
+          (quaternion*! (-> this icons 0 icon 0 root quat) spin (-> this icons 0 icon 0 root quat))
+          )
+        )
+      ((method-of-type hud draw) this)
+      (none)
+      )
+
+    (defmethod update-values! ((this hud-desert-custom-orbs))
+      (set! (-> this values 0 target) (the int (-> *game-info* counter)))
+      ((method-of-type hud update-values!) this)
+      (none)
+      )
+
+    (defmethod init-callback ((this hud-desert-custom-orbs))
+      (set! (-> this gui-id)
+            (add-process *gui-control* this (gui-channel hud-center-right) (gui-action hidden) (-> this name) 81920.0 0)
+            )
+      (logior! (-> this flags) (hud-flags show))
+      (hud-create-icon this 0 (the-as int (art-group-get-by-name *level* "skel-skill" (the-as (pointer level) #f))))
+      (set! (-> this icons 0 scale-x) 0.009)
+      (set! (-> this icons 0 scale-y) -0.018)
+      (set! (-> this sprites 0 tid) (the-as texture-id (get-texture hud-egg-glow level-default-minimap)))
+      (set! (-> this sprites 0 scale-x) 0.62)
+      (set! (-> this sprites 0 scale-y) 1.34)
+      (set! (-> this sprites 0 pos z) #xfff9ff)
+      (alloc-string-if-needed this 0)
+      (set! (-> this strings 0 flags) (font-flags kerning right large))
+      (set! (-> this strings 0 scale) 0.5)
+      (logior! (-> this values 0 flags) 9)
+      (set! (-> this values 0 inc-time) (the-as uint 15))
+      (set! (-> this values 0 inc-unit) (the-as uint 1))
+      (none)
+      )
+
+    (defun desert-custom-orb-collected? ((index int))
+      (if (< index 64)
+          (logtest? (-> *game-info* custom-orbs-mask-0) (the-as uint64 (ash 1 index)))
+          (logtest? (-> *game-info* custom-orbs-mask-1) (the-as uint64 (ash 1 (- index 64))))
+          )
+      )
+
+    (defun mark-desert-custom-orb-collected! ((index int))
+      (if (< index 64)
+          (logior! (-> *game-info* custom-orbs-mask-0) (the-as uint64 (ash 1 index)))
+          (logior! (-> *game-info* custom-orbs-mask-1) (the-as uint64 (ash 1 (- index 64))))
+          )
+      (none)
+      )
+
+    (defun desert-custom-orb-collected-count ()
+      (let ((count 0))
+        (dotimes (index 121)
+          (when (desert-custom-orb-collected? index)
+            (+! count 1)
+            )
+          )
+        count
+        )
+      )
+
     (deftype task-manager-desert-custom-orbs (task-manager)
-      ((orbs      handle 121)
-       (spawned   int)
-       (collected int)
+      ((orbs          handle 121)
+       (orb-location  uint8  121)
+       (spawned       int)
+       (collected     int)
        )
       (:methods
         (clear-custom-orbs! (_type_) none)
@@ -47,10 +126,15 @@
       (none)
       )
 
+    (defmethod on-fail ((this task-manager-desert-custom-orbs) (reason symbol))
+      (clear-custom-orbs! this)
+      ((method-of-type task-manager on-fail) this reason)
+      )
+
     (defmethod set-time-limit ((this task-manager-desert-custom-orbs))
-      (let ((parent-set-time-limit (method-of-type task-manager set-time-limit)))
-        (parent-set-time-limit this)
-        )
+      ;; Keep the mission timer stopped until the two-second title prompt ends.
+      (set! (-> this start-time) 0)
+      (set! (-> this time-limit) (-> this info time-limit))
       (clear-custom-orbs! this)
       (none)
       )
@@ -185,16 +269,33 @@
       :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
         (case message
           (('register-custom-orb)
-           (when (< (-> self spawned) 121)
-             (set! (-> self orbs (-> self spawned)) (the-as handle (-> block param 0)))
-             (+! (-> self spawned) 1)
+           (let ((orb-handle (the-as handle (-> block param 0)))
+                 (location-index (the-as int (-> block param 1)))
+                 )
+             (if (desert-custom-orb-collected? location-index)
+                 (deactivate (handle->process orb-handle))
+                 (when (< (-> self spawned) 121)
+                   (set! (-> self orbs (-> self spawned)) orb-handle)
+                   (set! (-> self orb-location (-> self spawned)) (the-as uint location-index))
+                   (+! (-> self spawned) 1)
+                   )
+                 )
              )
            )
           (('notify)
            (case (-> block param 0)
-             (('pickup)
-              (+! (-> self collected) 1)
-              (set! (-> *game-info* counter) (the float (- 121 (-> self collected))))
+              (('pickup)
+               (dotimes (orb-index (-> self spawned))
+                 (when (= proc (handle->process (-> self orbs orb-index)))
+                   (let ((location-index (the-as int (-> self orb-location orb-index))))
+                     (when (not (desert-custom-orb-collected? location-index))
+                       (mark-desert-custom-orb-collected! location-index)
+                       (+! (-> self collected) 1)
+                       )
+                     )
+                   )
+                 )
+               (set! (-> *game-info* counter) (the float (- 121 (-> self collected))))
               (when (>= (-> self collected) 121)
                 (send-event self 'complete)
                 )
@@ -207,21 +308,79 @@
           )
         )
       :code (behavior ()
+        (let ((prompt-start (current-time))
+              (prompt-font
+                (new 'stack 'font-context *font-default-matrix* 36 145 0.0
+                  (font-color progress-old-yellow)
+                  (font-flags shadow kerning middle middle-vert large)
+                  )
+                )
+              )
+          (set-width! prompt-font 440)
+          (set-height! prompt-font 50)
+          (set-scale! prompt-font 1.0)
+          (until (time-elapsed? prompt-start (seconds 2))
+            (print-game-text "Orb hunt" prompt-font #f 44 (bucket-id hud-draw-hud-alpha))
+            (suspend)
+            )
+          )
+        (set-time! (-> self start-time))
+        (set! (-> self hud-counter)
+              (ppointer->handle
+                (process-spawn
+                  hud-desert-custom-orbs
+                  :init hud-init-by-other
+                  :name "hud-desert-custom-orbs"
+                  :to self
+                  )
+                )
+              )
         (set! (-> self spawned) 0)
-        (set! (-> self collected) 0)
+        (set! (-> self collected) (desert-custom-orb-collected-count))
         (clear-spawn-skill-meters-owner!)
         (set-spawn-skill-meters-owner! self)
         (spawn-printed-desert-orbs)
         (clear-spawn-skill-meters-owner!)
-        (set! (-> *game-info* counter) 121.0)
+        (set! (-> *game-info* counter) (the float (- 121 (-> self collected))))
+        (when (>= (-> self collected) 121)
+          (send-event self 'complete)
+          )
         (until #f
           (suspend)
           )
         )
       )
 
+    (defun desert-custom-orbs-player-in-garage? ()
+      ;; Use the same interior volume as wasdoors-point-inside?. The desert and
+      ;; garage can remain loaded together, so level activation alone does not
+      ;; reliably tell us that Jak crossed into the garage.
+      (and *target*
+           (let ((garage-plane (new 'static 'vector :z -1.0 :w 957235.2))
+                 (garage-center (new 'static 'vector :x 9246720.0 :y 125747.2 :z 625049.6 :w 450560.0))
+                 )
+             (and (< 0.0 (vector4-dot garage-plane (target-pos 0)))
+                  (< (vector-vector-distance garage-center (target-pos 0)) (-> garage-center w))
+                  )
+             )
+           )
+      )
+
     (defun runs-every-frame ()
       ;; (increase-power-cell-by-one) This is a call to increase-power-cell-by-one defined in mod-common-functions.gc
+
+      ;; This guard must live outside the desert mission manager because that
+      ;; manager unloads during a garage or transport transition. Reopening the
+      ;; introduction cancels the current attempt without restoring collected
+      ;; custom orbs, and allows a fresh attempt when the player returns.
+      (when (and (task-node-closed? (game-task-node desert-bbush-custom-orbs-introduction))
+                 (not (task-node-closed? (game-task-node desert-bbush-custom-orbs-resolution)))
+                 (or (desert-custom-orbs-player-in-garage?)
+                     (and *target* (focus-test? *target* teleporting))
+                     )
+                 )
+        (task-node-open! (game-task-node desert-bbush-custom-orbs-introduction) 'event)
+        )
 
       ;; Sample code to turn jak pink whenever he's doing the jetboard hover glitch
       ;; (when *target* 

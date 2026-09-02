@@ -3542,7 +3542,7 @@
               :resolution-scene-continue #f
               :final-node (game-task-node desert-catch-lizards-resolution)
               :vehicle-type #x1b
-              :index 2
+              :index 1
               :on-complete #f
               :on-fail #f
               )
@@ -3603,25 +3603,25 @@
             :reset (new 'static 'task-reset-info
               :restart-info (new 'static 'resetter-params
                 :flags (resetter-flag auto-reset text-message)
-                :fail (new 'static 'resetter-spec :continue "desert-start-snake" :reset-mode 'try :execute #f)
+                :fail (new 'static 'resetter-spec :continue "desert-start-turtle" :reset-mode 'try :execute #f)
                 :retry (new 'static 'resetter-spec :continue #f :reset-mode 'try :execute #f)
                 :reset-delay (seconds 6.5)
                 )
               :quit-info (new 'static 'resetter-params
                 :flags (resetter-flag auto-reset)
-                :fail (new 'static 'resetter-spec :continue "desert-start-snake" :reset-mode 'life :execute #f)
+                :fail (new 'static 'resetter-spec :continue "desert-start-turtle" :reset-mode 'life :execute #f)
                 :retry (new 'static 'resetter-spec :continue #f :reset-mode 'try :execute #f)
                 :reset-delay (seconds 6.5)
                 )
               :fail-info (new 'static 'resetter-params
                 :flags (resetter-flag auto-reset)
-                :fail (new 'static 'resetter-spec :continue "desert-start-snake" :reset-mode 'life :execute #f)
+                :fail (new 'static 'resetter-spec :continue "desert-start-turtle" :reset-mode 'life :execute #f)
                 :retry (new 'static 'resetter-spec :continue #f :reset-mode 'try :execute #f)
                 :reset-delay (seconds 6.5)
                 )
               :death-info (new 'static 'resetter-params
                 :flags (resetter-flag auto-reset text-message no-audio no-slow-down)
-                :fail (new 'static 'resetter-spec :continue "desert-start-snake" :reset-mode 'life :execute #f)
+                :fail (new 'static 'resetter-spec :continue "desert-start-turtle" :reset-mode 'life :execute #f)
                 :retry (new 'static 'resetter-spec :continue #f :reset-mode 'try :execute #f)
                 )
               )

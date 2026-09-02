@@ -265,7 +265,7 @@
       )
     (until #f
       (while (begin
-               (set! (-> self vehicle-handle) (-> *vehicle-info* handle-by-vehicle-type 13))
+               (set! (-> self vehicle-handle) (-> *vehicle-info* handle-by-vehicle-type 12))
                (not (handle->process (-> self vehicle-handle)))
                )
         (suspend)
@@ -445,10 +445,10 @@
                  )
                )
              (while (begin
-                      (set! (-> self vehicle-handle) (-> *vehicle-info* handle-by-vehicle-type 13))
+                      (set! (-> self vehicle-handle) (-> *vehicle-info* handle-by-vehicle-type 12))
                       (not (handle->process (-> self vehicle-handle)))
                       )
-               (format *stdebug* "waiting for snake~%")
+               (format *stdebug* "waiting for turtle~%")
                (suspend)
                )
              (let ((v1-189 (the-as wvehicle (handle->process (-> self vehicle-handle)))))
@@ -646,6 +646,15 @@
             (go (method-of-object this paused))
             )
         )
+      )
+    ;; Only the Dune Hopper (v-turtle) is valid for this mission. Riding a
+    ;; captured lizard remains allowed because it is part of the objective.
+    (when (and *target*
+               (focus-test? *target* pilot-riding)
+               (not (focus-test? *target* flut))
+               (!= (-> *target* pilot vehicle) (-> *vehicle-info* handle-by-vehicle-type 12))
+               )
+      (send-event this 'fail)
       )
     (when (zero? (-> this lizard-count))
       (when (and (not (time-elapsed? (-> this hint-time) (seconds 10)))
@@ -847,7 +856,7 @@
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
     (t9-0 this)
     )
-  (let ((t1-0 2))
+  (let ((t1-0 1))
     (set-setting! 'vehicles 'set (shr t1-0 32) t1-0)
     )
   (set! (-> this lizard-count) 0)

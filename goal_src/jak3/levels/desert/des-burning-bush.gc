@@ -740,7 +740,11 @@
     (while (not (-> self menu-exit?))
       (suspend)
       )
-    (when (-> self menu-node)
+    ;; The custom orb hunt uses its own two-second title prompt instead of a
+    ;; Burning Bush speech. All original Burning Bush introductions stay intact.
+    (when (and (-> self menu-node)
+               (!= (-> self menu-node) (game-task-node desert-bbush-custom-orbs-introduction))
+               )
       (set! (-> self message-id) (text-id null))
       (let ((a0-2 (-> self menu-node))
             (v1-7 (the-as game-task-event #f))

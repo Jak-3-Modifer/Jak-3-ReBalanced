@@ -10,7 +10,7 @@ on:
       release_tag:
         description: 'Explicit Release Tag (leave blank for an automatic semver bump)'
         required: false
-        default: 'v0.1.0-beta.3'
+        default: 'v0.1.0-beta.4'
         type: string
       prerelease:
         description: 'Mark as a GitHub pre-release?'
@@ -92,7 +92,7 @@ jobs:
     with:
       semverBump: ${{ inputs.bump }}
       releaseTag: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
-      prerelease: ${{ github.event_name == 'push' || inputs.prerelease }}
+      prerelease: ${{ github.event_name != 'push' && inputs.prerelease }}
       metadataSupportedGames: ${{ needs.prep_vars.outputs.supported_games }}
       buildBinaries: ${{ github.event_name == 'push' || inputs.binary_source == 'build_binaries'}}
       toolingRepo: ${{ needs.prep_vars.outputs.tooling_repo }}

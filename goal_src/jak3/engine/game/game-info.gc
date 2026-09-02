@@ -504,6 +504,8 @@
      (set! (-> this skill) 0.0)
      (set! (-> this skill-total) 0.0)
      (set! (-> this skill-high-watermark) 0.0)
+     (set! (-> this custom-orbs-mask-0) (the-as uint64 0))
+     (set! (-> this custom-orbs-mask-1) (the-as uint64 0))
      (set! (-> this light-crystal) 0.0)
      (set! (-> this dark-crystal) 0.0)
      (set! (-> this karma) 0.0)
