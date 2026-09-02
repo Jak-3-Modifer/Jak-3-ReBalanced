@@ -66,15 +66,6 @@
         (set! (-> arg0 times 5 w) 1.0)
         )
     (update-mood-flames arg0 6 2 8 0.5 0.0009765625 1.5)
-    ;; Temple X uses Palettes 5, 3, and 6 at full strength, with Palette 7
-    ;; retained as a low-intensity accent.
-    (dotimes (palette-index 8)
-      (set! (-> arg0 times palette-index w) 0.0)
-      )
-    (set! (-> arg0 times 5 w) 1.0)
-    (set! (-> arg0 times 3 w) 1.0)
-    (set! (-> arg0 times 6 w) 1.0)
-    (set! (-> arg0 times 7 w) 0.25)
     )
   0
   (none)

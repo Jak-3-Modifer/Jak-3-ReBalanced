@@ -13,16 +13,6 @@
    )
   )
 
-(defun factory-assault-select-palettes-1-and-3! ((arg0 mood-context))
-  "Use the requested Factory Assault palette blend locally."
-  (dotimes (palette-index 8)
-    (set! (-> arg0 times palette-index w) 0.0)
-    )
-  (set! (-> arg0 times 1 w) 1.0)
-  (set! (-> arg0 times 3 w) 1.0)
-  )
-
-
 (defbehavior update-mood-factoryc time-of-day-proc ((arg0 mood-context) (arg1 float) (arg2 int))
   (update-mood-interior-ambient arg0 #t 0.0)
   (cond
@@ -49,7 +39,6 @@
       (set! (-> arg0 times 7 w) 1.0)
       )
     )
-  (factory-assault-select-palettes-1-and-3! arg0)
   0
   (none)
   )

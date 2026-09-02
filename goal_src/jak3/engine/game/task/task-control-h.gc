@@ -425,6 +425,9 @@
     (((game-task desert-bbush-destroy-interceptors))
      "desert-bbush-destroy-interceptors"
      )
+    (((game-task desert-bbush-custom-orbs))
+     "desert-bbush-custom-orbs"
+     )
     (((game-task desert-artifact-race-1))
      "desert-artifact-race-1"
      )

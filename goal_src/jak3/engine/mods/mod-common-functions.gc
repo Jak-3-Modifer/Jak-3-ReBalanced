@@ -357,9 +357,51 @@ if the result of rand-vu-int-range is 1, then DANCE! if it is not 1, then Don't 
     )
   )
 
+(define *spawn-skill-meters-owner* (the-as process #f))
+
+(defun set-spawn-skill-meters-owner! ((owner process))
+  (set! *spawn-skill-meters-owner* owner)
+  (none)
+  )
+
+(defun clear-spawn-skill-meters-owner! ()
+  (set! *spawn-skill-meters-owner* (the-as process #f))
+  (none)
+  )
+
 (defun spawn-skill-meters ((x float) (y float) (z float) (amount float) (bob? symbol))
   (let ((vec (new 'stack-no-clear 'vector)))
     (set-vector-meters! vec x y z)
-    (spawn-skill vec amount bob?)
+    (if *spawn-skill-meters-owner*
+        (let ((fax (new 'stack 'fact-info *spawn-skill-meters-owner* (pickup-type skill) amount)))
+          (set! (-> fax pickup-type) (pickup-type skill))
+          (set! (-> fax pickup-amount) amount)
+          (set! (-> fax pickup-spawn-amount) amount)
+          (logior! (-> fax options) (actor-option fade-out))
+          (set! (-> fax fade-time) (the-as time-frame 0))
+          (let ((proc
+                  (the skill
+                    (ppointer->process
+                      (birth-pickup-at-point
+                        vec
+                        (pickup-type skill)
+                        amount
+                        #t
+                        *spawn-skill-meters-owner*
+                        fax
+                        )
+                      )
+                    )
+                  ))
+            (when bob?
+              (set! (-> proc bob-amount) 1024.0)
+              )
+            (send-event *spawn-skill-meters-owner* 'register-custom-orb (process->handle proc))
+            (send-event proc 'get-notify *spawn-skill-meters-owner*)
+            (process->handle proc)
+            )
+          )
+        (spawn-skill vec amount bob?)
+        )
     )
   )

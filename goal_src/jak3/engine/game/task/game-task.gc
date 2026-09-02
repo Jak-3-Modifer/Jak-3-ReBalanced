@@ -1281,6 +1281,15 @@
             :play-continue "desert-bbush-desb-4"
             :kiosk-play-continue #f
             )
+          (new 'static 'game-task-info
+            :name "desert-bbush-custom-orbs"
+            :pre-play-node (game-task-node desert-bbush-custom-orbs-introduction)
+            :kiosk-play-node (game-task-node desert-bbush-custom-orbs-resolution)
+            :pre-play-continue "desert-bbush-desc-2"
+            :play-node (game-task-node desert-bbush-custom-orbs-resolution)
+            :play-continue "desert-bbush-desc-2"
+            :kiosk-play-continue #f
+            )
           )
         )
   (set! (-> game-info sub-task-list)
@@ -23354,9 +23363,134 @@
             :command-index #x4b
             :faction-commands '()
             )
+          (new 'static 'game-task-node-info
+            :level 'desert
+            :task (game-task desert-bbush-custom-orbs)
+            :name "desert-bbush-custom-orbs-introduction"
+            :when-open (new 'static 'boxed-array :type game-task-event
+              (new 'static 'game-task-event
+                :actor (game-task-actor burning-bush-desc-2)
+                :action (game-task-action show)
+                :tex (game-task-icon gaticon-04)
+                :scene #f
+                )
+              (new 'static 'game-task-event
+                :actor (game-task-actor minimap)
+                :action (game-task-action show)
+                :tex (game-task-icon gaticon-38)
+                :scene #f
+                )
+              )
+            :flags (game-task-node-flag save-on-try no-restart bbush)
+            :parent-node (new 'static 'array game-task-node 4
+              (game-task-node desert-bbush-get-to-6-resolution)
+              (game-task-node none)
+              (game-task-node none)
+              (game-task-node none)
+              )
+            :on-open #f
+            :manager #f
+            :borrow '()
+            :open? #f
+            :on-close #f
+            :reset #f
+            :suck-death-count #xa5
+            :command-index #x4b
+            :faction-commands '()
+            )
+          (new 'static 'game-task-node-info
+            :level 'desert
+            :task (game-task desert-bbush-custom-orbs)
+            :name "desert-bbush-custom-orbs-resolution"
+            :when-open (new 'static 'boxed-array :type game-task-event
+              (new 'static 'game-task-event
+                :actor (game-task-actor burning-bush-desc-2)
+                :action (game-task-action play)
+                :tex (game-task-icon gaticon-04)
+                :scene #f
+                )
+              )
+            :flags (game-task-node-flag close-task exclusive bbush)
+            :parent-node (new 'static 'array game-task-node 4
+              (game-task-node desert-bbush-custom-orbs-introduction)
+              (game-task-node none)
+              (game-task-node none)
+              (game-task-node none)
+              )
+            :on-open #f
+            :manager (new 'static 'task-manager-info
+              :mask (task-manager-mask time-limit)
+              :level 'desert
+              :type-to-spawn 'task-manager-desert-custom-orbs
+              :time-limit (seconds 200)
+              :intro-scene #f
+              :resolution-scene #f
+              :resolution-scene-continue #f
+              :final-node (game-task-node desert-bbush-custom-orbs-resolution)
+              :vehicle-type #x1b
+              :on-complete '(send-event *target* 'get-pickup (pickup-type gem) 4)
+              :on-fail #f
+              )
+            :borrow '()
+            :open? #f
+            :on-close #f
+            :reset (new 'static 'task-reset-info
+              :restart-info (new 'static 'resetter-params
+                :message (resetter-message mission-retry)
+                :flags (resetter-flag auto-reset text-message no-audio-first)
+                :fail (new 'static 'resetter-spec :continue #f :reset-mode 'try :execute #f)
+                :retry (new 'static 'resetter-spec
+                  :continue "desert-bbush-desc-2"
+                  :node (game-task-node desert-bbush-custom-orbs-resolution)
+                  :reset-mode 'try
+                  :execute #f
+                  )
+                :reset-delay (seconds 6.5)
+                )
+              :quit-info (new 'static 'resetter-params
+                :message (resetter-message mission-retry)
+                :flags (resetter-flag auto-reset no-audio-first)
+                :fail (new 'static 'resetter-spec :continue #f :reset-mode 'life :execute #f)
+                :retry (new 'static 'resetter-spec
+                  :continue "desert-bbush-desc-2"
+                  :node (game-task-node desert-bbush-custom-orbs-resolution)
+                  :reset-mode 'try
+                  :execute #f
+                  )
+                :reset-delay (seconds 6.5)
+                )
+              :fail-info (new 'static 'resetter-params
+                :message (resetter-message mission-fail-or-retry)
+                :flags (resetter-flag auto-reset no-audio-first)
+                :fail (new 'static 'resetter-spec :continue #f :reset-mode 'life :execute #f)
+                :retry (new 'static 'resetter-spec
+                  :continue "desert-bbush-desc-2"
+                  :node (game-task-node desert-bbush-custom-orbs-resolution)
+                  :reset-mode 'try
+                  :execute #f
+                  )
+                :reset-delay (seconds 6.5)
+                )
+              :death-info (new 'static 'resetter-params
+                :message (resetter-message mission-fail-or-retry)
+                :flags (resetter-flag auto-reset no-audio-first)
+                :fail (new 'static 'resetter-spec :continue #f :reset-mode 'life :execute #f)
+                :retry (new 'static 'resetter-spec
+                  :continue "desert-bbush-desc-2"
+                  :node (game-task-node desert-bbush-custom-orbs-resolution)
+                  :reset-mode 'try
+                  :execute #f
+                  )
+                :reset-delay (seconds 6.5)
+                )
+              )
+            :suck-death-count #xa5
+            :command-index #x4b
+            :faction-commands '()
+            )
           )
         )
-  (set! (-> game-info mission-list) (new 'global 'boxed-array game-task-node-info 410))
+  (set! (-> game-info mission-list) (new 'global 'boxed-array game-task-node-info 412))
   (set! (-> game-info task-node-commands) (new 'static 'boxed-array :type game-task-node-command
                                             (game-task-node-command add-jakc)
                                             (game-task-node-command add-darkjak)
@@ -23441,7 +23575,7 @@
         )
     )
   (when (zero? (-> game-info task-perm-list))
-    (let ((v1-9 (new 'global 'entity-perm-array 138)))
+    (let ((v1-9 (new 'global 'entity-perm-array 139)))
       (set! (-> game-info task-perm-list) v1-9)
       (dotimes (a0-14 (-> v1-9 length))
         (set! (-> v1-9 data a0-14 task) (the-as game-task a0-14))

@@ -93,12 +93,6 @@
       (set! (-> arg0 times 7 w) 1.0)
       )
     )
-  ;; Nest A palette selection.
-  (dotimes (palette 8)
-    (set! (-> arg0 times palette w) 0.0)
-    )
-  (set! (-> arg0 times 0 w) 0.25)
-  (set! (-> arg0 times 2 w) 1.0)
   0
   (none)
   )
@@ -233,15 +227,6 @@
         )
       )
     )
-  ;; Nest B palette selection.
-  (dotimes (palette 8)
-    (set! (-> arg0 times palette w) 0.0)
-    )
-  (set! (-> arg0 times 1 w) 0.25)
-  (set! (-> arg0 times 2 w) 1.0)
-  (set! (-> arg0 times 5 w) 1.0)
-  (set! (-> arg0 times 6 w) 1.0)
-  (set! (-> arg0 times 7 w) 1.0)
   0
   (none)
   )

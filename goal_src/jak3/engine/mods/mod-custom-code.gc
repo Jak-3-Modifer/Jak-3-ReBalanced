@@ -21,9 +21,39 @@
     ;; Begin function defintions.
     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-    ;; Printed Precursor Orb locations for the main Wasteland desert level.
-    ;; The orb-placer prints positions in meters, so use spawn-skill-meters.
-    (define *printed-desert-orbs-spawned?* #f)
+    ;; Printed Precursor Orb locations for the custom Burning Bush 6 mission.
+    ;; These pickups are owned by the mission manager and do not exist outside it.
+    (deftype task-manager-desert-custom-orbs (task-manager)
+      ((orbs      handle 121)
+       (spawned   int)
+       (collected int)
+       )
+      (:methods
+        (clear-custom-orbs! (_type_) none)
+        )
+      )
+
+    (defmethod clear-custom-orbs! ((this task-manager-desert-custom-orbs))
+      (dotimes (i (-> this spawned))
+        (let ((proc (handle->process (-> this orbs i))))
+          (when proc
+            (deactivate proc)
+            )
+          )
+        (set! (-> this orbs i) (the-as handle #f))
+        )
+      (set! (-> this spawned) 0)
+      (clear-spawn-skill-meters-owner!)
+      (none)
+      )
+
+    (defmethod set-time-limit ((this task-manager-desert-custom-orbs))
+      (let ((parent-set-time-limit (method-of-type task-manager set-time-limit)))
+        (parent-set-time-limit this)
+        )
+      (clear-custom-orbs! this)
+      (none)
+      )
 
     (defun spawn-printed-desert-orbs ()
       (spawn-skill-meters 3397.6643 33.3502 3234.7570 1.0 #t)
@@ -147,8 +177,47 @@
       (spawn-skill-meters 4007.4768 34.2942 205.8136 1.0 #t)
       (spawn-skill-meters 3848.5251 7.7399 15.3902 1.0 #t)
       (spawn-skill-meters 3720.5795 72.8729 744.5278 1.0 #t)
-      (set! *printed-desert-orbs-spawned?* #t)
       (none)
+      )
+
+    (defstate active (task-manager-desert-custom-orbs)
+      :virtual #t
+      :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
+        (case message
+          (('register-custom-orb)
+           (when (< (-> self spawned) 121)
+             (set! (-> self orbs (-> self spawned)) (the-as handle (-> block param 0)))
+             (+! (-> self spawned) 1)
+             )
+           )
+          (('notify)
+           (case (-> block param 0)
+             (('pickup)
+              (+! (-> self collected) 1)
+              (set! (-> *game-info* counter) (the float (- 121 (-> self collected))))
+              (when (>= (-> self collected) 121)
+                (send-event self 'complete)
+                )
+              )
+             )
+           )
+          (else
+            (task-manager-event-handler proc argc message block)
+            )
+          )
+        )
+      :code (behavior ()
+        (set! (-> self spawned) 0)
+        (set! (-> self collected) 0)
+        (clear-spawn-skill-meters-owner!)
+        (set-spawn-skill-meters-owner! self)
+        (spawn-printed-desert-orbs)
+        (clear-spawn-skill-meters-owner!)
+        (set! (-> *game-info* counter) 121.0)
+        (until #f
+          (suspend)
+          )
+        )
       )
 
     (defun runs-every-frame ()
@@ -171,15 +240,6 @@
         (orb-placer-maintenance)
         )
 
-      ;; Spawn the printed locations once per game session.  Do not clear the
-      ;; latch when desert briefly streams inactive at the Wasteland garage;
-      ;; the existing active-pool orbs survive that transition and would be
-      ;; duplicated when the desert stream becomes active again.
-      (when (and (= (level-status? *level* 'desert #f) 'active)
-                 (not *printed-desert-orbs-spawned?*))
-        (spawn-printed-desert-orbs)
-        )
-      
       (none)
       )
 
