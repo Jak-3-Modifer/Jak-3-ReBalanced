@@ -1113,18 +1113,22 @@
       (set! (-> v1-1 attacker-velocity quad) (-> this pre-move-transv quad))
       (logior! (-> v1-1 mask) (attack-mask attacker-velocity))
       )
-    ;; Yellow Gun 1 is stronger at long range: 5 damage past 15 meters,
-    ;; otherwise 2 damage. Other yellow projectiles keep their own damage.
+    ;; Yellow Gun 1 damage scales by range and its damage upgrade.
     (if (and (not (type? this gun-yellow-shot-2))
-             (not (type? this gun-yellow-shot-3))
-             (> (vector-vector-distance (-> this starting-pos) (-> this root trans)) (meters 15)))
-        (set! (-> v1-1 damage) 5.0)
-        (if (and (not (type? this gun-yellow-shot-2))
-                 (not (type? this gun-yellow-shot-3)))
-            (set! (-> v1-1 damage) 2.0)
-            (set! (-> v1-1 damage) (-> this damage))
-            )
-        )
+         (not (type? this gun-yellow-shot-3)))
+      (let ((damage-upgraded?
+          (logtest? (game-secrets gun-upgrade-yellow-1)
+                (-> *game-info* secrets)))
+          (long-range?
+          (> (vector-vector-distance (-> this starting-pos)
+                         (-> this root trans))
+             (meters 15))))
+        (set! (-> v1-1 damage)
+          (if long-range?
+            (if damage-upgraded? 5.0 4.0)
+            (if damage-upgraded? 2.0 1.0))))
+      (set! (-> v1-1 damage) (-> this damage))
+      )
     (set! (-> v1-1 vehicle-damage-factor) (-> this vehicle-damage-factor))
     (set! (-> v1-1 vehicle-impulse-factor) (-> this vehicle-impulse-factor))
     (set! (-> v1-1 control) -0.5)
