@@ -22,7 +22,11 @@
     ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
     ;; Printed Precursor Orb locations for the custom Burning Bush 6 mission.
-    ;; These pickups are owned by the mission manager and do not exist outside it.
+    ;; The 22 pickups at the temple climb are normal free-roam pickups instead.
+    (defconstant desert-custom-orb-mission-count 99)
+    (defconstant temple-climb-world-orb-first-index 83)
+    (defconstant temple-climb-world-orb-count 22)
+
     (deftype hud-desert-custom-orbs (hud)
       ()
       )
@@ -93,7 +97,10 @@
     (defun desert-custom-orb-collected-count ()
       (let ((count 0))
         (dotimes (index 121)
-          (when (desert-custom-orb-collected? index)
+          (when (and (or (< index temple-climb-world-orb-first-index)
+                         (>= index (+ temple-climb-world-orb-first-index temple-climb-world-orb-count)))
+                     (desert-custom-orb-collected? index)
+                     )
             (+! count 1)
             )
           )
@@ -223,28 +230,8 @@
       (spawn-skill-meters 3313.3691 45.4806 3381.8156 1.0 #t)
       (spawn-skill-meters 3432.4008 7.0653 3367.7897 1.0 #t)
       (spawn-skill-meters 3075.6660 33.3987 3574.9616 1.0 #t)
-      (spawn-skill-meters 4203.9824 12.3837 3793.8994 1.0 #t)
-      (spawn-skill-meters 4297.2456 13.7793 3835.0593 1.0 #t)
-      (spawn-skill-meters 4307.9946 83.5391 4276.1513 1.0 #t)
-      (spawn-skill-meters 4078.7238 137.2277 4173.1538 1.0 #t)
-      (spawn-skill-meters 4011.1845 159.0858 4212.2465 1.0 #t)
-      (spawn-skill-meters 4098.8847 173.8945 4314.0419 1.0 #t)
-      (spawn-skill-meters 4098.5556 178.1116 4303.1767 1.0 #t)
-      (spawn-skill-meters 4100.6474 174.3378 4289.0058 1.0 #t)
-      (spawn-skill-meters 4142.8959 140.8401 4235.3261 1.0 #t)
-      (spawn-skill-meters 4234.6928 110.8419 4228.7392 1.0 #t)
-      (spawn-skill-meters 4207.2490 140.6373 4236.2807 1.0 #t)
-      (spawn-skill-meters 4224.1191 168.5964 4134.0756 1.0 #t)
-      (spawn-skill-meters 4202.5869 186.5484 4172.2773 1.0 #t)
-      (spawn-skill-meters 4198.7285 209.3916 4080.3430 1.0 #t)
-      (spawn-skill-meters 4204.3642 209.4303 4093.5708 1.0 #t)
-      (spawn-skill-meters 4209.1274 211.3930 4165.1723 1.0 #t)
-      (spawn-skill-meters 4217.8315 228.6768 4154.9501 1.0 #t)
-      (spawn-skill-meters 4160.4804 244.7304 4183.3559 1.0 #t)
-      (spawn-skill-meters 4200.1884 244.4490 4097.3266 1.0 #t)
-      (spawn-skill-meters 4196.5468 280.0075 4087.8247 1.0 #t)
-      (spawn-skill-meters 4172.4912 264.6866 4088.8571 1.0 #t)
-      (spawn-skill-meters 4124.7001 287.7639 4113.7392 1.0 #t)
+      ;; Preserve the original save-mask indices for the remaining mission orbs.
+      (+! *spawn-skill-meters-index* temple-climb-world-orb-count)
       (spawn-skill-meters 3214.6794 45.9688 61.8655 1.0 #t)
       (spawn-skill-meters 3289.8364 34.4243 145.9383 1.0 #t)
       (spawn-skill-meters 3271.4516 52.6881 173.6514 1.0 #t)
@@ -295,8 +282,8 @@
                      )
                    )
                  )
-               (set! (-> *game-info* counter) (the float (- 121 (-> self collected))))
-              (when (>= (-> self collected) 121)
+               (set! (-> *game-info* counter) (the float (- desert-custom-orb-mission-count (-> self collected))))
+              (when (>= (-> self collected) desert-custom-orb-mission-count)
                 (send-event self 'complete)
                 )
               )
@@ -341,14 +328,106 @@
         (set-spawn-skill-meters-owner! self)
         (spawn-printed-desert-orbs)
         (clear-spawn-skill-meters-owner!)
-        (set! (-> *game-info* counter) (the float (- 121 (-> self collected))))
-        (when (>= (-> self collected) 121)
+        (set! (-> *game-info* counter) (the float (- desert-custom-orb-mission-count (-> self collected))))
+        (when (>= (-> self collected) desert-custom-orb-mission-count)
           (send-event self 'complete)
           )
         (until #f
           (suspend)
           )
         )
+      )
+
+    ;; These are the former custom-mission pickups located along the temple climb.
+    ;; They are available whenever templex is loaded and retain their collected
+    ;; state through the same save masks used by the custom orb hunt.
+    (deftype temple-climb-world-orb-manager (process)
+      ((orbs handle 22))
+      (:state-methods active)
+      )
+
+    (defstate active (temple-climb-world-orb-manager)
+      :virtual #t
+      :enter (behavior ()
+        (dotimes (index temple-climb-world-orb-count)
+          (set! (-> self orbs index) (the-as handle #f))
+          )
+        (clear-spawn-skill-meters-owner!)
+        (set-spawn-skill-meters-owner! self)
+        (spawn-skill-meters 4203.9824 12.3837 3793.8994 1.0 #t)
+        (spawn-skill-meters 4297.2456 13.7793 3835.0593 1.0 #t)
+        (spawn-skill-meters 4307.9946 83.5391 4276.1513 1.0 #t)
+        (spawn-skill-meters 4078.7238 137.2277 4173.1538 1.0 #t)
+        (spawn-skill-meters 4011.1845 159.0858 4212.2465 1.0 #t)
+        (spawn-skill-meters 4098.8847 173.8945 4314.0419 1.0 #t)
+        (spawn-skill-meters 4098.5556 178.1116 4303.1767 1.0 #t)
+        (spawn-skill-meters 4100.6474 174.3378 4289.0058 1.0 #t)
+        (spawn-skill-meters 4142.8959 140.8401 4235.3261 1.0 #t)
+        (spawn-skill-meters 4234.6928 110.8419 4228.7392 1.0 #t)
+        (spawn-skill-meters 4207.2490 140.6373 4236.2807 1.0 #t)
+        (spawn-skill-meters 4224.1191 168.5964 4134.0756 1.0 #t)
+        (spawn-skill-meters 4202.5869 186.5484 4172.2773 1.0 #t)
+        (spawn-skill-meters 4198.7285 209.3916 4080.3430 1.0 #t)
+        (spawn-skill-meters 4204.3642 209.4303 4093.5708 1.0 #t)
+        (spawn-skill-meters 4209.1274 211.3930 4165.1723 1.0 #t)
+        (spawn-skill-meters 4217.8315 228.6768 4154.9501 1.0 #t)
+        (spawn-skill-meters 4160.4804 244.7304 4183.3559 1.0 #t)
+        (spawn-skill-meters 4200.1884 244.4490 4097.3266 1.0 #t)
+        (spawn-skill-meters 4196.5468 280.0075 4087.8247 1.0 #t)
+        (spawn-skill-meters 4172.4912 264.6866 4088.8571 1.0 #t)
+        (spawn-skill-meters 4124.7001 287.7639 4113.7392 1.0 #t)
+        (clear-spawn-skill-meters-owner!)
+        )
+      :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
+        (case message
+          (('register-custom-orb)
+           (let ((orb-handle (the-as handle (-> block param 0)))
+                 (local-index (the-as int (-> block param 1)))
+                 )
+             (if (desert-custom-orb-collected? (+ temple-climb-world-orb-first-index local-index))
+                 (deactivate (handle->process orb-handle))
+                 (set! (-> self orbs local-index) orb-handle)
+                 )
+             )
+           )
+          (('notify)
+           (when (= (-> block param 0) 'pickup)
+             (dotimes (local-index temple-climb-world-orb-count)
+               (when (= proc (handle->process (-> self orbs local-index)))
+                 (mark-desert-custom-orb-collected! (+ temple-climb-world-orb-first-index local-index))
+                 )
+               )
+             )
+           )
+          )
+        )
+      :code sleep-code
+      )
+
+    (defbehavior temple-climb-world-orb-manager-init-by-other temple-climb-world-orb-manager ()
+      (go-virtual active)
+      )
+
+    (define *temple-climb-world-orb-manager* (the-as (pointer temple-climb-world-orb-manager) #f))
+
+    (defun update-temple-climb-world-orbs! ()
+      (if (= (level-status? *level* 'templex #f) 'active)
+          (when (not *temple-climb-world-orb-manager*)
+            (set! *temple-climb-world-orb-manager*
+                  (process-spawn
+                    temple-climb-world-orb-manager
+                    :init temple-climb-world-orb-manager-init-by-other
+                    :name "temple-climb-world-orb-manager"
+                    :to *active-pool*
+                    )
+                  )
+            )
+          (when *temple-climb-world-orb-manager*
+            (kill-by-type temple-climb-world-orb-manager *active-pool*)
+            (set! *temple-climb-world-orb-manager* (the-as (pointer temple-climb-world-orb-manager) #f))
+            )
+          )
+      (none)
       )
 
     (defun desert-custom-orbs-player-in-garage? ()
@@ -368,6 +447,8 @@
 
     (defun runs-every-frame ()
       ;; (increase-power-cell-by-one) This is a call to increase-power-cell-by-one defined in mod-common-functions.gc
+
+      (update-temple-climb-world-orbs!)
 
       ;; This guard must live outside the desert mission manager because that
       ;; manager unloads during a garage or transport transition. Reopening the

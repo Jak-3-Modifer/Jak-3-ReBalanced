@@ -21257,7 +21257,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-wasb-6)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-10)
+                :tex (game-task-icon gaticon-30)
                 :scene "o-bb19i"
                 )
               (new 'static 'game-task-event
@@ -22798,7 +22798,7 @@
               (new 'static 'game-task-event
                 :actor (game-task-actor burning-bush-desd-5)
                 :action (game-task-action show)
-                :tex (game-task-icon gaticon-12)
+                :tex (game-task-icon gaticon-32)
                 :scene "o-bb18i"
                 )
               (new 'static 'game-task-event

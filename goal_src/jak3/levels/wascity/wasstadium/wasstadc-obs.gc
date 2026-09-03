@@ -126,18 +126,18 @@
   (let ((s4-0 (new 'static 'fact-info :pickup-type (pickup-type ammo-red) :pickup-spawn-amount 20.0))
         (s5-0 (new 'stack-no-clear 'vector))
         )
-    (let* ((platform (ppointer->process (-> this parent)))
-           (manager (as-type (and platform (ppointer->process (-> platform parent))) task-manager))
-           )
-      ;; Arena 2's refill doors provide Dark Eco instead of ammunition. Keep
-      ;; the shared Arena 1 and Arena 3 refill behavior unchanged.
-      (set! (-> s4-0 pickup-type)
-            (if (and manager (= (-> manager node-info task) (game-task arena-fight-2)))
-                (pickup-type eco-pill-dark)
-                (pickup-type ammo-random)
-                )
-            )
-      )
+    ;; These are the crates dispensed repeatedly from the platform doors, not
+    ;; the three starting crates managed by task-manager-arena-fight-2.  Test
+    ;; the fight node directly because this crate dispenser's parent chain is
+    ;; not a reliable way to recover the active task manager at runtime.
+    (set! (-> s4-0 pickup-type)
+          (if (and (task-node-open? (game-task-node arena-fight-2-fight))
+                   (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+                   )
+              (pickup-type eco-pill-dark)
+              (pickup-type ammo-random)
+              )
+          )
     (vector-copy! s5-0 (-> this root trans))
     (when (or (zero? (-> this crate-h)) (not (handle->process (-> this crate-h))))
       (let ((s5-1 (as-type

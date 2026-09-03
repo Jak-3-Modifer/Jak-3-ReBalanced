@@ -1401,24 +1401,9 @@
 (define *beast-camera-slow-motion* (new 'static 'vector))
 
 (defun des-beast-drop-skull-gem ((arg0 des-beast))
-  "Drop one skull gem for a defeated Metal Head Hunt Beast."
-  (when (= (-> arg0 level) (level-get *level* 'deshover))
-    (let ((gem-pos (new 'stack-no-clear 'vector)))
-      (vector-copy! gem-pos (-> arg0 root trans))
-      (+! (-> gem-pos y) (meters 1.5))
-      (let ((gem-drop
-              (as-type
-                (ppointer->process
-                  (birth-pickup-at-point gem-pos (pickup-type gem) 1.0 #t *entity-pool* (-> arg0 fact))
-                  )
-                gem
-                )
-              ))
-        (when gem-drop
-          (set! (-> gem-drop gem-pool) (the-as uint (get-gem-pool-idx arg0)))
-          )
-        )
-      )
+  "Add one skull gem directly to Jak's inventory for each defeated Metal Head Hunt Beast."
+  (when (and *target* (= (-> arg0 level) (level-get *level* 'deshover)))
+    (send-event *target* 'get-pickup (pickup-type gem) 1.0)
     )
   (none)
   )

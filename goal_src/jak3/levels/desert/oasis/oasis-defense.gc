@@ -313,6 +313,7 @@
                   (quaternion-copy! (-> s4-0 params rotation) (-> s5-1 quat))
                   (let ((s5-2 (vehicle-spawn (vehicle-type v-marauder) (-> s4-0 params))))
                     (when s5-2
+                      (set! (-> (the-as v-marauder s5-2) oasis-explosion?) #t)
                       (iterate-prims
                         (the-as collide-shape-moving (-> s5-2 root))
                         (lambda ((arg0 collide-shape-prim)) (logior! (-> arg0 prim-core collide-as) (collide-spec enemy)) (none))
@@ -662,6 +663,7 @@
         (quaternion-copy! (-> sv-240 params rotation) (-> s0-0 quat))
         (let ((s0-1 (vehicle-spawn (vehicle-type v-marauder) (-> sv-240 params))))
           (when s0-1
+            (set! (-> (the-as v-marauder s0-1) oasis-explosion?) #t)
             (iterate-prims
               (the-as collide-shape-moving (-> s0-1 root))
               (lambda ((arg0 collide-shape-prim)) (logior! (-> arg0 prim-core collide-as) (collide-spec enemy)) (none))
