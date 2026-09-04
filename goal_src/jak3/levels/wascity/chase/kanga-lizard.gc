@@ -1147,7 +1147,10 @@
       )
     (let ((gp-0 (-> self nav)))
       (set! (-> gp-0 target-speed)
-            (* (lerp-scale 1.0 1.25 (-> *game-info* counter) 6.0 1.0) (-> self enemy-info run-travel-speed))
+            (* (if (and *target* (focus-test? *target* flut)) 1.6 1.0)
+               (lerp-scale 1.0 1.25 (-> *game-info* counter) 6.0 1.0)
+               (-> self enemy-info run-travel-speed)
+               )
             )
       )
     0
@@ -1176,7 +1179,10 @@
           (gp-0 (-> self nav))
           )
       (set! (-> gp-0 target-speed)
-            (* (lerp-scale 1.0 0.8 f0-1 6000.0 36000.0) (-> self enemy-info run-travel-speed))
+            (* (if (and *target* (focus-test? *target* flut)) 1.6 1.0)
+               (lerp-scale 1.0 0.8 f0-1 6000.0 36000.0)
+               (-> self enemy-info run-travel-speed)
+               )
             )
       )
     0
