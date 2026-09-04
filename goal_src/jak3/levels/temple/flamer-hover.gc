@@ -358,19 +358,26 @@
                (vector-normalize! s5-1 1638.4)
                (vector+! gp-0 gp-0 s5-1)
                )
-             (dotimes (shot-index 3)
-               (let ((shot-vel (new 'stack-no-clear 'vector)))
-                 (cond
-                   ((zero? shot-index)
-                    (vector-rotate-y! shot-vel (-> self shot-trajectory initial-velocity) (degrees -8))
-                    )
-                   ((= shot-index 1)
-                    (vector-copy! shot-vel (-> self shot-trajectory initial-velocity))
-                    )
-                   (else
-                     (vector-rotate-y! shot-vel (-> self shot-trajectory initial-velocity) (degrees 8))
+             ;; Fire two grenades aimed two meters to either side of Jak.
+             (dotimes (shot-index 2)
+               (let ((shot-vel (new 'stack-no-clear 'vector))
+                     (shot-target (new 'stack-no-clear 'vector))
+                     (spread (new 'stack-no-clear 'vector))
+                     (target-pos (get-trans (the-as process-focusable s5-0) 3))
                      )
+                 (vector-! spread target-pos gp-0)
+                 (set! (-> spread y) 0.0)
+                 (let ((old-x (-> spread x)))
+                   (set! (-> spread x) (- (-> spread z)))
+                   (set! (-> spread z) old-x)
                    )
+                 (vector-normalize! spread (meters 2))
+                 (if (zero? shot-index)
+                     (vector-! shot-target target-pos spread)
+                     (vector+! shot-target target-pos spread)
+                     )
+                 (setup-from-to-xz-vel! (-> self shot-trajectory) gp-0 shot-target 122880.0 -102400.0)
+                 (vector-copy! shot-vel (-> self shot-trajectory initial-velocity))
                  (let ((a1-6 (new 'stack-no-clear 'projectile-init-by-other-params)))
                    (set! (-> a1-6 ent) (-> self entity))
                    (set! (-> a1-6 charge) 1.0)
@@ -730,7 +737,7 @@
 
 (defmethod get-hover-params ((this flamer-hover))
   (new 'static 'hover-nav-params
-    :max-speed 57344.0
+    :max-speed (meters 36)
     :max-acceleration 81920.0
     :max-rotation-rate 94663.11
     :friction 0.05

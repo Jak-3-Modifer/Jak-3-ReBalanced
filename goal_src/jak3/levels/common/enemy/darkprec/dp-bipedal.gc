@@ -1784,11 +1784,11 @@
     )
   :trans (behavior ()
     ((-> (method-of-type nav-enemy hostile) trans))
-    ;; Moss Knight-style guard cadence: once the Bipedal reaches fighting
-    ;; distance, make it establish its shield before committing to its next
-    ;; melee lunge or arcing grenade response.  The timer prevents the guard
-    ;; from immediately reopening after shield-in hands control back here.
-    (when (and (time-elapsed? (-> self close-attack-timer) (seconds 1.2))
+    ;; Deploy the guard only after three completed attacks while fighting Jak.
+    ;; scared-timer is otherwise unused by this enemy, so use its existing
+    ;; storage as the attack counter without changing the object type layout.
+    (when (and (>= (-> self scared-timer) 3)
+               (time-elapsed? (-> self close-attack-timer) (seconds 1.2))
                (< (vector-vector-xz-distance (-> self root trans) (-> self focus-pos)) 73728.0)
                )
       (go-virtual shield-out)
@@ -1833,6 +1833,10 @@
 (defstate shield-out (dp-bipedal)
   :virtual #t
   :event enemy-event-handler
+  :enter (behavior ()
+    ;; Beginning a new shield cycle consumes the three-attack sequence.
+    (set! (-> self scared-timer) 0)
+    )
   :code (behavior ()
     (ja-channel-push! 1 (seconds 0.05))
     (ja-no-eval :group! dp-bipedal-shield-out-ja :num! (seek! max 2.0) :frame-num 0.0)
@@ -2049,9 +2053,11 @@
         (logior! (-> self focus-status) (focus-status dangerous))
         (logclear! (-> self focus-status) (focus-status dangerous))
         )
-    ;; Return to guard after the committed swing, like the Moss Knight's pause
-    ;; after its final slash.
-    (go-virtual shield-out)
+    (+! (-> self scared-timer) 1)
+    (if (>= (-> self scared-timer) 3)
+        (go-virtual shield-out)
+        (go-hostile self)
+        )
     )
   :post (behavior ()
     (let ((a0-0 self))
@@ -2090,9 +2096,12 @@
       (suspend)
       (ja :num! (seek! (ja-aframe 33.0 0)))
       )
-    ;; Treat the arcing grenade as the Bipedal's Thorn Spit analogue, then
-    ;; re-establish guard before choosing another attack.
-    (go-virtual shield-out)
+    ;; Grenade throws count toward the same three-attack shield cadence.
+    (+! (-> self scared-timer) 1)
+    (if (>= (-> self scared-timer) 3)
+        (go-virtual shield-out)
+        (go-hostile self)
+        )
     )
   :post (behavior ()
     (nav-enemy-simple-post)
@@ -3217,6 +3226,7 @@
     )
   (init-los! (-> this los) this (seconds 0.1) 327680.0 (collide-spec backgnd hit-by-others-list los-blocker))
   (set! (-> this close-attack-timer) 0)
+  (set! (-> this scared-timer) 0)
   (set! (-> this part) (create-launch-control group-dp-bipedal-drip this))
   (set! (-> this part-ambush) (create-launch-control group-dp-bipedal-ambush-drip this))
   (set! (-> this shield-sound-id) (new-sound-id))

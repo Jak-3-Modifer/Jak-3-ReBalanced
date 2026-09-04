@@ -1713,6 +1713,10 @@
           )
         )
       )
+    ;; Respect per-enemy gun lockout for the shared Jak gun-tracking path.
+    (when (and gp-0 (focus-test? gp-0 gun-no-target))
+      (set! gp-0 (the-as process-focusable #f))
+      )
     (cond
       (gp-0
         (set! (-> self gun track-target-hold-time) 0)
@@ -1732,7 +1736,8 @@
         (let ((s5-2 (handle->process (-> self gun track-target 0 handle))))
           (cond
             ((or (not s5-2)
-                 (or (and (focus-test? (the-as process-focusable s5-2) dead) (zero? (-> self gun track-target-hold-time)))
+                 (or (focus-test? (the-as process-focusable s5-2) gun-no-target)
+                     (and (focus-test? (the-as process-focusable s5-2) dead) (zero? (-> self gun track-target-hold-time)))
                      (and (not (and (nonzero? (-> self gun track-target-hold-time)) (< (current-time) (-> self gun track-target-hold-time)))
                                )
                           (and (not (logtest? (surface-flag spin) (-> self control current-surface flags)))

@@ -3333,6 +3333,7 @@
                    (-> *target* control dynam)
                    (-> *target* control standard-dynamics gravity-length)
                    )
+                  (set! (-> *target* control transv y) -245760.0)
                  )
                (set! (-> self lowest-y) 0.0)
                )

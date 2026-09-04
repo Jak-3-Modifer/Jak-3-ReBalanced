@@ -249,7 +249,9 @@
             )
           (when s2-0
             (when (and (or (< -14336.0 (-> s5-0 floats 2)) (logtest? (-> this v-flags) (vehicle-flag player-edge-grabbing)))
-                       (not (logtest? (vehicle-flag no-hijack gun-dark-2-zero-g) (-> this v-flags)))
+                       ;; Mass Inverter gravity no longer prevents Jak from
+                       ;; entering and driving an otherwise hijackable car.
+                       (not (logtest? (vehicle-flag no-hijack) (-> this v-flags)))
                        )
               (set! s4-1 #t)
               (set! (-> s5-0 floats 3) (* (-> this hit-points) (/ 40960.0 (sqrtf (-> s5-0 floats 1)))))

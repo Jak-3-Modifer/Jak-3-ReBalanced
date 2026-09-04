@@ -133,7 +133,7 @@ jobs:
           EXPLICIT_TAG: ${{ inputs.releaseTag }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          release_args=(--draft --repo "${{ github.repository }}" --title "Jak 3 ReBalanced Beta Version 1 Patch 5" --notes $'Fifth patch for Jak 3 ReBalanced Beta Version 1.\n\n- Updates weapon shop prices for ammo capacity and weapon upgrades.\n- Adjusts Yellow Gun 1 damage by range, with increased damage from its upgrade.\n\nStarts as a fresh game; no save data is included.')
+          release_args=(--draft --repo "${{ github.repository }}" --title "Jak 3 ReBalanced Beta Version 1 Patch 6" --notes $'Sixth patch for Jak 3 ReBalanced Beta Version 1.\n\n- Updates Reflexor and Red Gun 2 Shop prices.\n- Prevents Jak\'s guns from locking onto Eco Creatures.\n- Lets zero-gravity vehicles remain enterable and drivable.\n- Updates Dark Bipedal shield cadence.\n- Improves Spyder health, detection, tracking, projectile range, repositioning, and celebration timing.\n- Requires the player to remain inside the Dark Satellite laser area to advance its phase.\n- Increases Cyber Errol tentacle attack frequency and adds close-range explosion damage.\n- Updates Flamer Hover speed and two-shot spread.\n\nThe experimental Semtex rounds, magnetic pull, and custom Cyber Errol health phase are not included.\n\nStarts as a fresh game; no save data is included.')
           if [[ -n "$EXPLICIT_TAG" ]]; then
             release_args+=(--target "$GITHUB_SHA")
           fi

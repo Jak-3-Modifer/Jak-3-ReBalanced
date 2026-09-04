@@ -160,7 +160,9 @@
     (remove-setting! 'sound-flava)
     )
   :trans (behavior ()
-    (set! (-> self v-flags) (the-as vehicle-flag (logclear (-> self v-flags) (vehicle-flag gun-dark-2-zero-g))))
+    ;; Preserve Mass Inverter zero gravity while player-driving. The
+    ;; gravity-spinner clears this flag through 'gun-dark-2-off when its
+    ;; normal duration expires.
     (when (time-elapsed? (-> self state-time) (seconds 0.1))
       (if (not *target*)
           (go-virtual waiting)
