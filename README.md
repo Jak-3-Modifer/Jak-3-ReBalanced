@@ -27,7 +27,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 -Light Eco pickups give less
 
--Missions that encourage the use of Light Freeze
+*Missions that encourage the use of Light Freeze
 
 
 -Arenas have different challenges; Timed, no damage or no all ammo depletion
