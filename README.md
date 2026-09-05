@@ -23,54 +23,54 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 -Arc Welder does 1 damage per ammo use
 
 
--Light Jak Melee/Shield deals damage to Eco Creatures and Dark Bipedals
+*Light Jak Melee/Shield deals damage to Eco Creatures and Dark Bipedals
 
--Light Eco pickups give less
+*Light Eco pickups give less
 
 *Missions that encourage the use of Light Freeze
 
 
--Arenas have different challenges; Timed, no damage or no all ammo depletion
+~Arenas have different challenges; Timed, no damage or no all ammo depletion
 
--Kangarats are faster if on lizard
+~Kangarats are faster if on lizard
 
--Catch Lizards now used the Tough Puppy instead
+~Catch Lizards now used the Tough Puppy instead
 
--Artifact race timer is tighter
+~Artifact race timer is tighter
 
--During the chase marauder sequence, the bridges have been removed
-
-
--Dune Hopper now has a burst fire
-
--Dune Hopper now has a custom purchasable secret
-
--Vehicles TTK has been altered
-
--Gila Stomper is heavier
+~During the chase marauder sequence, the bridges have been removed
 
 
--Costs of gun upgrades increased
+:Dune Hopper now has a burst fire
 
--Costs of side missions increased
+:Dune Hopper now has a custom purchasable secret
 
--New custom orbs (more in the future)
+:Vehicles TTK has been altered
 
--New secrets (more in the future)
-
--One Custom side mission
+:Gila Stomper is heavier
 
 
--Eco Creatures take no damage from the Morph Gun or Dark Jak Combos
+|Costs of gun upgrades increased
 
--Dark Satellite Mini Boss is faster, player now needs to be in the laser radius to move on to the next phase
+|Costs of side missions increased
 
--Metal Head Beasts are faster and turn more frequently; increase per death. Player now gains 1 gem per kill
+|New custom orbs (more in the future)
 
--Precursor Robot Boss is faster with a new stage in the fight
+|New secrets (more in the future)
 
--Robot enemies deal damage if caught in their explosive death
+|One Custom side mission
 
--Marauder vehicles deal damage if caught in their explosive death
 
--Flamer enemies are altered
+]Eco Creatures take no damage from the Morph Gun or Dark Jak Combos
+
+]Dark Satellite Mini Boss is faster, player now needs to be in the laser radius to move on to the next phase
+
+]Metal Head Beasts are faster and turn more frequently; increase per death. Player now gains 1 gem per kill
+
+]Precursor Robot Boss is faster with a new stage in the fight
+
+]Robot enemies deal damage if caught in their explosive death
+
+]Marauder vehicles deal damage if caught in their explosive death
+
+]Flamer enemies are altered
