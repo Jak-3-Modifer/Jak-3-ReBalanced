@@ -8,6 +8,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 ## Mod Details (as of latest)
 
+`Weapons and Ammo`
 -Beam Reflexor cost of ammo is 5; 10 with the increase deflections upgrade
 
 -Needle Lazer cost of ammo is 6 pre-ammo efficiency; cost of ammo is 3, ammo efficiency 
