@@ -24,6 +24,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 -Arc Welder does 1 damage per ammo use
 
+`Light Jak and Dark Jak`
 
 *Light Jak Melee/Shield deals damage to Eco Creatures and Dark Bipedals
 
@@ -31,6 +32,9 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 *Missions that encourage the use of Light Freeze
 
+*Dark Jak takes no damage from Dark Bipedals
+
+`Missions`
 
 ~Arenas have different challenges; Timed, no damage or no all ammo depletion
 
@@ -42,6 +46,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 ~During the chase marauder sequence, the bridges have been removed
 
+`Vehicles`
 
 :Dune Hopper now has a burst fire
 
@@ -51,6 +56,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 :Gila Stomper is heavier
 
+`Side Missions and Secerts`
 
 |Costs of gun upgrades increased
 
@@ -62,6 +68,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 |One Custom side mission
 
+`Enemies and Bosses`
 
 ]Eco Creatures take no damage from the Morph Gun or Dark Jak Combos
 
