@@ -79,7 +79,11 @@
 
 (deftype assault-spydroid (spydroid)
   ()
-  )
+  (:state-methods
+    knocked
+    )
+   )
+
 
 
 (deftype assault-flying-turret (flying-turret)
@@ -113,6 +117,64 @@
   )
 
 
+  (define *assault-spydroid-nav-enemy-info*
+  (copy *spydroid-nav-enemy-info* 'global)
+  )
+
+(set! (-> *assault-spydroid-nav-enemy-info* attack-mode) 'shock)
+
+
+(defmethod init-enemy! ((this assault-spydroid))
+  "Typical place for shared init code. Runs from entity or process style init."
+  (call-parent-method this)
+  (set-enemy-info! this *assault-spydroid-nav-enemy-info*)
+  (set! (-> this enemy-info attack-mode) 'shock)
+  (none)
+  )
+(defstate knocked (assault-spydroid)
+  :virtual #t
+  :enter (behavior ()
+    (sound-play "droid-explode")
+    (let ((v1-1 (-> self root root-prim)))
+  (set! (-> v1-1 prim-core collide-as) (collide-spec))
+  (set! (-> v1-1 prim-core collide-with) (collide-spec))
+  )
+    ;; removes le radial damage explosion. Mission impossible with this on
+    (cond
+      ((logtest? (-> group-kg-small-explosion flags) (sp-group-flag sp13))
+       (vector-copy!
+         (-> *launch-matrix* trans)
+         (vector+float*! (new 'stack-no-clear 'vector)
+                         (-> self root trans)
+                         *up-vector*
+                         2048.0)
+         )
+       (part-tracker-spawn
+         part-tracker-subsampler
+         :to *entity-pool*
+         :group group-kg-small-explosion)
+       )
+      (else
+        (vector-copy!
+          (-> *launch-matrix* trans)
+          (vector+float*! (new 'stack-no-clear 'vector)
+                          (-> self root trans)
+                          *up-vector*
+                          2048.0)
+          )
+        (part-tracker-spawn
+          part-tracker
+          :to *entity-pool*
+          :group group-kg-small-explosion)
+        )
+      )
+    (if (not (-> *setting-control* user-current gun-special-mode))
+        (drop-pickup (-> self fact) #t *entity-pool* (-> self fact) 0 #f)
+        )
+    (cleanup-for-death self)
+    )
+  :code sleep-code
+  )
 ;; WARN: Return type mismatch object vs none.
 (defmethod go-from-behavior ((this assault-metalhead-flitter) (arg0 traffic-object-spawn-params))
   (case (-> arg0 behavior)
@@ -151,6 +213,7 @@
     (enemy-falling-post)
     )
   )
+
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod go-from-behavior ((this assault-metalhead-grunt) (arg0 traffic-object-spawn-params))
