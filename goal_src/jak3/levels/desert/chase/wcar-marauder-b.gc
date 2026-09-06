@@ -59,7 +59,7 @@
                                                ;; four mission-target Marauders.
                                                :shot-count 4
                                                :rand-shot-count 0
-                                               :inaccuracy 0.13
+                                               :inaccuracy 0.35
                                                :acquire-delay (seconds 0.1)
                                                :shot-delay (seconds 0.08)
                                                :burst-delay (seconds 0.25)
