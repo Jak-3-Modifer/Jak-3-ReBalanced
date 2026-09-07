@@ -14,7 +14,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 -You start every weapon with no ammo, except the scatter gun; only one bullet
 
--Needle Lazer ammo cost is 6 pre-ammo efficiency; cost of ammo is 3 with ammo efficiency 
+-Needle Lazer ammo cost is 6 pre-ammo efficiency; ammo cost is 3 with ammo efficiency 
 
 -Blaster ammo pickup gives 3 instead of 10
 
