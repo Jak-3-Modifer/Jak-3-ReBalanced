@@ -14,11 +14,13 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 -You start every weapon with no ammo, except the scatter gun; only one bullet
 
--Needle Lazer cost of ammo is 6 pre-ammo efficiency; cost of ammo is 3 with ammo efficiency 
+-Needle Lazer ammo cost is 6 pre-ammo efficiency; cost of ammo is 3 with ammo efficiency 
 
 -Blaster ammo pickup gives 3 instead of 10
 
 -Blaster's rate of fire is slightly slower
+
+-Blaster deals 4 base damage and 5 with the damage upgrade
 
 -Wave Concussor gives a 5-meter boost in the air
 
