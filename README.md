@@ -50,7 +50,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 ~Kangarats are faster (if on lizard)
 
-~Catch Lizards now use the Tough Puppy instead
+~Catch Lizards now uses the Tough Puppy instead
 
 ~Artifact race 1 timer is tighter
 
