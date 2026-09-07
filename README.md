@@ -40,7 +40,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 *Missions that encourage the use of Light Freeze
 
-*Dark Jak takes no damage from Dark Bipedals and Eco creatures
+*Dark Jak is immune to Dark Bipedals and Eco creatures
 
 *Light Eco pickups have replaced green Eco pickups, except for one mission
 
