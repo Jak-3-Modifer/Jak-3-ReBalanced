@@ -86,7 +86,7 @@
     :vehicle-type (vehicle-type-u8 vt27)
     :transmission (new 'static 'vehicle-transmission-info :gear-count 1)
     :handling (new 'static 'vehicle-handling-info
-      :max-engine-thrust (meters 39)
+      :max-engine-thrust (meters 49)
       :inv-max-engine-thrust 0.000006260016
       :engine-response-rate 20.0
       :engine-intake-factor 1.0

@@ -5,6 +5,8 @@
 ;; name in dgo: artifact-race
 ;; dgos: DESRACE2, DESRACE1
 
+(define-extern *was-squad-control-artifact-race-1?* symbol)
+
 ;; +++artifact-type
 (defenum artifact-type
   :type uint8
@@ -342,6 +344,7 @@
    (dust-begin          float)
    (dust-last-artifact  float)
    (dust-end            float)
+   (second-last-reward-given? symbol)
    (ent                 entity-actor)
    (speech-callback     (function task-manager int none))
    (begin-pos           vector         :inline)
@@ -778,6 +781,7 @@
   (set! (-> this dust-last-artifact) 0.3)
   (set! (-> this dust-end) 0.6)
   (set! (-> this slave) (the-as handle #f))
+  (set! (-> this second-last-reward-given?) #f)
   (set! (-> this hit-point-scale) 1.0)
   (set! (-> this start-time) 0)
   (set! (-> this time-limit) (seconds 180))
@@ -843,11 +847,11 @@
                                  (cond
                                    ((= s4-0 0) 22.0)
                                    ((= s4-0 1) 9.0)
-                                   ((= s4-0 2) 15.0)
+                                   ((= s4-0 2) 16.0)
                                    ((= s4-0 3) 14.0)
                                    ((= s4-0 4) 12.0)
-                                   ((= s4-0 5) 27.0)
-                                   ((= s4-0 6) 27.0)
+                                   ((= s4-0 5) 17.0)
+                                   ((= s4-0 6) 17.0)
                                    ((= s4-0 7) 10.0)
                                    ((= s4-0 8) 10.0)
                                    ((= s4-0 9) 12.0)
@@ -879,6 +883,7 @@
 
 (defmethod task-manager-method-25 ((this task-manager-desert-artifact-race))
   (set! (-> *was-squad-control* target-count) 0)
+  (set! *was-squad-control-artifact-race-1?* #f)
   0
   ((method-of-type task-manager task-manager-method-25) this)
   (none)
@@ -937,6 +942,8 @@
       (set! (-> v1-51 target-count) (-> self target-count))
       (set! (-> v1-51 reserve-count) 40)
       (set! (-> v1-51 target-speed) (-> self target-speed))
+      (set! *was-squad-control-artifact-race-1?*
+            (= (-> self node-info task) (game-task desert-artifact-race-1)))
       )
     (until #f
       (b! (not (handle->process (-> self slave))) cfg-56 :delay (nop!))
@@ -950,6 +957,14 @@
       (label cfg-56)
       (let ((gp-2 (-> self count)))
         (b! (>= gp-2 (-> self max-count)) cfg-66)
+        (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+                   (= gp-2 (+ (-> self max-count) -1))
+                   (not (-> self second-last-reward-given?)))
+          ;; Reward Artifact Race 1 once when the second-to-last artifact
+          ;; has been collected and the final artifact is about to spawn.
+          (give *game-info* 'skill 1.0 (the-as handle #f))
+          (set! (-> self second-last-reward-given?) #t)
+          )
         (let ((s5-1 (-> self objs gp-2)))
           (let ((a0-40 (was-artifact-spawn self s5-1)))
             (b! (not a0-40) cfg-65 :delay (empty-form))
@@ -1100,6 +1115,7 @@
   :virtual #t
   :enter (behavior ((arg0 resetter-params))
     (set! (-> *was-squad-control* target-count) 0)
+    (set! *was-squad-control-artifact-race-1?* #f)
     0
     (kill-all-children self)
     (let* ((t9-1 find-parent-method)

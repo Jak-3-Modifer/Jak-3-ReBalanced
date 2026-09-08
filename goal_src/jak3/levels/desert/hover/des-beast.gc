@@ -24,6 +24,11 @@
 (define-extern *curve-grenade-explo-scale-x* curve2d-fast)
 (define-extern *curve-grenade-explo-scale-y* curve2d-fast)
 
+;; For mission destroy metal head beasts, this is to keep the player out of the Sand Shark after the
+;; final Beast's forced ejection. It is reset when the mission starts or
+;; retries, so it cannot affect vehicle entry outside this mission.
+(define *desert-hover-vehicle-locked-out* (the-as object #f))
+
 ;; DECOMP BEGINS
 
 (when (or (zero? *curve-beast-linear-up-red*) (!= loading-level global))
@@ -1385,9 +1390,10 @@
   )
 
 (defun des-beast-turn-speed-factor ((arg0 des-beast))
-  "Preserve each Metal Head Hunt stage's movement increase after a turn."
+  "Preserve each Metal Head Hunt stage's movement setting after a turn."
   (if (< (-> arg0 hit-points2) 0.0)
-      1.55
+      ;; The final phase is intentionally 10% slower than the first Beast.
+      0.9
       (cond
         ((zero? (+ (-> arg0 shoot-delay) (seconds -5))) 0.9)
         ((zero? (+ (-> arg0 shoot-delay) (seconds -4))) 1.125)
@@ -1588,6 +1594,16 @@
 (defstate falling (des-beast)
   :virtual #t
   :event enemy-event-handler
+  :enter (behavior ()
+    ;; The final Beast's phase-one defeat forces Jak out of the vehicle.
+    (when (and *target*
+               (< 0.0 (-> self hit-points2))
+               (zero? (+ (-> self shoot-delay) (seconds -2)))
+               (focus-test? *target* pilot-riding))
+      (set! *desert-hover-vehicle-locked-out* #t)
+      (send-event *target* 'change-mode 'normal)
+      )
+    )
   :code (behavior ()
     (ja-channel-push! 1 0)
     (ja :group! des-beast-fall-forward-ja)
@@ -1640,8 +1656,8 @@
   :virtual #t
   :event enemy-event-handler
   :exit (behavior ()
-    ;; This transition is only reached by the final Beast's second phase.
-    (set! (-> self hit-points) 225.0)
+    ;; This transition is only reached by the final Beast's second phase. below is second phase hp
+    (set! (-> self hit-points) 100.0)
     (set! (-> self hit-points2) -1.0)
     )
   :code (behavior ()
@@ -1658,6 +1674,8 @@
       (ja :num! (seek! max 0.5))
       (set! v1-25 (!= (-> self jitter) 0.0))
       )
+    ;; Give the fallen animation a short beat before the Beast stands again.
+    (suspend-for (seconds 3.0))
     (go-virtual get-up)
     )
   :post (behavior ()
@@ -1681,9 +1699,9 @@
       )
     (set! (-> self path-pos) (- (-> self path-pos) (-> self path-pos-speed)))
     (des-beast-method-163 self)
-    ;; The final Beast's phase two runs 55% faster than vanilla.
-    (set! (-> self main-speed-factor) 1.55)
-    (set! (-> self main-speed-factor-dest) 1.55)
+    ;; The final Beast's phase two runs 10% slower than the first Beast. to make the fight easier, hello?
+    (set! (-> self main-speed-factor) 0.9)
+    (set! (-> self main-speed-factor-dest) 0.9)
     (set! (-> self path-pos-speed) (- (-> self path-pos-speed)))
     (set! (-> self run-start-frame) 18.0)
     (go-virtual idle)

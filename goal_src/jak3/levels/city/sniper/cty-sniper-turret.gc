@@ -1360,7 +1360,7 @@
   (set! (-> this move) cty-sniper-turret-shot-move)
   (set! (-> this update-velocity) projectile-update-velocity-space-wars)
   (set! (-> this timeout) (seconds 0.5))
-  (set! (-> this damage) 2.0)
+  (set! (-> this damage) 12.0)
   (set! (-> this vehicle-damage-factor) 0.5)
   (logior! (-> this options) (projectile-options po13))
   (set-gravity-length (-> this root dynam) 573440.0)

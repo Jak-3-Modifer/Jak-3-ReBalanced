@@ -527,7 +527,8 @@
 
 (define *for-turret-params* (new 'static 'target-turret-params
                               :fire-interval (seconds 0.15)
-                              :max-health 16.0
+                              ;; Forest Turn on Machine turrets are 15 HP.
+                              :max-health 15.0
                               :roty-accel -109226.664
                               :roty-friction 0.92
                               :rotyv-max 32768.0
@@ -634,13 +635,61 @@
   :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
     (case message
       (('grab)
-       (when (not (-> self rider))
+       (when (and (or (!= (-> self task-node-id) 245)
+                      (and *target*
+                           (focus-test? *target* dark)
+                           (nonzero? (-> *target* darkjak))))
+                  (not (-> self rider)))
          (set! (-> self rider) (process->handle proc))
          (go-virtual gunner-setup)
          )
        )
+      (('pickup)
+       (when (or (!= (-> self task-node-id) 245)
+                 (and *target*
+                      (focus-test? *target* dark)
+                      (nonzero? (-> *target* darkjak))))
+         (when (send-event proc 'change-mode 'turret self)
+           (set! (-> self rider) (process->handle proc))
+           (go-virtual setup)
+           )
+         )
+       )
       (else
         ((-> (method-of-type target-turret idle) event) proc argc message block)
+        )
+      )
+    )
+  :trans (behavior ()
+    ;; Preserve the vanilla turret transition/input path. For the Forest
+    ;; machine mission the normal entry path is blocked by method-41 below,
+    ;; while this prompt remains available near the turret.
+    (let ((t9-0 (-> (method-of-type target-turret idle) trans)))
+      (if t9-0
+          ((the-as (function none) t9-0))
+          )
+      )
+    (when (and (= (-> self task-node-id) 245)
+               *target*
+               (not (and (focus-test? *target* dark) (nonzero? (-> *target* darkjak))))
+               (< (vector-vector-distance (-> self root trans) (-> *target* control trans)) 36864.0)
+               (logtest? (-> *target* control status) (collide-status on-surface))
+               (can-display-query? self "forest-turn-on-machine-turret" -99.0)
+               )
+      (let ((font-ctx
+              (new 'stack 'font-context *font-default-matrix* 32 290 0.0 (font-color default) (font-flags shadow kerning))
+              )
+            )
+        (set! (-> font-ctx flags) (font-flags shadow kerning middle middle-vert large))
+        (set-width! font-ctx 440)
+        (set-height! font-ctx 80)
+        (set-scale! font-ctx 0.8)
+        (format
+          (clear *temp-string*)
+          "Press ~S to Summon Dark Power"
+          (lookup-text! *common-text* (text-id progress-controls-pad-r2) #f)
+          )
+        (print-game-text *temp-string* font-ctx #f 44 (bucket-id hud-draw-hud-alpha))
         )
       )
     )
@@ -1077,7 +1126,11 @@
 (defmethod target-turret-method-41 ((this for-turret))
   (and (-> *setting-control* user-current pilot)
        *target*
-       (not (focus-test? *target* in-head light board mech dark))
+       ;; Only the Forest Turn on Machine turrets require active Dark Jak.
+       ;; Preserve the vanilla eligibility rules for any other for-turret use.
+       (if (= (-> this task-node-id) 245)
+           (and (focus-test? *target* dark) (nonzero? (-> *target* darkjak)))
+           (not (focus-test? *target* in-head light board mech dark)))
        (and *target* (and (>= 36864.0 (vector-vector-distance (-> this root trans) (-> *target* control trans)))
                           (not (logtest? (focus-status teleporting) (-> *target* focus-status)))
                           )
@@ -1274,6 +1327,15 @@
        )
       (('neo-juicer-shot)
        (seek! (-> this health) 0.0 (seconds-per-frame))
+       (set-time! (-> this focus-ignore-timer))
+       )
+      ;; Let Jak's Morph Gun damage the mission turret directly.
+      (('eco-yellow 'eco-red 'eco-blue 'eco-dark)
+       (set! (-> this health) (fmax 0.0 (- (-> this health) (-> arg0 damage))))
+       (activate! (-> this smush-control) 0.2 15 75 1.0 0.9 (-> *display* entity-clock))
+       (cpad-set-buzz! (-> *cpad-list* cpads 0) 1 204 (seconds 0.1))
+       (sound-play "turret-take-hit")
+       (set! (-> this red-filter-timer) (+ (current-time) (seconds 0.08)))
        (set-time! (-> this focus-ignore-timer))
        )
       )

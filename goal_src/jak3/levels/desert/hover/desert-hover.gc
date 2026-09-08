@@ -59,6 +59,27 @@
 
 (define *desert-hover-checkpoint-valid* (the-as object #f))
 
+;; After the final Beast ejects Jak, the Sand Shark cannot be boarded again
+;; until this mission is restarted. This is scoped by the mission flag above.
+(defmethod check-player-get-on ((this v-snake) (arg0 process-focusable))
+  (if *desert-hover-vehicle-locked-out*
+      #f
+      ((method-of-type vehicle check-player-get-on) this arg0)
+      )
+  )
+
+(defun desert-hover-refill-ammo! ()
+  ;; A retry starts with every currently available gun at its normal maximum.
+  (when *target*
+    (send-event *target* 'get-pickup (pickup-type ammo-yellow) 1000.0)
+    (send-event *target* 'get-pickup (pickup-type ammo-red) 1000.0)
+    (send-event *target* 'get-pickup (pickup-type ammo-blue) 1000.0)
+    (send-event *target* 'get-pickup (pickup-type ammo-dark) 1000.0)
+    )
+  0
+  (none)
+  )
+
 (defmethod on-fail ((this task-manager-desert-hover) (arg0 symbol))
   ;; Target death goes straight through task-manager's event handler, so save
   ;; the earned three-Beast checkpoint here before the life reset begins.
@@ -73,6 +94,7 @@
 (defstate active (task-manager-desert-hover)
   :virtual #t
   :enter (behavior ()
+    (set! *desert-hover-vehicle-locked-out* #f)
     (set-setting! 'extra-bank '((desert2 desbst1)) 0.0 0)
     (let ((t1-1 2))
       (set-setting! 'vehicles 'set (shr t1-1 32) t1-1)
@@ -86,6 +108,7 @@
     (spawn-dust-storm-randomizer self)
     )
   :exit (behavior ()
+    (set! *desert-hover-vehicle-locked-out* #f)
     (stop-main-music)
     )
   :code sleep-code
@@ -96,6 +119,8 @@
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
     (t9-0 this)
     )
+  (set! *desert-hover-vehicle-locked-out* #f)
+  (desert-hover-refill-ammo!)
   (set! (-> this end-time) 0)
   (set! (-> this hud-counter)
         (ppointer->handle (process-spawn hud-beast :init hud-init-by-other :name "hud-beast" :to this))
@@ -212,7 +237,7 @@
                                       #f)
                                   des-beast)))
               ;; A negative secondary health value marks the final Beast's
-              ;; phase two, whose 1.55 speed must remain untouched.
+              ;; phase two, whose slower 0.9 speed must remain untouched.
               (when (and beast
                          (< 0.0 (-> beast hit-points2))
                          (!= (-> beast shoot-delay) s4-0)

@@ -488,7 +488,7 @@
     (if (and *target* (focus-test? *target* pilot-riding))
         (turbo-pickup-spawn (-> self root trans))
         )
-    ;; cars use the same reliable radial explosion setup as robot enemies 
+    ;; cars use the same reliable radial explosion setup as the robots
     (when (-> self oasis-explosion?)
       (let ((blast (new 'stack-no-clear 'explosion-init-params)))
         (vector-copy! (-> blast spawn-point) (-> self root trans))

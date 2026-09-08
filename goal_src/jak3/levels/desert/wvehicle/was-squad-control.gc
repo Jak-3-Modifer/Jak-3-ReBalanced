@@ -42,6 +42,8 @@
     )
   )
 
+(define *was-squad-control-artifact-race-1?* #f)
+
 
 (defmethod initialize ((this was-squad-control) (arg0 process))
   (format #t "was-squad-control::initialize~%")
@@ -80,6 +82,7 @@
                                    )
                                  )
         )
+  (set! *was-squad-control-artifact-race-1?* #f)
   ((method-of-type squad-control init-alert) this)
   (none)
   )
@@ -183,6 +186,13 @@
           )
         (set! (-> s5-1 2 uvec y) 0.0)
         (vector-normalize! (-> s5-1 2 uvec) 1.0)
+        (when *was-squad-control-artifact-race-1?*
+          ;; Artifact Race 1 uses a fixed 170-degree spawn angle relative
+          ;; to the vehicle's heading. The vehicle's front is 90 degrees.
+          (vector-z-quaternion! (-> s5-1 2 uvec) (-> (the-as process-drawable s4-0) root quat))
+          (set! (-> s5-1 2 uvec y) 0.0)
+          (vector-normalize! (-> s5-1 2 uvec) 1.0)
+          )
         (vector-rotate90-around-y! (-> s5-1 2 fvec) (-> s5-1 2 uvec))
         (cond
           (#f
@@ -200,7 +210,14 @@
             )
           (else
             (set! (-> s5-1 3 uvec y) 1228800.0)
-            (set! (-> s5-1 3 uvec x) (rand-vu-float-range -5461.3335 5461.3335))
+            (set! (-> s5-1 3 uvec x)
+                  (if *was-squad-control-artifact-race-1?*
+                      ;; The spawn calculation uses 0 degrees as forward,
+                      ;; while the vehicle-angle convention uses 90 degrees
+                      ;; as forward. Vehicle 170 degrees is therefore an
+                      ;; 80-degree calculation angle.
+                      14563.556
+                      (rand-vu-float-range -5461.3335 5461.3335)))
             (vector+float*!
               (-> s5-1 2 trans)
               (-> (the-as process-drawable s4-0) root trans)
