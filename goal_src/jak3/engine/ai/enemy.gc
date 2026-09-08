@@ -2181,10 +2181,14 @@
       ((and (logtest? (penetrate jak-dark-nuke) (-> this incoming penetrate-using)) (can-be-nuked? this))
        'go-gun-dark-3-nuke
        )
-      ;; Player yellow-gun shots use the standard hit state so enemies visibly
-      ;; flinch instead of being sent into the full knocked state.
-      ((logtest? (penetrate jak-yellow-shot) gp-0)
-       'hit
+      ;; Standard Morph Gun projectiles only enter knocked on a lethal hit.
+      ;; Living enemies keep their normal hit reaction, while zero-HP enemies
+      ;; reach the knocked state that drives their death animation.
+      ((logtest? (penetrate jak-yellow-shot jak-red-shot jak-blue-shot jak-dark-shot) gp-0)
+       (if (>= 0.0 (-> this hit-points))
+           'hit-knocked
+           'hit
+           )
        )
       ((logtest? gp-0 (-> this penetrate-flinch))
        'hit-flinch

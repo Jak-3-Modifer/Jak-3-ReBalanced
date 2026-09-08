@@ -274,7 +274,19 @@
           (new 'static 'sound-id)
           )
         (if (< (-> this end-time) (current-time))
-            (send-event this 'complete)
+            (begin
+              ;; Award one additional skull gem once the whole mission is
+              ;; complete, after all four Beast rewards have been earned.
+              (when *target*
+                (send-event *target* 'get-pickup (pickup-type gem) 1.0)
+                )
+              (set! *desert-hover-checkpoint-mask* (the-as uint 0))
+              (set! *desert-hover-checkpoint-valid* (the-as object #f))
+              ;; Prevent another reward if the complete-state transition is
+              ;; deferred until the following frame.
+              (set! (-> this end-time) (+ (current-time) (seconds 60)))
+              (send-event this 'complete)
+              )
             )
         )
       (cond

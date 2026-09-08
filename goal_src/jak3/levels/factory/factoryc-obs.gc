@@ -349,7 +349,7 @@
                 #f
                 (static-attack-info
                   :mask (vehicle-impulse-factor)
-                  ((id (new-attack-id)) (damage 2.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'shock))
+                  ((id (new-attack-id)) (damage 16.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'shock))
                   )
                 )
               )
@@ -513,7 +513,7 @@
             #f
             (static-attack-info
               :mask (vehicle-impulse-factor)
-              ((id (new-attack-id)) (damage 2.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'burn))
+              ((id (new-attack-id)) (damage 16.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'burn))
               )
             )
           )
