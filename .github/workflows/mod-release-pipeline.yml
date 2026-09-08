@@ -220,12 +220,11 @@ jobs:
     if: ${{ !inputs.skipLinux && inputs.buildBinaries }}
     runs-on: ubuntu-latest
     steps:      
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.create_release.outputs.bundleTagName }}
 
       - name: "Checkout Repository"
         uses: actions/checkout@v4
+        with:
+         ref: ${{ github.sha }}
 
       - name: Prepare Artifact Folder
         run: mkdir -p ./ci-artifacts
