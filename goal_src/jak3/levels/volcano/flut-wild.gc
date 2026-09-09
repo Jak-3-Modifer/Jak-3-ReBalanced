@@ -804,6 +804,14 @@
   "Commmon handler for events."
   (case arg2
     (('hit 'hit-knocked)
+     ;; A lava frog's rolling attack is lethal to wild Fluts.  Force the
+     ;; existing knocked/death path after collision damage has been applied.
+     (when (and (= (-> arg0 type) spiky-frog)
+                (-> (the-as spiky-frog arg0) next-state)
+                (= (-> (the-as spiky-frog arg0) next-state name) 'rolling)
+                )
+       (set! (-> this hit-points) 0.0)
+       )
      (logclear! (-> this mask) (process-mask actor-pause))
      (logclear! (-> this focus-status) (focus-status dangerous))
      (logclear! (-> this enemy-flags) (enemy-flag use-notice-distance))

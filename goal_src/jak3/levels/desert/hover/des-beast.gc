@@ -1397,7 +1397,8 @@
       (cond
         ((zero? (+ (-> arg0 shoot-delay) (seconds -5))) 0.9)
         ((zero? (+ (-> arg0 shoot-delay) (seconds -4))) 1.125)
-        ((zero? (+ (-> arg0 shoot-delay) (seconds -3))) 1.215)
+        ;; With two Beasts remaining, turning grants a brief 1.35x run boost.
+        ((zero? (+ (-> arg0 shoot-delay) (seconds -3))) 1.35)
         (else 1.305)
         )
       )
@@ -1457,6 +1458,13 @@
     (if (and (!= (-> self s-clock) 1.0) *camera*)
         (vector-copy! (-> *camera* slave 0 trans) *beast-camera-slow-motion*)
         )
+    ;; A two-Beast-stage turnaround boosts movement for two seconds, then
+    ;; returns to that stage's normal 1.15x speed.
+    (when (and (= (-> self shoot-delay) (seconds 3))
+               (= (-> self main-speed-factor-dest) 1.35)
+               (time-elapsed? (-> self state-time) (seconds 2)))
+      (set! (-> self main-speed-factor-dest) 1.15)
+      )
     (let ((gp-0 (new 'stack-no-clear 'vector)))
       (let* ((a1-0 (the int (the float (the int (-> self path-pos)))))
              (v1-9 (+ a1-0 1))
@@ -1574,7 +1582,8 @@
     (ja-channel-push! 1 0)
     (ja :group! des-beast-turn180-ja)
     (until (ja-done? 0)
-      (ja :num! (seek! max (* (-> self main-speed-factor) (-> self speed-factor))))
+      ;; Play the turnaround 20% faster than its movement-speed baseline.
+      (ja :num! (seek! max (* 1.2 (-> self main-speed-factor) (-> self speed-factor))))
       (des-beast-method-162 self)
       (suspend)
       )

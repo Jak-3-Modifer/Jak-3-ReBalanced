@@ -19,6 +19,11 @@
 (define-extern *master-exit* symbol)
 (declare-type crate process-focusable)
 
+;; The Mine ambience is an independent stream mixed from the SFX slider.  It
+;; intentionally coexists with scene and mission music such as minexplr.
+(define *mine-custom-sfx-ambience* #f)
+(define *nest-custom-sfx-ambience* #f)
+
 ;; DECOMP BEGINS
 
 (defun get-current-language ()
@@ -1595,14 +1600,33 @@
         (when (!= (-> s5-0 sfx-volume) (-> s4-0 sfx-volume))
           (seek! (-> s5-0 sfx-volume) (-> s4-0 sfx-volume) (-> *display* real-clock seconds-per-frame))
           (sound-set-volume (sound-group sfx) (-> s5-0 sfx-volume))
+          ;; Custom ambience is streamed through the independent main-music
+          ;; channel, but belongs to the SFX mix in the Options menu.
+          (cond
+            (*mine-custom-sfx-ambience*
+             (main-music-volume (the int (* 20.0 (-> s5-0 sfx-volume))))
+             )
+            (*nest-custom-sfx-ambience*
+             (main-music-volume (the int (* 20.0 (-> s5-0 sfx-volume))))
+             )
+            ((or (= (-> s5-0 music) 'forest-custom-main-music)
+                 (= (-> s5-0 music) 'wasdoors-custom-main-music))
+             (main-music-volume (the int (* 25.0 (-> s5-0 sfx-volume))))
+             )
+            )
           )
         (when (!= (-> s5-0 music-volume) (-> s4-0 music-volume))
           (seek! (-> s5-0 music-volume) (-> s4-0 music-volume) (-> *display* real-clock seconds-per-frame))
           (sound-set-volume (sound-group music) (* 0.75 (-> s5-0 music-volume)))
           ;; Main-music files are played outside the regular music sound group.
-          ;; Keep custom main music capped at 38%, while still following the
-          ;; Options music-volume dial in real time.
-          (main-music-volume (the int (* 38.0 (-> s5-0 music-volume))))
+          ;; Non-ambient files still follow the Options music-volume dial.
+          (when (and (not *mine-custom-sfx-ambience*)
+                     (not *nest-custom-sfx-ambience*)
+                     (!= (-> s5-0 music) 'forest-custom-main-music)
+                     (!= (-> s5-0 music) 'wasdoors-custom-main-music)
+                     )
+            (main-music-volume (the int (* 38.0 (-> s5-0 music-volume))))
+            )
           )
         (when (!= (-> s5-0 dialog-volume) (-> s4-0 dialog-volume))
           (seek! (-> s5-0 dialog-volume) (-> s4-0 dialog-volume) (-> *display* real-clock seconds-per-frame))
@@ -1654,14 +1678,29 @@
                       (not *master-exit*)
                       )
                  )
+        ;; Custom ambience shares the main-music stream with scene music.  Let
+        ;; ordinary music transitions stop it for a scene and restart it when
+        ;; that scene releases its temporary music override.
+        (when (or (= (-> s5-0 music) 'forest-custom-main-music)
+                  (= (-> s5-0 music) 'wasdoors-custom-main-music))
+          (stop-main-music)
+          )
         (cond
+          ((= (-> s4-0 music) 'forest-custom-main-music)
+           (format 0 "Load custom Forest ambience~%")
+           (sound-music-unload)
+           (play-main-music
+             "music/Haven_Forest.flac"
+             (the int (* 25.0 (-> s5-0 sfx-volume))))
+           )
+          ((= (-> s4-0 music) 'wasdoors-custom-main-music)
+           (format 0 "Load custom Wasdoors ambience~%")
+           (sound-music-unload)
+           (play-main-music
+             "music/wasdoors.flac"
+             (the int (* 25.0 (-> s5-0 sfx-volume))))
+           )
           ((-> s4-0 music)
-           (when (= (-> s5-0 music) 'forest-custom-main-music)
-              ;; This channel loops independently of streamed level music.  Stop
-              ;; it synchronously so a level transition cannot strand the Forest
-              ;; track if a background fade process is suspended or discarded.
-              (stop-main-music)
-              )
            (format 0 "Load music ~A~%" (-> s4-0 music))
            (set! (-> s5-0 sound-flava) (the-as uint 0))
            (sound-music-load (string->sound-name (symbol->string (-> s4-0 music))))

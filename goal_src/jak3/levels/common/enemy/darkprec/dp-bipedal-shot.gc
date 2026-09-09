@@ -13,6 +13,18 @@
   )
 
 
+(defmethod deal-damage! ((this dp-bipedal-grenade-shot) (arg0 process) (arg1 event-message-block))
+  ;; Dark Jak is immune to the Dark Bipedal grenade's direct hit and blast.
+  (if (and (= (-> arg0 type) target)
+           (focus-test? (the-as target arg0) dark)
+           (nonzero? (-> (the-as target arg0) darkjak))
+           )
+      #f
+      ((method-of-type projectile deal-damage!) this arg0 arg1)
+      )
+  )
+
+
 (defmethod projectile-method-26 ((this dp-bipedal-grenade-shot))
   (cond
     ((logtest? (-> group-dp-bipedal-grenade-shot-hit flags) (sp-group-flag sp13))

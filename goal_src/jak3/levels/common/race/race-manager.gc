@@ -247,9 +247,18 @@
                 )
               )
             (let ((f0-10 (-> arg0 info ai-max-speed-factor)))
-              (if (< (+ (-> arg0 target-pos) (-> this target-pos-offset)) (-> this pos))
+              ;; Race 1 racers use a fixed speed, rather than slowing down
+              ;; when they move ahead of the player or catching up when behind.
+              (if (and (not (= (-> arg0 info task-node) (game-task-node desert-course-race-race)))
+                       (< (+ (-> arg0 target-pos) (-> this target-pos-offset)) (-> this pos)))
                   (set! f0-10 (-> arg0 info ai-min-speed-factor))
                   )
+              ;; Klevier is rider 2 in the first Desert Course Race.  Keep the
+              ;; speed boost local to that one opponent and race configuration.
+              (when (and (= (-> arg0 info task-node) (game-task-node desert-course-race-race))
+                         (= (-> this rider) 2))
+                (set! f0-10 (* f0-10 1.3))
+                )
               (seek! (-> this speed-factor) f0-10 (* 0.2 (seconds-per-frame)))
               )
             0

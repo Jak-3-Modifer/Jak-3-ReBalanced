@@ -3566,6 +3566,11 @@
   (none)
   )
 
+(define *wasdoors-ambience-center*
+  (new 'static 'vector :x 9284602.0 :y 125607.94 :z 757338.1 :w 1.0))
+
+(define *wasdoors-ambience-radius* (meters 55))
+
 (defmethod level-update ((this level-group))
   "Per-frame update of the level system."
   (local-vars (v1-109 symbol))
@@ -3595,12 +3600,32 @@
     )
   (update! *load-state*)
   (let ((s5-2 (level-get-target-inside this)))
-    ;; The Forest track uses the independent looping main-music channel.  Stop
-    ;; it as soon as the target is outside the Forest, including the streaming
+    ;; Custom ambience uses the independent looping main-music channel.  Stop
+    ;; it as soon as the target leaves its exact area, including the streaming
     ;; gap where there is temporarily no target level to request new music.
     (when (and (= (-> *setting-control* user-default music) 'forest-custom-main-music)
                (or (not s5-2) (!= (-> s5-2 info taskname) 'forest)))
       (stop-main-music)
+      )
+    (when (and (= (-> *setting-control* user-default music) 'wasdoors-custom-main-music)
+               (or (!= (level-status? this 'wasdoors #f) 'active)
+                   (>= (vector-vector-xz-distance *wasdoors-ambience-center* (target-pos 0))
+                       *wasdoors-ambience-radius*)))
+      (stop-main-music)
+      )
+    (when (and *mine-custom-sfx-ambience*
+               (or (not s5-2)
+                   (and (!= (-> s5-2 name) 'minea)
+                        (!= (-> s5-2 name) 'mineb)
+                        (!= (-> s5-2 name) 'minec))))
+      (stop-main-music)
+      (set! *mine-custom-sfx-ambience* #f)
+      )
+    (when (and *nest-custom-sfx-ambience*
+               (or (not s5-2)
+                   (!= (-> s5-2 info taskname) 'nest)))
+      (stop-main-music)
+      (set! *nest-custom-sfx-ambience* #f)
       )
     (dotimes (s4-1 (-> this length))
       (let ((s3-0 (-> this level s4-1)))
@@ -3618,26 +3643,59 @@
             )
           (when (and (= s3-0 s5-2)
                      (begin
-                       ;; Haven Forest uses a custom main-music file instead of the
-                       ;; normal forplkil sound bank.  Keep a sentinel in the music
-                       ;; setting so the level update cannot reload the vanilla bank
-                       ;; every frame while the custom file is playing.
-                       (if (= (-> s3-0 info taskname) 'forest)
-                           (begin
-                             (when (!= (-> *setting-control* user-default music) 'forest-custom-main-music)
-                               (sound-music-unload)
-                               (stop-main-music)
-                               (play-main-music
-                                 "music/Haven_Forest.flac"
-                                 (the int (* 25.0 (-> *setting-control* user-default music-volume))))
-                               )
-                             (set! (-> *setting-control* user-default music) 'forest-custom-main-music)
-                             (set! (-> *setting-control* user-current music) 'forest-custom-main-music)
-                             )
-                           (begin
-                             (set! (-> *setting-control* user-default music) (-> s3-0 info music-bank))
-                             )
+                       ;; Keep sentinels for custom main-music files so the level
+                       ;; update cannot reload a vanilla bank every frame.
+                       (cond
+                         ((= (-> s3-0 info taskname) 'forest)
+                          (set! (-> *setting-control* user-default music) 'forest-custom-main-music)
+                          )
+                         ((and (= (level-status? this 'wasdoors #f) 'active)
+                               (< (vector-vector-xz-distance *wasdoors-ambience-center* (target-pos 0))
+                                  *wasdoors-ambience-radius*))
+                         (set! (-> *setting-control* user-default music) 'wasdoors-custom-main-music)
+                         )
+                         ((or (= (-> s3-0 name) 'minea)
+                              (= (-> s3-0 name) 'minec))
+                          (when (!= *mine-custom-sfx-ambience* 'mine-ac)
+                            (stop-main-music)
+                            (play-main-music
+                              "music/mine_level.flac"
+                              (the int (* 20.0 (-> *setting-control* user-current sfx-volume))))
+                            (set! *mine-custom-sfx-ambience* 'mine-ac)
+                            )
+                          ;; Keep the normal Mine music setting available so
+                          ;; catacombs-travel-res can hand off to minexplr while
+                          ;; this independent SFX ambience continues underneath.
+                          (set! (-> *setting-control* user-default music) (-> s3-0 info music-bank))
+                          )
+                         ((= (-> s3-0 name) 'mineb)
+                          (when (!= *mine-custom-sfx-ambience* 'mine-b)
+                            (stop-main-music)
+                            (play-main-music
+                              "music/mine_level_II.flac"
+                              (the int (* 20.0 (-> *setting-control* user-current sfx-volume))))
+                            (set! *mine-custom-sfx-ambience* 'mine-b)
+                            )
+                          ;; Mine B keeps its regular level music alongside the
+                          ;; independently streamed custom SFX ambience.
+                          (set! (-> *setting-control* user-default music) (-> s3-0 info music-bank))
+                          )
+                         ((= (-> s3-0 info taskname) 'nest)
+                          (when (!= *nest-custom-sfx-ambience* 'nest)
+                            (stop-main-music)
+                            (play-main-music
+                              "music/nest.flac"
+                              (the int (* 20.0 (-> *setting-control* user-current sfx-volume))))
+                            (set! *nest-custom-sfx-ambience* 'nest)
+                            )
+                          ;; Preserve Nest's normal music setting alongside
+                          ;; the independent SFX ambience stream.
+                          (set! (-> *setting-control* user-default music) (-> s3-0 info music-bank))
+                          )
+                         (else
+                           (set! (-> *setting-control* user-default music) (-> s3-0 info music-bank))
                            )
+                         )
                        (set! (-> *setting-control* user-default sound-reverb) (-> s3-0 info sound-reverb))
                        #t
                        )

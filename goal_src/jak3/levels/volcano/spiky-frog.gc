@@ -651,7 +651,7 @@
       )
     0
     (nav-enemy-method-177 self)
-    (set! (-> self nav target-speed) (meters 18))
+    (set! (-> self nav target-speed) (meters 28))
     )
   :exit (behavior ()
     (logclear! (-> self enemy-flags) (enemy-flag lock-focus))

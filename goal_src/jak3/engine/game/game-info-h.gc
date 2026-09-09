@@ -307,6 +307,8 @@
     (skill-high-watermark    float)
     (custom-orbs-mask-0      uint64)
     (custom-orbs-mask-1      uint64)
+    (custom-orbs-mask-2      uint64)
+    (custom-orbs-mask-3      uint64)
     (light-crystal           float)
    (dark-crystal            float)
    (karma                   float)
