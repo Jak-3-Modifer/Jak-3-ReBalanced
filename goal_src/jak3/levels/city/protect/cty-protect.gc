@@ -7,6 +7,75 @@
 
 ;; DECOMP BEGINS
 
+(define *protect-terry-handle* (the-as handle #f))
+
+(define *protect-spawning-terry?* #f)
+
+;; Direct health values for the fixed-layout Protect HQ boss HUD.
+(define *protect-terry-hud-hit-points-max* 400.0)
+(define *protect-terry-hud-hit-points* 400.0)
+
+(deftype hud-protect-terry-health (hud)
+  ()
+  )
+
+
+(defmethod draw ((this hud-protect-terry-health))
+  ;; Like the Hero Mode Plus health bars, derive the fill from explicit live
+  ;; HP and maximum HP instead of the generic HUD counter interpolation.
+  (let ((f0-0 (if (< 0.0 *protect-terry-hud-hit-points-max*)
+                  (fmax 0.0 (fmin 1.0 (/ *protect-terry-hud-hit-points* *protect-terry-hud-hit-points-max*)))
+                  0.0)))
+    ;; Use the original Jetboard-health frame.  Its centre is transparent, so
+    ;; the red live-health fill remains visible behind its metal border.
+    (set-hud-piece-position! (-> this sprites 0) 256 34)
+    (set! (-> this sprites 0 pos z) #xfffff0)
+    (set-hud-piece-position! (-> this sprites 1) (the int (+ 148.0 (* 108.0 f0-0))) 34)
+    (set! (-> this sprites 1 pos z) #xffffef)
+    (set! (-> this sprites 1 scale-x) (* 13.5 f0-0))
+    )
+  ((method-of-type hud draw) this)
+  0
+  (none)
+  )
+
+(defmethod update-values! ((this hud-protect-terry-health))
+  (let ((terry (handle->process *protect-terry-handle*)))
+    (if terry
+        (set! *protect-terry-hud-hit-points* (fmax 0.0 (-> (the-as roboguard-city terry) hit-points)))
+        (set! *protect-terry-hud-hit-points* 0.0)
+        )
+    )
+  (logclear! (-> this flags) (hud-flags disable))
+  0
+  (none)
+  )
+
+(defmethod init-callback ((this hud-protect-terry-health))
+  (set! (-> this gui-id)
+        (add-process *gui-control* this (gui-channel hud-upper-center) (gui-action play) (-> this name) 81920.0 0)
+        )
+  (logior! (-> this flags) (hud-flags show))
+  (set! *protect-terry-hud-hit-points-max* 400.0)
+  (set! *protect-terry-hud-hit-points* 400.0)
+  (set! (-> this sprites 0 tid)
+        (the-as texture-id (get-texture hud-jetboard-health lforplnt-minimap))
+        )
+  (set! (-> this sprites 0 flags) (hud-sprite-flags))
+  (set! (-> this sprites 0 scale-x) 1.0)
+  (set! (-> this sprites 0 scale-y) 1.0)
+  (set! (-> this sprites 1 tid) (the-as texture-id (get-texture common-white common)))
+  (set! (-> this sprites 1 flags) (hud-sprite-flags))
+  (set! (-> this sprites 1 scale-x) 13.5)
+  (set! (-> this sprites 1 scale-y) 1.5)
+  (set! (-> this sprites 1 color x) 210)
+  (set! (-> this sprites 1 color y) 24)
+  (set! (-> this sprites 1 color z) 24)
+  (set! (-> this sprites 1 color w) 128)
+  0
+  (none)
+  )
+
 (deftype task-manager-protect-hq (task-manager)
   ((gunships       handle  2)
    (spawn-records  (array proc-focusable-spawner))
@@ -27,7 +96,8 @@
 
 
 (define *protect-object-count*
-  (new 'static 'boxed-array :type int32 :length 13 :allocated-length 17 0 0 0 0 0 0 0 0 0 8 8 8 0)
+  ;; Reserve a ninth Robo Guard process exclusively for Terry.
+  (new 'static 'boxed-array :type int32 :length 13 :allocated-length 17 0 0 0 0 0 0 0 0 0 9 8 8 0)
   )
 
 (defmethod init! ((this task-manager-protect-hq))
@@ -45,6 +115,9 @@
     )
   (set-setting! 'extra-bank '((cityhq3 citykg)) 0.0 0)
   (set! (-> this spawn-index) 0)
+  (set! *protect-terry-handle* (the-as handle #f))
+  (set! *protect-spawning-terry?* #f)
+  (set! *protect-terry-defeated?* #f)
   (set-cloud-and-fog-interp! *mood-control* 1.0 1.0 50.0 50.0)
   (set-time-for-random-weather! *mood-control* 100000000.0 100000000.0)
   (send-event (ppointer->process *time-of-day*) 'change 'hour 16)
@@ -296,24 +369,41 @@
   :enter (behavior ()
     (dotimes (gp-0 17)
       (dotimes (s5-0 (-> self spawn-records gp-0 records length))
-        (send-event
-          (handle->process (-> self spawn-records gp-0 records data s5-0 proc))
-          'attack
-          #f
-          (static-attack-info
-            :mask (vehicle-impulse-factor)
-            ((id (new-attack-id)) (damage 16.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'explode))
+        (let ((enemy-h (-> self spawn-records gp-0 records data s5-0 proc)))
+          (when (and (handle->process enemy-h) (!= enemy-h *protect-terry-handle*))
+            (send-event
+              (handle->process enemy-h)
+              'attack
+              #f
+              (static-attack-info
+                :mask (vehicle-impulse-factor)
+                ((id (new-attack-id)) (damage 16.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'explode))
+                )
+              )
             )
           )
         )
       )
+    (set! (-> self hud-counter)
+          (ppointer->handle
+            (process-spawn hud-protect-terry-health :init hud-init-by-other :name "hud-protect-terry-health" :to self)
+            )
+          )
     )
   :trans (behavior ()
     ((-> (method-of-type task-manager active) trans))
     )
   :code (behavior ()
-    (suspend-for (seconds 1)
+    ;; Terry's death state sets this flag. Transport destruction and pooled
+    ;; process-handle changes cannot complete the mission anymore.
+    (until *protect-terry-defeated?*
+      (suspend)
       )
+    (when (handle->process (-> self hud-counter))
+      (send-event (handle->process (-> self hud-counter)) 'hide-and-die)
+      (set! (-> self hud-counter) (the-as handle #f))
+      )
+    (suspend-for (seconds 1))
     (talker-spawn-func (-> *talker-speech* 337) *entity-pool* (target-pos 0) (the-as region #f))
     (suspend-for (seconds 2.5)
       )
@@ -330,7 +420,17 @@
       (('gunship-destroyed)
        (+! (-> self death-count) 1)
        (if (= (-> self death-count) 2)
-           (go-virtual wait-finish)
+           (let ((terry-spawn (new 'stack-no-clear 'protect-gunship-enemy-spawn-params)))
+             ;; Drop Terry from the final gunship before entering the mission's cleanup state.
+             (vector-copy! (-> terry-spawn pos) (-> (the-as protect-gunship proc) root trans))
+             (quaternion-copy! (-> terry-spawn quat) (-> (the-as protect-gunship proc) root quat))
+             (set! (-> terry-spawn spawn-type) (gunship-cmd-spawn-type roboguard))
+             (set! (-> terry-spawn parent) (process->handle proc))
+             (set! *protect-spawning-terry?* #t)
+             (gunship-spawn self terry-spawn)
+             (set! *protect-spawning-terry?* #f)
+             (go-virtual wait-finish)
+             )
            )
        )
       (else
@@ -377,6 +477,8 @@
     (set! (-> gp-0 flags) (traffic-spawn-flags))
     (set! (-> gp-0 handle) (-> arg0 parent))
     (set! (-> gp-0 user-data) (the-as uint 0))
+    ;; guard-type 7 selects the custom 4x regular-Roboguard miniboss setup.
+    (set! (-> gp-0 guard-type) (the-as uint (if *protect-spawning-terry?* 7 0)))
     (set! (-> gp-0 proc) #f)
     (logior! (-> gp-0 flags) (traffic-spawn-flags tsf7))
     (set! (-> gp-0 nav-branch) #f)
@@ -401,9 +503,34 @@
             )
         )
       (set! (-> gp-0 nav-mesh) (find-nearest-nav-mesh-protect s3-0 (the-as float #x7f800000)))
+      ;; The final gunship can be over the harbor when it releases Terry.
+      ;; Project only the miniboss onto the nearest valid navigation surface,
+      ;; then keep him ten metres above it so his existing landing state can
+      ;; finish normally.  This prevents water spawns and out-of-bounds falls.
+      (when *protect-spawning-terry?*
+        (let ((safe-nav (-> gp-0 nav-mesh))
+              (safe-pos (new 'stack-no-clear 'vector))
+              )
+          (if (and safe-nav (nav-mesh-method-10 safe-nav safe-pos s3-0 (the-as nav-poly #f)))
+              (begin
+                (vector-copy! (-> gp-0 position) safe-pos)
+                (+! (-> gp-0 position y) (meters 10))
+                )
+              ;; This is only a safety fallback if no city nav mesh is loaded.
+              ;; Jak's current position remains a safe playable location.
+              (begin
+                (vector-copy! (-> gp-0 position) (target-pos 0))
+                (+! (-> gp-0 position y) (meters 10))
+                )
+              )
+          )
+        )
       )
     (let ((v1-21 (get-last-unused-handle! (-> this spawn-records (-> arg0 spawn-type)))))
       (send-event (handle->process v1-21) 'traffic-activate gp-0 *traffic-engine*)
+      (when *protect-spawning-terry?*
+        (set! *protect-terry-handle* v1-21)
+        )
       )
     )
   )

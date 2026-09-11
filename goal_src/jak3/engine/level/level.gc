@@ -3571,6 +3571,12 @@
 
 (define *wasdoors-ambience-radius* (meters 55))
 
+;; Centered on the Oasis battle basin.
+(define *oasis-ambience-center*
+  (new 'static 'vector :x 3111034.9 :y 29081.6 :z 10475233.3 :w 1.0))
+
+(define *oasis-ambience-radius* (meters 110))
+
 (defmethod level-update ((this level-group))
   "Per-frame update of the level system."
   (local-vars (v1-109 symbol))
@@ -3626,6 +3632,62 @@
                    (!= (-> s5-2 info taskname) 'nest)))
       (stop-main-music)
       (set! *nest-custom-sfx-ambience* #f)
+      )
+    ;; The Oasis ambience overrides the calm-desert ambience inside its local
+    ;; radius. Outside that radius, desert.flac only plays in desertb while the
+    ;; dust-storm interpolation remains below the calm-weather cutoff.
+    (let ((oasis-active?
+            (and *target*
+                 (= (level-status? this 'deserte #f) 'active)
+                 (< (vector-vector-xz-distance *oasis-ambience-center* (target-pos 0))
+                    *oasis-ambience-radius*)))
+          (wasdoors-active?
+            (and *target*
+                 (= (level-status? this 'wasdoors #f) 'active)
+                 (< (vector-vector-xz-distance *wasdoors-ambience-center* (target-pos 0))
+                    *wasdoors-ambience-radius*))))
+      (cond
+        (oasis-active?
+         (when (!= *oasis-custom-sfx-ambience* 'oasis)
+           (format 0 "Load custom Oasis ambience~%")
+           (stop-main-music)
+           (play-main-music
+             "music/oasis.flac"
+             (the int (* 20.0 (-> *setting-control* user-current sfx-volume))))
+           (set! *oasis-custom-sfx-ambience* 'oasis)
+           (set! *desert-calm-custom-sfx-ambience* #f)
+           )
+         )
+        (wasdoors-active?
+         ;; Wasdoors owns the shared custom stream anywhere inside its garage
+         ;; radius, even if overlapping desert BSPs briefly become target-inside.
+         (when (or *oasis-custom-sfx-ambience* *desert-calm-custom-sfx-ambience*)
+           (stop-main-music)
+           )
+         (set! *oasis-custom-sfx-ambience* #f)
+         (set! *desert-calm-custom-sfx-ambience* #f)
+         )
+        ((and s5-2
+              (= (-> s5-2 name) 'desertb)
+              (< (-> *mood-control* current-special-interp) 0.25))
+         (when (!= *desert-calm-custom-sfx-ambience* 'desert-calm)
+           (format 0 "Load custom calm Desert ambience~%")
+           (stop-main-music)
+           (play-main-music
+             "music/desert.flac"
+             (the int (* 20.0 (-> *setting-control* user-current sfx-volume))))
+           (set! *oasis-custom-sfx-ambience* #f)
+           (set! *desert-calm-custom-sfx-ambience* 'desert-calm)
+           )
+         )
+        (else
+          (when (or *oasis-custom-sfx-ambience* *desert-calm-custom-sfx-ambience*)
+            (stop-main-music)
+            )
+          (set! *oasis-custom-sfx-ambience* #f)
+          (set! *desert-calm-custom-sfx-ambience* #f)
+          )
+        )
       )
     (dotimes (s4-1 (-> this length))
       (let ((s3-0 (-> this level s4-1)))

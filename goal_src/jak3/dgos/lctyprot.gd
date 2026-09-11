@@ -3,6 +3,7 @@
   "protect-path.o"
   "protect-gunship.o"
   "cty-protect.o"
+  "tpage-2402.go"
   "tpage-2592.go"
   "tpage-3264.go"
   "tpage-3269.go"

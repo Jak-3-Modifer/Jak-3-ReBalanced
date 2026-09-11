@@ -14238,7 +14238,7 @@
                       :name "desertb-race-start"
                       :level 'desertb
                       :flags (continue-flags no-auto race)
-                      :trans (new 'static 'vector :x 11483517.0 :y 92969.78 :z 999301.1 :w 1.0)
+                      :trans (new 'static 'vector :x 11290132.48 :y 122511.36 :z 808263.68 :w 1.0)
                       :camera-trans (new 'static 'vector :x 11442637.0 :y 118434.2 :z 996084.5 :w 1.0)
                       :quat (new 'static 'vector4h :data (new 'static 'array int16 4 -271 #x5709 #x130 #x5dd2))
                       :camera-rot (new 'static 'array int16 9 #x9fb 0 -32665 #x2706 #x79da #x30b #x797b -10023 #x982)

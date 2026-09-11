@@ -28,6 +28,8 @@
   )
 ;; ---robo-flag
 
+(define *protect-terry-defeated?* #f)
+
 
 ;; DECOMP BEGINS
 
@@ -952,18 +954,35 @@
       (set! (-> v1-11 turning-acceleration) 20480.0)
       )
     0
-    (when (time-elapsed? (-> self last-update-chase-pos-time) (seconds 1))
-      (squad-control-method-31
-        (-> self squad)
-        (-> self move-dest)
-        self
-        (-> self target-status handle)
-        (/ (-> self attack-distance) 2)
-        (-> self random-offset-search)
+    ;; Terry arrives after the normal Protect HQ squad is gone. During his roll,
+    ;; chase Jak without asking that inactive squad controller for a destination.
+    ;; The raw focus position may be outside this encounter's nav mesh, however,
+    ;; which leaves a large Robo Guard stuck against geometry.  Project it onto
+    ;; the mesh before supplying the nav state with a destination.
+    (if (logtest? (-> self robo-flags) (robo-flag r15))
+        (let ((safe-dest (new 'stack-no-clear 'vector)))
+          (when (closest-point-on-mesh
+                  (-> self nav)
+                  safe-dest
+                  (-> self focus-pos)
+                  (the-as nav-poly #f))
+            (vector-copy! (-> self move-dest) safe-dest)
+            (roboguard-city-method-239 self)
+            )
+          )
+        (when (time-elapsed? (-> self last-update-chase-pos-time) (seconds 1))
+          (squad-control-method-31
+            (-> self squad)
+            (-> self move-dest)
+            self
+            (-> self target-status handle)
+            (/ (-> self attack-distance) 2)
+            (-> self random-offset-search)
+            )
+          (roboguard-city-method-239 self)
+          (set-time! (-> self last-update-chase-pos-time))
+          )
         )
-      (roboguard-city-method-239 self)
-      (set-time! (-> self last-update-chase-pos-time))
-      )
     (let ((a0-9 (-> self nav state))
           (v1-25 (-> self move-dest))
           )
@@ -1048,6 +1067,26 @@
         (s5-0 (get-focus! this))
         )
     (cond
+      ;; At 50 m or farther, Terry uses the Robo Guard's rolling attack to
+      ;; close on Jak. The roll state already supplies its chase movement.
+      ((and (logtest? (-> this robo-flags) (robo-flag r15))
+            s5-0
+            (>= f30-0 (meters 50))
+            ;; Let Terry recover after a roll before he can immediately start
+            ;; another one, so being at range does not become a roll loop.
+            (time-elapsed? (-> this last-roll-time) (seconds 2.5))
+            )
+       1
+       )
+      ;; Once he is closer, Terry keeps the normal Robo Guard turret animation
+      ;; and its two-joint firing sequence active while Jak is in sight.
+      ((and (logtest? (-> this robo-flags) (robo-flag r15))
+            s5-0
+            (should-check-los? (-> this los) (seconds 0.6))
+            (< (fabs (-> this torso-to-focus-angle)) 3640.889)
+            )
+       5
+       )
       ((and (or (< f30-0 (* (-> this attack-distance) (-> this attack-dist-scalar)))
                 (not (time-elapsed? (-> this last-roll-time) (seconds 1)))
                 )
@@ -1463,7 +1502,11 @@
     (nav-enemy-method-179 self)
     )
   :trans (behavior ()
-    (when (and (time-elapsed? (-> self fire-time) (seconds 0.6)) (zero? (-> self skel float-channels)))
+    (when (and (time-elapsed? (-> self fire-time)
+                             (if (logtest? (-> self robo-flags) (robo-flag r15))
+                                 (seconds 0.8)
+                                 (seconds 0.6)))
+               (zero? (-> self skel float-channels)))
       (when (and (time-elapsed? (-> self state-time) (-> self reaction-time)) (-> self fired-this-time?))
         (let ((v1-12 (roboguard-city-method-236 self)))
           (cond
@@ -1639,7 +1682,13 @@
           (t9-0)
           )
       )
-    (if (out-of-bounds? self)
+    ;; Terry is a persistent miniboss.  His enlarged collision can occasionally
+    ;; trip the ordinary Robo Guard out-of-bounds cleanup after a roll or knock.
+    ;; Only his HP-depletion path may defeat him; regular guards retain vanilla
+    ;; out-of-bounds cleanup.
+    (if (and (out-of-bounds? self)
+             (not (logtest? (-> self robo-flags) (robo-flag r15)))
+             )
         (go-die self)
         (go-hostile self)
         )
@@ -1687,22 +1736,28 @@
   :virtual #t
   :enter (behavior ()
     (sound-play "robo-explode")
-    ;; Robo Guard death blast: damage Jak within a 5-meter radius.
-    ;; The radial explosion supplies the upward hit reaction/knockback.
-    (let ((gp-0 (new 'stack-no-clear 'explosion-init-params)))
-      (vector-copy! (-> gp-0 spawn-point) (-> self root trans))
-      (quaternion-identity! (-> gp-0 spawn-quat))
-      (set! (-> gp-0 radius) (meters 5))
-      (set! (-> gp-0 scale) 1.0)
-      (set! (-> gp-0 group) group-kg-explosion)
-      (set! (-> gp-0 collide-with)
-            (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher))
-      (set! (-> gp-0 damage) 2.0)
-      (set! (-> gp-0 damage-scale) 1.0)
-      (set! (-> gp-0 vehicle-damage-factor) 1.0)
-      (set! (-> gp-0 vehicle-impulse-factor) 1.0)
-      (set! (-> gp-0 ignore-proc) (process->handle self))
-      (explosion-spawn gp-0 self)
+    ;; Only Terry's actual death is allowed to release the HQ mission's finish gate.
+    (when (logtest? (-> self robo-flags) (robo-flag r15))
+      (set! *protect-terry-defeated?* #t)
+      )
+    ;; Normal Robo Guards keep their damaging blast. Terry retains the visual
+    ;; death effect below, but his death does not deal explosion damage.
+    (when (not (logtest? (-> self robo-flags) (robo-flag r15)))
+      (let ((gp-0 (new 'stack-no-clear 'explosion-init-params)))
+        (vector-copy! (-> gp-0 spawn-point) (-> self root trans))
+        (quaternion-identity! (-> gp-0 spawn-quat))
+        (set! (-> gp-0 radius) (meters 5))
+        (set! (-> gp-0 scale) 1.0)
+        (set! (-> gp-0 group) group-kg-explosion)
+        (set! (-> gp-0 collide-with)
+              (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher))
+        (set! (-> gp-0 damage) 2.0)
+        (set! (-> gp-0 damage-scale) 1.0)
+        (set! (-> gp-0 vehicle-damage-factor) 1.0)
+        (set! (-> gp-0 vehicle-impulse-factor) 1.0)
+        (set! (-> gp-0 ignore-proc) (process->handle self))
+        (explosion-spawn gp-0 self)
+        )
       )
     (let ((v1-2 (-> self root root-prim)))
       (set! (-> v1-2 prim-core collide-as) (collide-spec))
@@ -1713,18 +1768,35 @@
     (drop-pickup (-> self fact) #t *entity-pool* (-> self fact) 0 #f)
     )
   :code (behavior ()
-    (let ((v1-1 (vector<-cspace! (new 'stack-no-clear 'vector) (joint-node roboguard-city-lod0-jg chest))))
-      (cond
-        ((logtest? (-> group-kg-explosion flags) (sp-group-flag sp13))
-         (vector-copy! (-> *launch-matrix* trans) v1-1)
-         (part-tracker-spawn part-tracker-subsampler :to self :group group-kg-explosion)
-         )
-        (else
-          (vector-copy! (-> *launch-matrix* trans) v1-1)
-          (part-tracker-spawn part-tracker :to self :group group-kg-explosion)
+    (if (logtest? (-> self robo-flags) (robo-flag r15))
+        ;; The miniboss uses the same large visual effect as the KG robot
+        ;; transports.  This is visual-only: Terry's death still cannot damage
+        ;; Jak, matching the boss-fight rule.
+        (let ((boss-pos (-> self root trans)))
+          (cond
+            ((logtest? (-> group-kg-huge-explosion flags) (sp-group-flag sp13))
+             (vector-copy! (-> *launch-matrix* trans) boss-pos)
+             (part-tracker-spawn part-tracker-subsampler :to self :group group-kg-huge-explosion)
+             )
+            (else
+              (vector-copy! (-> *launch-matrix* trans) boss-pos)
+              (part-tracker-spawn part-tracker :to self :group group-kg-huge-explosion)
+              )
+            )
+          )
+        (let ((v1-1 (vector<-cspace! (new 'stack-no-clear 'vector) (joint-node roboguard-city-lod0-jg chest))))
+          (cond
+            ((logtest? (-> group-kg-explosion flags) (sp-group-flag sp13))
+             (vector-copy! (-> *launch-matrix* trans) v1-1)
+             (part-tracker-spawn part-tracker-subsampler :to self :group group-kg-explosion)
+             )
+            (else
+              (vector-copy! (-> *launch-matrix* trans) v1-1)
+              (part-tracker-spawn part-tracker :to self :group group-kg-explosion)
+              )
+            )
           )
         )
-      )
     (when (kg-squad-member-method-220 self)
       (let ((v1-32 (new 'stack 'debris-tuning (the-as uint 1))))
         (set! (-> v1-32 hit-xz-reaction) 0.95)
@@ -1803,13 +1875,75 @@
     (set! (-> s4-0 y) (- (-> this focus-pos y) (-> s5-0 y)))
     (vector-normalize! s4-0 40960.0)
     (vector-rotate-around-y! s4-0 s4-0 (-> this torso-angle))
-    (spawn-roboguard-projectile
-      this
-      s5-0
-      (vector+! (new 'stack-no-clear 'vector) s5-0 s4-0)
-      819200.0
-      (the-as vector #f)
-      )
+    (if (logtest? (-> this robo-flags) (robo-flag r15))
+        (begin
+          ;; Terry fires a three-round fan.  Each lane keeps a randomized
+          ;; spread so repeated volleys do not follow one fixed pattern.
+          (dotimes (shot-idx 3)
+            (let ((spread-dir (new 'stack-no-clear 'vector))
+                  (spread-degrees
+                    (case shot-idx
+                      ((0) (rnd-float-range this -28.0 -10.0))
+                      ((1) (rnd-float-range this -14.0 14.0))
+                      (else (rnd-float-range this 10.0 28.0))
+                      )
+                    )
+                  )
+              (vector-rotate-around-y!
+                spread-dir
+                s4-0
+                (* 182.04445 spread-degrees)
+                )
+              (spawn-roboguard-projectile
+                this
+                s5-0
+                (vector+! (new 'stack-no-clear 'vector) s5-0 spread-dir)
+                696320.0
+                (the-as vector #f)
+                )
+              )
+            )
+          ;; Keep Terry's marked rockets on an independent cooldown.  His
+          ;; three-shot fan still fires on the normal firing cadence.
+          (when (time-elapsed? (-> this last-update-chase-pos-time) (seconds 2.5))
+            (let ((impact-pos (new 'stack-no-clear 'vector))
+                  (beacon-pos (new 'stack-no-clear 'vector))
+                  (rocket-dir (new 'stack-no-clear 'vector))
+                  (rocket-init (new 'stack-no-clear 'gunship-missile-init-params))
+                  )
+              (vector-copy! impact-pos (-> this focus-pos))
+              (vector-copy! beacon-pos impact-pos)
+              (+! (-> beacon-pos y) 409.6)
+              (cond
+                ((logtest? (-> group-missile-beacon flags) (sp-group-flag sp13))
+                 (vector-copy! (-> *launch-matrix* trans) beacon-pos)
+                 (part-tracker-spawn part-tracker-subsampler :to this :group group-missile-beacon)
+                 )
+                (else
+                  (vector-copy! (-> *launch-matrix* trans) beacon-pos)
+                  (part-tracker-spawn part-tracker :to this :group group-missile-beacon)
+                  )
+                )
+              (vector-copy! (-> rocket-init pos) s5-0)
+              (vector-copy! rocket-dir s4-0)
+              (set! (-> rocket-dir y) 65536.0)
+              (vector-copy! (-> rocket-init launch-dir) rocket-dir)
+              (vector-copy! (-> rocket-init dest-pos) impact-pos)
+              (set! (-> rocket-init time-to-targ) 0.85)
+              (set! (-> rocket-init index) -1)
+              (process-spawn gunship-missile rocket-init :name "terry-warning-rocket" :to this)
+              )
+            (set-time! (-> this last-update-chase-pos-time))
+            )
+          )
+        (spawn-roboguard-projectile
+          this
+          s5-0
+          (vector+! (new 'stack-no-clear 'vector) s5-0 s4-0)
+          819200.0
+          (the-as vector #f)
+          )
+        )
     )
   (set! (-> this fired-this-time?) #t)
   0
@@ -1929,7 +2063,12 @@
         (go (method-of-object this explode))
         )
        (else
-         (go (method-of-object this knocked))
+         ;; Terry still loses HP, but does not play the normal flinch/knocked
+         ;; animation between hits. He resumes his shooting animation instead.
+         (if (logtest? (-> this robo-flags) (robo-flag r15))
+             (go (method-of-object this shoot-attack))
+             (go (method-of-object this knocked))
+             )
          )
        )
      #t
@@ -1946,6 +2085,35 @@
   (the-as process 0)
   )
 
+(defmethod send-attack-from-tshape ((this roboguard-city) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
+  "Terry's rolling contact attack shocks and launches Jak without changing normal Robo Guards."
+  (if (and (logtest? (-> this robo-flags) (robo-flag r15))
+           (= arg0 *target*)
+           )
+      (when (send-event
+              arg0
+              'attack
+              arg1
+              (static-attack-info
+                :mask (vehicle-impulse-factor)
+                ((id arg2)
+                 (damage 2.0)
+                 (vehicle-damage-factor 1.0)
+                 (vehicle-impulse-factor 1.0)
+                 (shove-back (meters 10))
+                 (shove-up (meters 10))
+                 (mode 'shock)
+                 (knock (knocked-type knocked-off))
+                 )
+                )
+              )
+        (on-attack this (the-as process-focusable arg0))
+        #t
+        )
+      (call-parent-method this arg0 arg1 arg2)
+      )
+  )
+
 (defmethod enemy-common-post ((this roboguard-city))
   "Common implementation of post. Runs ja-post."
   (roboguard-city-method-237 this)
@@ -1955,8 +2123,21 @@
       (los-control-method-9 (-> this los) s5-0 (-> this focus-pos) 819.2 4096.0)
       )
     )
-  ;; Detonate when Jak enters the Robo Guard's 5-meter blast radius.
-  (when (and (not (logtest? (-> this focus-status) (focus-status dead)))
+  ;; Terry's roll is the miniboss contact attack. Its custom shock hit launches
+  ;; Jak 10 m up and 10 m back; the cooldown prevents repeated hits every frame.
+  (when (and (logtest? (-> this robo-flags) (robo-flag r15))
+             (logtest? (-> this robo-flags) (robo-flag r2))
+             *target*
+             (< (vector-vector-xz-distance (-> this root trans) (target-pos 0)) (meters 10))
+             (time-elapsed? (-> this last-attack-time) (seconds 1.25))
+             )
+    (send-attack-from-tshape this *target* (the-as touching-shapes-entry #f) (new-attack-id))
+    (set-time! (-> this last-attack-time))
+    )
+  ;; Normal Robo Guards detonate when Jak enters their 5-meter blast radius.
+  ;; The miniboss must instead survive until its full 200 HP is depleted.
+  (when (and (not (logtest? (-> this robo-flags) (robo-flag r15)))
+             (not (logtest? (-> this focus-status) (focus-status dead)))
              (let ((s5-1 (the-as process-focusable (handle->process (-> this focus handle)))))
                (and s5-1
                     (< (vector-vector-distance (-> this root trans) (get-trans s5-1 3)) (meters 5)))))
@@ -2039,11 +2220,27 @@
 
 ;; WARN: Return type mismatch vector vs none.
 (defmethod init-draw-params ((this roboguard-city))
-  (logior! (-> this robo-flags) (robo-flag r9))
-  (setup-masks (-> this draw) -1 0)
-  (set-vector! (-> this draw color-mult) 0.0 0.0 0.1 1.0)
-  (set-vector! (-> this draw color-emissive) 0.1 0.5 0.5 1.5)
+  ;; r15 identifies the custom miniboss without activating the native r9
+  ;; giant-hostile state. It therefore keeps the complete regular Robo Guard AI.
+  (logior! (-> this robo-flags) (robo-flag r15))
+  (logior! (-> this flags) (citizen-flag persistent))
   (set-vector! (-> this root scale) 4.0 4.0 4.0 1.0)
+  ;; Root scale enlarges the model, but the collision primitive radii are not
+  ;; enlarged automatically. Scale Terry's regular Robo Guard hit volumes too.
+  (let ((boss-collide (the-as collide-shape-prim-group (-> this root root-prim))))
+    (set-vector! (-> boss-collide local-sphere) 0.0 32768.0 0.0 49152.0)
+    (set! (-> boss-collide prim-core collide-as) (collide-spec enemy los-blocker))
+    (set! (-> boss-collide prim-core collide-with)
+          (collide-spec backgnd jak bot enemy obstacle hit-by-others-list player-list))
+    (set-vector! (-> boss-collide child 0 local-sphere) 0.0 24576.0 0.0 24576.0)
+    (set-vector! (-> boss-collide child 1 local-sphere) 0.0 0.0 0.0 24576.0)
+    (set-vector! (-> boss-collide child 2 local-sphere) 0.0 0.0 0.0 40960.0)
+    (set-vector! (-> boss-collide child 3 local-sphere) 0.0 32768.0 0.0 45875.2)
+    (set! (-> this root backup-collide-as) (-> boss-collide prim-core collide-as))
+    (set! (-> this root backup-collide-with) (-> boss-collide prim-core collide-with))
+    )
+  (set! (-> this hit-points) 400.0)
+  (set-time! (-> this last-attack-time))
   (none)
   )
 
@@ -2331,6 +2528,15 @@
 (defmethod msg-for-incoming-attack ((this roboguard-city) (arg0 process) (arg1 event-message-block) (arg2 float))
   "Given an attack message, what do we do next? Returns a message name that should be sent to self."
   (cond
+    ;; Terry is allied with the Freedom Guard during Protect HQ.  Ignore the
+    ;; base guard rifle projectile only; Robo Guard and other enemy projectile
+    ;; subclasses continue to behave normally.
+    ((and (logtest? (-> this robo-flags) (robo-flag r15))
+          arg0
+          (= (-> arg0 type) guard-shot)
+          )
+     'nothing
+     )
     ((logtest? (penetrate emp-blast) (-> this incoming penetrate-using))
      (set-time! (-> this dizzy-start-time))
      (if #t
@@ -2381,8 +2587,21 @@
   :trans (behavior ()
     (when (logtest? (-> self root status) (collide-status on-surface touch-surface impact-surface))
       (sound-play "robo-roll" :id (-> self roll-sound))
-      (logior! (-> self robo-flags) (robo-flag r2))
-      (go-virtual roll-chase)
+      (if (logtest? (-> self robo-flags) (robo-flag r15))
+          (begin
+            ;; Terry spawns after the regular HQ squad cleanup begins, so assign
+            ;; Jak directly instead of waiting for the squad controller.
+            (set! (-> self target-status handle) (process->handle *target*))
+            (set! (-> self current-enemy) (process->handle *target*))
+            (set-focus! self *target* (the-as enemy-aware #f))
+            (update-focus self)
+            (go-hostile self)
+            )
+          (begin
+            (logior! (-> self robo-flags) (robo-flag r2))
+            (go-virtual roll-chase)
+            )
+          )
       )
     )
   :code (behavior ()

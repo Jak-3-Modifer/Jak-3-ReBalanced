@@ -24,6 +24,40 @@
 
 (define *v-marauder-racer-constants* (new 'static 'rigid-body-vehicle-constants))
 
+;; Desert Course Race-only wrong-way warning state.
+(define *course-race-wrong-way?* #f)
+(define *course-race-wrong-way-start-time* 0)
+(define *course-race-wrong-way-hud* (the-as handle #f))
+(define *course-race-wrong-way-exploded?* #f)
+
+(deftype hud-course-race-wrong-way (hud)
+  ()
+  )
+
+(defmethod draw ((this hud-course-race-wrong-way))
+  (when *course-race-wrong-way?*
+    (let ((font (new 'stack 'font-context *font-default-matrix* 68 48 0.0 (font-color red) (font-flags shadow kerning))))
+      (set-width! font 376)
+      (set-height! font 42)
+      (set-scale! font 1.0)
+      (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+      (print-game-text "WRONG WAY" font #f 44 (bucket-id hud-draw-hud-alpha))
+      )
+    )
+  ((method-of-type hud draw) this)
+  0
+  (none)
+  )
+
+(defmethod init-callback ((this hud-course-race-wrong-way))
+  (set! (-> this gui-id)
+        (add-process *gui-control* this (gui-channel hud-upper-center) (gui-action play) (-> this name) 81920.0 0)
+        )
+  (logior! (-> this flags) (hud-flags show))
+  0
+  (none)
+  )
+
 (mem-copy! (the-as pointer *v-snake-racer-constants*) (the-as pointer *v-snake-constants*) 2584)
 
 (mem-copy! (the-as pointer *v-mirage-racer-constants*) (the-as pointer *v-mirage-constants*) 2584)
@@ -293,8 +327,7 @@
   )
 
 (deftype task-manager-desert-course-race (task-manager-race)
-  ((fail-plane  vector  :inline)
-   )
+  ((fail-plane vector :inline))
   )
 
 
@@ -308,6 +341,9 @@
   (set! (-> this fail-plane w)
         (- (vector-dot (-> this fail-plane) (new 'static 'vector :x 10571776.0 :z 1187840.0 :w 1.0)))
         )
+  (set! *course-race-wrong-way-start-time* 0)
+  (set! *course-race-wrong-way-exploded?* #f)
+  (set! *course-race-wrong-way?* #f)
   (none)
   )
 
@@ -319,6 +355,60 @@
     (let ((f0-1 (vector4-dot (target-pos 0) (-> this fail-plane))))
       (if (< 0.0 f0-1)
           (send-event this 'fail)
+        )
+      )
+    )
+  ;; Use the current race-mesh slice to compare the Tough Puppy's actual
+  ;; velocity against the local course direction. This works around every turn,
+  ;; not only along the opening straight.
+  (when (and (-> this race-started?) (not *course-race-wrong-way-exploded?*))
+    (let* ((race *race-state*)
+           (player-state (-> race racer-array (-> race i-player)))
+           (player-vehicle (the-as process-focusable (handle->process (-> player-state racer))))
+           )
+      (if (and player-vehicle (logtest? (-> player-state flags) (racer-state-flags rsf6)))
+          (let ((slice-query (new 'stack-no-clear 'race-mesh-slice-query)))
+            (set! (-> slice-query search-sphere quad) (-> player-vehicle root trans quad))
+            (set! (-> slice-query search-sphere r) 0.0)
+            (race-mesh-method-13 (-> race info mesh) slice-query)
+            (if (>= (-> slice-query slice-id) 0)
+                (let ((start-center (new 'stack-no-clear 'vector))
+                      (end-center (new 'stack-no-clear 'vector))
+                      (course-dir (new 'stack-no-clear 'vector))
+                      )
+                  (vector+! start-center (-> slice-query slice-corners 0) (-> slice-query slice-corners 1))
+                  (vector-float*! start-center start-center 0.5)
+                  (vector+! end-center (-> slice-query slice-corners 2) (-> slice-query slice-corners 3))
+                  (vector-float*! end-center end-center 0.5)
+                  (vector-! course-dir end-center start-center)
+                  (vector-xz-normalize! course-dir 1.0)
+                  (if (and (< (vector-dot (-> player-vehicle root transv) course-dir) 0.0)
+                           (< 8192.0 (vector-length (-> player-vehicle root transv))))
+                      (begin
+                        (when (zero? *course-race-wrong-way-start-time*)
+                          (set-time! *course-race-wrong-way-start-time*)
+                          )
+                        (when (time-elapsed? *course-race-wrong-way-start-time* (seconds 2))
+                          (set! *course-race-wrong-way?* #t)
+                          )
+                        (when (time-elapsed? *course-race-wrong-way-start-time* (seconds 4))
+                          (set! *course-race-wrong-way?* #f)
+                          (set! *course-race-wrong-way-exploded?* #t)
+                          (send-event player-vehicle 'go-die)
+                          )
+                        )
+                      (begin
+                        (set! *course-race-wrong-way-start-time* 0)
+                        (set! *course-race-wrong-way?* #f)
+                        )
+                      )
+                  )
+                )
+            )
+          (begin
+            (set! *course-race-wrong-way-start-time* 0)
+            (set! *course-race-wrong-way?* #f)
+            )
           )
       )
     )
@@ -589,6 +679,11 @@
 (defmethod task-manager-race-method-38 ((this task-manager-desert-course-race))
   (set-setting! 'music 'desrace 0.0 0)
   (remove-setting! 'turbo)
+  (set! *course-race-wrong-way-hud*
+        (ppointer->handle
+          (process-spawn hud-course-race-wrong-way :init hud-init-by-other :name "hud-course-race-wrong-way" :to this)
+          )
+        )
   (task-node-close! (game-task-node desert-course-race-post-intro) 'event)
   0
   (none)
@@ -601,6 +696,11 @@
   )
 
 (defmethod task-manager-race-method-37 ((this task-manager-desert-course-race))
+  (set! *course-race-wrong-way?* #f)
+  (when (handle->process *course-race-wrong-way-hud*)
+    (send-event (handle->process *course-race-wrong-way-hud*) 'hide-and-die)
+    (set! *course-race-wrong-way-hud* (the-as handle #f))
+    )
   (let ((a1-0 (new 'static 'inline-array vector 2
                 (new 'static 'vector :x 11730125.0 :y 98304.0 :z 773324.8 :w 1.0)
                 (new 'static 'vector :x 12165120.0 :y 98304.0 :z 1052672.0 :w 1.0)

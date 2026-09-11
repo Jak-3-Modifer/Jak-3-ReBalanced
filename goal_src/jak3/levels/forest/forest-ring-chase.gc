@@ -684,7 +684,9 @@
             )
           (vector-! a1-1 a1-1 (-> self root trans))
           (let ((a0-16 (-> self root quat)))
-            (when (and (for-race-ring-cleared? a0-16 a1-1) (>= (-> *game-info* timer) (seconds 0.25)))
+            (when (and (for-race-ring-cleared? a0-16 a1-1)
+                       (>= (-> *game-info* timer) (seconds 0.25))
+                       )
               (cond
                 ((-> self is-final?)
                  (sound-play "ring-final")
@@ -759,7 +761,28 @@
   )
 
 (defmethod for-race-ring-method-23 ((this for-race-ring))
-  (set! (-> this root) (new 'process 'trsqv))
+  ;; The ring remains non-solid.  Its collider is enabled only during Statue 3
+  ;; so a gun hit can arm that ring without changing normal ring traversal.
+  (let ((s5-0 (new 'process 'collide-shape-moving this (collide-list-enum usually-hit-by-player))))
+    (set! (-> s5-0 dynam) (copy *standard-dynamics* 'process))
+    (set! (-> s5-0 reaction) cshape-reaction-default)
+    (set! (-> s5-0 no-reaction)
+          (the-as (function collide-shape-moving collide-query vector vector object) nothing)
+          )
+    (set! (-> s5-0 penetrated-by) (penetrate))
+    (let ((v1-6 (new 'process 'collide-shape-prim-sphere s5-0 (the-as uint 0))))
+      (set! (-> v1-6 prim-core collide-as) (collide-spec))
+      (set! (-> v1-6 prim-core collide-with) (collide-spec))
+      (set! (-> v1-6 prim-core action) (collide-action no-standon))
+      (set-vector! (-> v1-6 local-sphere) 0.0 0.0 0.0 32768.0)
+      (set! (-> s5-0 total-prims) (the-as uint 1))
+      (set! (-> s5-0 root-prim) v1-6)
+      )
+    (set! (-> s5-0 nav-radius) (* 0.75 (-> s5-0 root-prim local-sphere w)))
+    (set! (-> s5-0 backup-collide-as) (-> s5-0 root-prim prim-core collide-as))
+    (set! (-> s5-0 backup-collide-with) (-> s5-0 root-prim prim-core collide-with))
+    (set! (-> this root) s5-0)
+    )
   0
   (none)
   )
@@ -791,6 +814,7 @@
   (set! (-> this part-final) (create-launch-control group-forest-ring-final this))
   (logclear! (-> this mask) (process-mask actor-pause))
   (set! (-> this is-final?) #f)
+  (transform-post)
   (go (method-of-object this dormant))
   )
 
@@ -1268,6 +1292,10 @@
       )
     )
   )
+
+;; Ring Chase 1 uses this global because task-manager-forest-ring-chase is a
+;; fixed-layout runtime type.  It records the start of its brief timer pause.
+(define *forest-ring-chase-one-freeze-start-time* 0)
 
 (define *forest-path-array-lengths* (new 'static 'boxed-array :type int32 9 10 17 17 18))
 
@@ -1916,6 +1944,29 @@
   )
 
 
+;; Keep Ring Chase 1's timer visually and mechanically frozen for two seconds
+;; after every cleared ring.  The start time shifts forward at the end of that
+;; pause, so the normal HUD timer resumes at exactly the held value.
+(defmethod hud-timer-handler ((this task-manager-forest-ring-chase))
+  (if (and (zero? (-> this current-statue))
+           (nonzero? *forest-ring-chase-one-freeze-start-time*)
+           (not (time-elapsed? *forest-ring-chase-one-freeze-start-time* (seconds 2)))
+           )
+      (none)
+      (begin
+        (when (and (zero? (-> this current-statue))
+                   (nonzero? *forest-ring-chase-one-freeze-start-time*)
+                   )
+          (+! (-> this start-time) (seconds 2))
+          (set! *forest-ring-chase-one-freeze-start-time* 0)
+          )
+        ((method-of-type task-manager hud-timer-handler) this)
+        )
+      )
+  (none)
+  )
+
+
 ;; WARN: disable def twice: 329. This may happen when a cond (no else) is nested inside of another conditional, but it should be rare.
 (defmethod taskman-event-handler ((this task-manager-forest-ring-chase) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
   (local-vars (v0-1 object))
@@ -1949,6 +2000,13 @@
       (('ring-hit)
        (when (-> this ring-manager-entity)
          (+! (-> this current-ring) 1)
+         ;; Ring Chase 1 begins with nine seconds.  Passing a ring freezes
+         ;; its countdown briefly instead of adding time.
+         (when (and (zero? (-> this current-statue))
+                    (logtest? (-> this info mask) (task-manager-mask time-limit))
+                    )
+           (set-time! *forest-ring-chase-one-freeze-start-time*)
+           )
          (cond
            ((= (-> this current-ring) (-> this actor-group (+ (-> this current-statue) 2) length))
             (if (< (-> this current-statue) (the-as uint (-> this actor-group 1 length)))
@@ -1984,13 +2042,17 @@
                        (process-spawn for-race-ring-finder (-> s5-1 extra trans) s5-1 :name "for-race-ring-finder" :to this)
                        )
                      )
-               )
+             )
              (set! (-> this found-ring?) #f)
              (when (logtest? (-> this info mask) (task-manager-mask time-limit))
-               (set-time! (-> this start-time))
-               (set! (-> this time-limit)
-                     (the-as time-frame (the int (* 300.0 (-> *for-ring-times* (-> this current-statue) (-> this current-ring)))))
-                     )
+               ;; Later statue challenges retain their individual ring timers.
+               ;; Ring Chase 1 keeps its one continuous timer.
+               (when (not (zero? (-> this current-statue)))
+                 (set-time! (-> this start-time))
+                 (set! (-> this time-limit)
+                       (the-as time-frame (the int (* 300.0 (-> *for-ring-times* (-> this current-statue) (-> this current-ring)))))
+                       )
+                 )
                )
              0
              )
@@ -2065,6 +2127,17 @@
   (with-pp
     (let ((t9-0 (method-of-type task-manager task-manager-method-26)))
       (t9-0 this)
+      )
+    ;; Statue 2 becomes an on-foot challenge only after its ring chase starts.
+    ;; Rising or approaching the statue does not count.
+    (when (and *target*
+               (= (-> this current-statue) 1)
+               (focus-test? *target* board)
+               (or (and (nonzero? (-> this found-ring?)) (-> this found-ring?))
+                   (and (nonzero? (-> this ring-finder)) (handle->process (-> this ring-finder)))
+                   )
+               )
+      (go-fail this)
       )
     (when (and (-> this ring-manager-entity)
                (< (-> this current-statue) (the-as uint (-> this actor-group 0 length)))
@@ -2219,10 +2292,13 @@
                  )
                )
              (when (and (not (handle->process (-> this ring-finder))) (not (-> this found-ring?)))
-               (when (not (logtest? (-> this info mask) (task-manager-mask time-limit)))
-                 (set-time! (-> this start-time))
-                 (set! (-> this time-limit)
-                       (the-as time-frame (the int (* 300.0 (-> *for-ring-times* (-> this current-statue) (-> this current-ring)))))
+              (when (not (logtest? (-> this info mask) (task-manager-mask time-limit)))
+                (set-time! (-> this start-time))
+                (set! (-> this time-limit)
+                       (if (zero? (-> this current-statue))
+                           (the-as time-frame (seconds 9))
+                           (the-as time-frame (the int (* 300.0 (-> *for-ring-times* (-> this current-statue) (-> this current-ring)))))
+                           )
                        )
                  (logior! (-> this info mask) (task-manager-mask time-limit))
                  )
@@ -2381,6 +2457,7 @@
   (set! (-> this ring-finder) (the-as handle #f))
   (set! (-> this found-ring?) #f)
   (set! (-> this cam-timer-set?) #f)
+  (set! *forest-ring-chase-one-freeze-start-time* 0)
   (logclear! (-> this info mask) (task-manager-mask time-limit))
   (set! *for-statue-played-hint?* (the-as object #f))
   (none)

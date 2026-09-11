@@ -1758,6 +1758,12 @@
   (set! (-> self travel-speed)
         (/ (vector-vector-xz-distance (-> self root trans) (-> self dest-pos)) (-> arg0 time-to-targ))
         )
+  ;; A negative index is a Terry rocket: briefly follow its steep launch vector
+  ;; before changing course and diving onto the ground beacon.
+  (when (< (-> self index) 0)
+    (set! (-> self attack-time) 180.0)
+    (set-time! (-> self state-time))
+    )
   self
   (set! (-> self particle-trail)
         (new 'process 'sparticle-subsampler *sp-particle-system-2d* (-> *part-id-table* 4786) 4.0)
@@ -1781,6 +1787,11 @@
   :trans (behavior ()
     (gunship-missile-method-31 self)
     (gunship-missile-method-32 self)
+    (when (and (< (-> self index) 0)
+               (time-elapsed? (-> self state-time) (seconds 0.45))
+               )
+      (go-virtual attack-targ)
+      )
     )
   :code sleep-code
   :post ja-post
