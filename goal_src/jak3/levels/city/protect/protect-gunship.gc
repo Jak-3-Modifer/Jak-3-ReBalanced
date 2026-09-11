@@ -1644,28 +1644,6 @@
     )
   )
 
-(deftype gunship-missile (process-focusable)
-  ((dest-pos        vector  :inline)
-   (launch-dir      vector  :inline)
-   (particle-trail  sparticle-subsampler)
-   (travel-speed    float)
-   (attack-time     float)
-   (attack-id       uint32)
-   (index           int16)
-   (swoosh-sound    sound-id)
-   )
-  (:state-methods
-    launch
-    attack-targ
-    explode
-    )
-  (:methods
-    (gunship-missile-method-31 (_type_) none)
-    (gunship-missile-method-32 (_type_) sound-id)
-    )
-  )
-
-
 (defpart 4786
   :init-specs ((:texture (bigpuff level-default-sprite))
     (:birth-func 'birth-func-texture-group)
@@ -1692,16 +1670,6 @@
               :bounds (static-spherem 0 0 0 3)
               :origin-joint-index 3
               )
-
-(deftype gunship-missile-init-params (structure)
-  ((pos           vector  :inline)
-   (dest-pos      vector  :inline)
-   (launch-dir    vector  :inline)
-   (time-to-targ  float)
-   (index         int16)
-   )
-  )
-
 
 (defbehavior gunship-missile-init-by-other gunship-missile ((arg0 gunship-missile-init-params))
   (set! (-> self level) (level-get *level* 'lctyprot))

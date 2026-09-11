@@ -643,10 +643,27 @@
           )
         )
       )
-    ;; New Haven Protect HQ crates always contain a health pickup.
-    (set! (-> s4-0 pickup-type) (pickup-type health))
-    (set! (-> s4-0 pickup-amount) (-> *FACT-bank* health-default-inc))
-    (set! (-> s4-0 pickup-spawn-amount) (-> *FACT-bank* health-default-inc))
+    ;; New Haven Protect HQ crates spawn 50% random ammo and 50% light eco pill.
+    (let* ((v1-23 (/ (the-as int (rand-uint31-gen *random-generator*)) 256))
+           (v1-24 (the-as number (logior #x3f800000 v1-23)))
+           )
+(if (< (+ -1.0 (the-as float v1-24)) 0.4)
+           (begin
+             ;; 40% chance for random ammo
+             (set! (-> s4-0 pickup-type) (pickup-type ammo-random))
+             (let ((f30-0 (get-protect-suck-t)))
+               (set! (-> s4-0 pickup-spawn-amount) (the float (the int (lerp 1.0 3.0 f30-0))))
+               (set! (-> s4-0 pickup-amount) 10.0)
+               )
+             )
+           (begin
+             ;; 60% chance for light eco pill
+             (set! (-> s4-0 pickup-type) (pickup-type eco-pill-light))
+             (set! (-> s4-0 pickup-amount) 1.0)
+             (set! (-> s4-0 pickup-spawn-amount) 1.0)
+             )
+           )
+      )
     (let ((s5-1
             (as-type
               (ppointer->process (process-spawn crate (-> this entity) s5-0 'blue s4-0 :name "crate" :to *entity-pool*))
