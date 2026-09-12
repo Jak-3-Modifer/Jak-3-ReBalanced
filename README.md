@@ -117,7 +117,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 - Marauder chase variant fires four-shot bursts in rapid succession
 
-- Flamer volcano variant fires 3 grenades, and temple variant fires 2 and is faster
+- Flamer volcano variant fires 3 grenades, while the temple variant fires 2 and moves faster
 
 - Most enemies' HP has been increased
 
