@@ -10,19 +10,19 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 `Weapons and Ammo`
 
-Beam Reflexor ammo cost is 5; 10 with the increased deflections upgrade
+- Beam Reflexor ammo cost is 5; 10 with the increased deflections upgrade
 
-You start every weapon with no ammo, except the scatter gun; only one bullet
+- You start every weapon with no ammo, except the scatter gun; only one bullet
 
-Needle Lazer ammo cost is 6 pre-ammo efficiency; ammo cost is 3 with ammo efficiency 
+- Needle Lazer ammo cost is 6 pre-ammo efficiency; ammo cost is 3 with ammo efficiency 
 
-Blaster ammo pickup gives 3 instead of 10
+- Blaster ammo pickup gives 3 instead of 10
 
-Blaster's rate of fire is slightly slower
+- Blaster's rate of fire is slightly slower
 
-Blaster deals 4 base damage and 5 with the damage upgrade
+- Blaster deals 4 base damage and 5 with the damage upgrade
 
-Wave Concussor gives a 5-meter boost in the air
+- Wave Concussor gives a 5-meter boost in the air
 
 Scatter Gun deals 6 damage at 7 meters; 2 damage beyond 8 meters. Scatter Gun max range is 15 meters
 
