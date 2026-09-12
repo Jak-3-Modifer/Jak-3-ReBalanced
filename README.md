@@ -24,83 +24,81 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 - Wave Concussor gives a 5-meter boost in the air
 
-Scatter Gun deals 6 damage at 7 meters; 2 damage beyond 8 meters. Scatter Gun max range is 15 meters
+- Scatter Gun deals 6 damage at 7 meters; 2 damage beyond 8 meters. Scatter Gun max range is 15 meters
 
-Arc Welder does 1 damage per ammo use
+- Arc Welder does 1 damage per ammo use
 
-Mass inverter affects Jak as well
+- Mass inverter affects Jak as well
 
-Every weapon's TTK has been tuned to suit the difficulty
+- Every weapon's TTK has been tuned to suit the difficulty
 
 `Light Jak and Dark Jak`
 
-Light Jak Melee/Shield deals damage to Eco Creatures and Dark Bipedals
+- Light Jak Melee/Shield deals damage to Eco Creatures and Dark Bipedals
 
-Light Eco pickups give less
+- Light Eco pickups give less
 
-Missions that encourage the use of Light Freeze
+- Missions that encourage the use of Light Freeze
 
-Dark Jak is immune to Dark Bipedals and Eco creatures
+- Dark Jak is immune to Dark Bipedals and Eco creatures
 
-Light Eco pickups have replaced green Eco pickups, except for one mission
+- Light Eco pickups have replaced green Eco pickups, except for one mission
 
 `Missions and Side Missions`
 
-Arenas have different challenges: timed, no damage, or no ammo depletion
+- Arenas have different challenges: timed, no damage, or no ammo depletion
 
-Kangarats are faster (if on lizard)
+- Kangarats are faster (if on lizard)
 
-Catch Lizards now uses the Tough Puppy instead
+- Catch Lizards now uses the Tough Puppy instead
 
-Artifact race 1 timer is tighter and marauders don't spawn in front of you
+- Artifact race 1 timer is tighter and marauders don't spawn in front of you
 
-During the chase marauder sequence, the bridges have been removed
+- During the chase marauder sequence, the bridges have been removed
 
-One Custom side mission
+- One Custom side mission
 
-New weapons added to city port assault mission
+- New weapons added to city port assault mission
 
-Some changes to factory level
+- Some changes to factory level
 
-Some changes to the eco mine level
+- Some changes to the eco mine level
 
-Different music for Hunt Metal Heads (unused track)
+- Different music for Hunt Metal Heads (unused track)
 
-Some changes to Hunt Metal Heads; player now gains 4 skull gems
+- Some changes to Hunt Metal Heads; player now gains 4 skull gems
 
-New music for Forest level
+- New music for Forest level
 
-Changes to Forest Rings Challenges
+- Changes to Forest Rings Challenges
 
-New Mini-Boss for Protect HQ
+- New Mini-Boss for Protect HQ
 
-Mine Train is faster
+- Mine Train is faster
 
-Beat Kleiver's Turret Score mission is altered
+- Beat Kleiver's Turret Score mission is altered
 
 `Vehicles`
 
-Dune Hopper now has a burst fire
+- Dune Hopper now has a burst fire
 
-Dune Hopper now has a custom purchasable secret
+- Dune Hopper now has a custom purchasable secret
 
-Vehicles weapon TTK has been altered
+- Vehicles weapon TTK has been altered
 
-Gila Stomper is front-heavy
+- Gila Stomper is front-heavy
 
-Blue Hellcat Cruiser has stiffer handling
-
-: 
+- Blue Hellcat Cruiser has stiffer handling
 
 `Currency and Secrets`
 
-Costs of gun upgrades increased
+- Costs of gun upgrades increased
 
-Costs of side missions increased
+~ Costs of side missions increased
 
-New custom orbs (more in the future)
+- New custom orbs (more in the future)
 
-New secrets (more in the future)
+- New secrets (more in the future)
 
 
 `Enemies and Bosses`
