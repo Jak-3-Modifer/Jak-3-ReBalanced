@@ -94,7 +94,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 - Costs of gun upgrades increased
 
-~ Costs of side missions increased
+- Costs of side missions increased
 
 - New custom orbs (more in the future)
 
@@ -103,35 +103,35 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 `Enemies and Bosses`
 
-Eco Creatures take no damage from the Morph Gun or Dark Jak Combos
+- Eco Creatures take no damage from the Morph Gun or Dark Jak Combos
 
-Dark Satellite Mini Boss is faster; the player now needs to be in the laser radius to move on to the next phase
+- Dark Satellite Mini Boss is faster; the player now needs to be in the laser radius to move on to the next phase
 
-Metal Head Beasts are faster and turn more frequently; increase per kill. Player now gains 1 gem per kill
+- Metal Head Beasts are faster and turn more frequently; increase per kill. Player now gains 1 gem per kill
 
-Precursor Robot Boss is faster, with a new stage in the fight
+- Precursor Robot Boss is faster, with a new stage in the fight
 
-Robot enemies deal damage if caught in their explosive death; one mission exception (spider bot only)
+- Robot enemies deal damage if caught in their explosive death; one mission exception (spider bot only)
 
-Marauder vehicles deal damage if (player is) caught in their explosive death
+- Marauder vehicles deal damage if (player is) caught in their explosive death
 
-Marauder chase variant fires four-shot bursts in rapid succession
+- Marauder chase variant fires four-shot bursts in rapid succession
 
-Flamer volcano variant fires 3 grenades, and temple variant fires 2 and is faster
+- Flamer volcano variant fires 3 grenades, and temple variant fires 2 and is faster
 
-Most enemies' HP has been increased
+- Most enemies' HP has been increased
 
-Spyder Gunner fires straighter and farther
+- Spyder Gunner fires straighter and farther
 
-Metal Grunt and KG Bots move faster
+- Metal Grunt and KG Bots move faster
 
-Rat has a faster knocked-out state and dies from gunfire from one shot (any gun)
+- Rat has a faster knocked-out state and dies from gunfire from one shot (any gun)
 
-Dark Bipedals have decreased knockback when attacked
+- Dark Bipedals have decreased knockback when attacked
 
-Eco Creatures have decreased knockback when attacked
+- Eco Creatures have decreased knockback when attacked
 
-KG robot transports have more HP, and their laser is faster
+- KG robot transports have more HP, and their laser is faster
 
 
 
