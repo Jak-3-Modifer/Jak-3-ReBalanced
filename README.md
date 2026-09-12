@@ -78,6 +78,8 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 - Beat Kleiver's Turret Score mission is altered
 
+- Sniper Cannons one shot you
+
 `Vehicles`
 
 - Dune Hopper now has a burst fire
