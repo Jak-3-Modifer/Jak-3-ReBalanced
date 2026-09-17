@@ -613,16 +613,29 @@
 
 (defmethod send-attack-from-tshape ((this enemy) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
   "Send an attack from this enemy to something else."
-  (let ((a0-1 (-> this enemy-info attack-damage)))
-    (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode)) (= a0-1 1))
-        (set! a0-1 2)
+  (let ((a0-1 (-> this enemy-info attack-damage))
+        (damage-scale 1.0))
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      ;; Hero Mode begins at twice the existing Hero Mode enemy damage.
+      ;; Progression rewards then reduce that amplified damage.
+      (set! a0-1 (* a0-1 2))
+      (cond
+        ((task-node-closed? (game-task-node wascity-defend-resolution))
+         (set! damage-scale 0.25))
+        ((task-node-closed? (game-task-node forest-kill-plants-resolution))
+         (set! damage-scale 0.35))
+        ((task-node-closed? (game-task-node mine-explore-resolution))
+         (set! damage-scale 0.5))
+        ((task-node-closed? (game-task-node desert-artifact-race-1-resolution))
+         (set! damage-scale 0.75))
         )
+      )
     (when (send-event
             arg0
             'attack
             arg1
             (static-attack-info :mask (vehicle-impulse-factor) ((id arg2)
-                                                                (damage (the float a0-1))
+                                                                (damage (the float (* a0-1 damage-scale)))
                                                                 (vehicle-damage-factor 1.0)
                                                                 (vehicle-impulse-factor 1.0)
                                                                 (shove-back (-> this enemy-info attack-shove-back))
@@ -2181,10 +2194,11 @@
       ((and (logtest? (penetrate jak-dark-nuke) (-> this incoming penetrate-using)) (can-be-nuked? this))
        'go-gun-dark-3-nuke
        )
-      ;; Standard Morph Gun projectiles only enter knocked on a lethal hit.
-      ;; Living enemies keep their normal hit reaction, while zero-HP enemies
-      ;; reach the knocked state that drives their death animation.
-      ((logtest? (penetrate jak-yellow-shot jak-red-shot jak-blue-shot jak-dark-shot) gp-0)
+      ;; Only enemies with a knocked animation use the lethal gun-hit override.
+      ;; Turrets use -1 and must keep their normal hit/death routing; forcing
+      ;; them into knocked reads outside their art group's animation table.
+      ((and (logtest? (penetrate jak-yellow-shot jak-red-shot jak-blue-shot jak-dark-shot) gp-0)
+            (>= (-> this enemy-info knocked-anim) 0))
        (if (>= 0.0 (-> this hit-points))
            'hit-knocked
            'hit

@@ -60,6 +60,8 @@
 
 (define-extern update-task-masks (function symbol int))
 (define-extern task-resolution-close! (function game-task symbol))
+(define-extern hero-mode-current-main-task (function game-task))
+(define-extern hero-mode-skip-current-main-task! (function symbol))
 (define-extern task-node-closed? (function game-task-node symbol))
 (define-extern task-node-open! (function game-task-node symbol int))
 (define-extern task-node-reset (function symbol int))

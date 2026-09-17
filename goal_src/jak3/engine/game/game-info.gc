@@ -145,6 +145,34 @@
     )
   )
 
+(defmethod get-dark-eco-capacity ((this game-info))
+  "Return the current Dark Eco meter capacity. Hero Mode earns larger meters from story milestones."
+  (if (not (logtest? (-> this secrets) (game-secrets hero-mode)))
+      (-> *FACT-bank* eco-pill-dark-max-default)
+      (cond
+        ((task-node-closed? (game-task-node tower-destroy-resolution)) 200.0)
+        ((task-node-closed? (game-task-node desert-rescue-resolution)) 175.0)
+        ((task-node-closed? (game-task-node desert-hover-resolution)) 150.0)
+        ((task-node-closed? (game-task-node wascity-pre-game-resolution)) 125.0)
+        (else (-> *FACT-bank* eco-pill-dark-max-default))
+        )
+      )
+  )
+
+(defmethod get-light-eco-capacity ((this game-info))
+  "Return the current Light Eco meter capacity. Hero Mode earns larger meters from story milestones."
+  (if (not (logtest? (-> this secrets) (game-secrets hero-mode)))
+      (-> *FACT-bank* eco-pill-light-max-default)
+      (cond
+        ((task-node-closed? (game-task-node factory-boss-resolution)) 200.0)
+        ((task-node-closed? (game-task-node nest-hunt-resolution)) 175.0)
+        ((task-node-closed? (game-task-node wascity-gungame-resolution)) 150.0)
+        ((task-node-closed? (game-task-node desert-catch-lizards-resolution)) 125.0)
+        (else (-> *FACT-bank* eco-pill-light-max-default))
+        )
+      )
+  )
+
 (define *default-continue* (new 'static 'continue-point
                              :name "default"
                              :level #f
@@ -752,7 +780,7 @@
       (('eco-pill-dark)
        (cond
          ((< 0.0 arg1)
-          (seek! (-> this eco-pill-dark) (-> *FACT-bank* eco-pill-dark-max-default) arg1)
+          (seek! (-> this eco-pill-dark) (get-dark-eco-capacity this) arg1)
           (+! (-> this eco-pill-dark-total) arg1)
           )
          (else
@@ -764,7 +792,7 @@
       (('eco-pill-light)
        (cond
          ((< 0.0 arg1)
-          (seek! (-> this eco-pill-light) (-> *FACT-bank* eco-pill-light-max-default) arg1)
+          (seek! (-> this eco-pill-light) (get-light-eco-capacity this) arg1)
           (+! (-> this eco-pill-light-total) arg1)
           )
          (else

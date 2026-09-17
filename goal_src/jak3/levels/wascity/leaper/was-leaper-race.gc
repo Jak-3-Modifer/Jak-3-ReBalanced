@@ -5,6 +5,11 @@
 ;; name in dgo: was-leaper-race
 ;; dgos: WASLEAPR
 
+(define-extern *wascity-leaper-ring-speed-boost-active?* symbol)
+(define-extern *wascity-leaper-ring-speed-boost-time* time-frame)
+(define-extern *wascity-leaper-ring-speed-boost-speed* float)
+(define-extern *wascity-leaper-tight-board-active?* symbol)
+
 ;; DECOMP BEGINS
 
 (defpartgroup group-leaper-ring
@@ -847,6 +852,26 @@
               )
             )
            (else
+             ;; Ring 10 uses a 30 m/s burst, ring 11 uses a 27 m/s burst, and all
+             ;; other player rings use the Jetboard's normal 35 m/s maximum.
+             ;; Challenger rings do not apply it.
+             (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                        *target*
+                        (focus-test? *target* board))
+               (set! *wascity-leaper-ring-speed-boost-speed*
+                     (cond
+                       ((= (-> this current-ring) 9) 122880.0)
+                       ((= (-> this current-ring) 10) 110592.0)
+                       (else 143360.0)
+                       ))
+               (vector-xz-normalize!
+                 (-> *target* control transv)
+                 *wascity-leaper-ring-speed-boost-speed*
+                 )
+               (set! (-> *target* control ctrl-xz-vel) *wascity-leaper-ring-speed-boost-speed*)
+               (set! *wascity-leaper-ring-speed-boost-active?* #t)
+               (set-time! *wascity-leaper-ring-speed-boost-time*)
+               )
              (+! (-> this current-ring) 1)
              (when (< (-> this current-ring) (the-as uint (-> this actor-group 0 length)))
                (when (= (-> this current-ring) (+ (-> this actor-group 0 length) -11))
@@ -1015,6 +1040,10 @@
     (set-time! (-> self check-timer))
     (set-time! (-> self hint-timer))
     (set-time! (-> self state-time))
+    (set! *wascity-leaper-ring-speed-boost-active?* #f)
+    (set! *wascity-leaper-ring-speed-boost-speed* 143360.0)
+    (set! *wascity-leaper-tight-board-active?*
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
     )
   :code (behavior ()
     (local-vars (v1-38 symbol))
@@ -1073,6 +1102,27 @@
     (if (focus-test? *target* grabbed)
         (process-release? *target*)
         )
+    ;; Hero Mode replaces the race Flut with Jak's Jetboard. Normal Mode
+    ;; explicitly enters the vanilla racer-Flut state instead of relying on
+    ;; the intro scene to have mounted Jak successfully.
+    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (begin
+          (when *target*
+            (send-event *target* 'change-mode 'board #f)
+            )
+          (until (and *target* (focus-test? *target* board))
+            (suspend)
+            )
+          )
+        (begin
+          (when (and *target* (not (focus-test? *target* flut)))
+            (send-event *target* 'change-mode 'flut #f 'racer -1)
+            )
+          (until (and *target* (focus-test? *target* flut))
+            (suspend)
+            )
+          )
+        )
     (set-setting! 'exclusive-load '((ignore all) (allow wasleapr)) 0.0 0)
     (let ((a1-9 (new 'stack-no-clear 'array 'symbol 10)))
       (set! (-> a1-9 9) #f)
@@ -1108,6 +1158,14 @@
         )
       (let ((s5-2 #f))
         (until (and (-> self ring-manager-entity) (= (-> *game-info* counter) 0.0))
+          ;; Hero Mode is Jetboard-only; Normal Mode is Flut-only.
+          (when (and *target*
+                     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                         (not (focus-test? *target* board))
+                         (not (focus-test? *target* flut))
+                         ))
+            (send-event self 'fail)
+            )
           (cond
             ((-> self ring-manager-entity)
              (format
@@ -1162,9 +1220,15 @@
           )
         )
       )
+    (set! *wascity-leaper-tight-board-active?* #f)
     (send-event self 'complete)
     (if *target*
-        (send-event *target* 'change-mode 'flut self)
+        (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+            (when (focus-test? *target* board)
+              (send-event *target* 'change-mode 'normal)
+              )
+            (send-event *target* 'change-mode 'flut self)
+            )
         )
     (sleep-code)
     )
@@ -1173,6 +1237,7 @@
 (defstate fail (task-manager-wascity-leaper-race)
   :virtual #t
   :enter (behavior ((arg0 resetter-params))
+    (set! *wascity-leaper-tight-board-active?* #f)
     (let ((a1-0 (new 'stack-no-clear 'array 'symbol 10)))
       (set! (-> a1-0 9) #f)
       (set! (-> a1-0 8) #f)

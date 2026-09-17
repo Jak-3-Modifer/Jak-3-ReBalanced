@@ -419,7 +419,7 @@
      )
     (((pickup-type eco-pill-dark))
      (sound-play "pill-pickup")
-     (when (>= (-> *game-info* eco-pill-dark) (-> *FACT-bank* eco-pill-dark-max-default))
+     (when (>= (-> *game-info* eco-pill-dark) (get-dark-eco-capacity *game-info*))
        (set! (-> this collect-effect) (the-as sparticle-launch-group 0))
        (set! (-> this collect-effect2) (the-as sparticle-launch-group 0))
        0
@@ -427,7 +427,7 @@
      )
     (((pickup-type eco-pill-light))
      (sound-play "pill-pickup")
-     (when (>= (-> *game-info* eco-pill-light) (-> *FACT-bank* eco-pill-light-max-default))
+     (when (>= (-> *game-info* eco-pill-light) (get-light-eco-capacity *game-info*))
        (set! (-> this collect-effect) (the-as sparticle-launch-group 0))
        (set! (-> this collect-effect2) (the-as sparticle-launch-group 0))
        0
@@ -1319,10 +1319,10 @@
                   (-> *setting-control* user-current pickups)
                   (case (-> self fact pickup-type)
                     (((pickup-type eco-pill-dark))
-                     (< (-> *game-info* eco-pill-dark) (-> *FACT-bank* eco-pill-dark-max-default))
+                     (< (-> *game-info* eco-pill-dark) (get-dark-eco-capacity *game-info*))
                      )
                     (((pickup-type eco-pill-light))
-                     (< (-> *game-info* eco-pill-light) (-> *FACT-bank* eco-pill-light-max-default))
+                     (< (-> *game-info* eco-pill-light) (get-light-eco-capacity *game-info*))
                      )
                     (else
                       #t

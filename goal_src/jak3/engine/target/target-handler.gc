@@ -53,6 +53,16 @@
                            (arg3 touching-shapes-entry)
                            (arg4 (state symbol attack-info target))
                            )
+  ;; A Hero save may inherit normal-mode cheats or a stale normal-form
+  ;; invulnerability flag.  Remove those before every real hit is assessed.
+  ;; Do not touch Dark Jak's own form-specific invulnerability state.
+  (when (logtest? (-> self game secrets) (game-secrets hero-mode))
+    (logclear! (-> self game secrets) (game-secrets invulnerable))
+    (logclear! (-> self game purchase-secrets) (game-secrets invulnerable))
+    (unless (focus-test? self dark)
+      (logclear! (-> self target-flags) (target-flags tf4))
+      )
+    )
   (let ((s4-0 (if (logtest? (-> arg1 mask) (attack-mask mode))
                   (-> arg1 mode)
                   )

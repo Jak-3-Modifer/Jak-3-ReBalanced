@@ -407,7 +407,9 @@
                )
            (cond
              ((= arg0 2)
-              (set! (-> self shot-timer) (+ (current-time) (the int (* 300.0 (rand-vu-float-range 1.5 3.5)))))
+              ;; Keep the shockwave throw intact, but halve its post-throw
+              ;; delay so the next shockwave begins sooner.
+              (set! (-> self shot-timer) (+ (current-time) (the int (* 300.0 (rand-vu-float-range 0.75 1.75)))))
               )
              (else
                (set! (-> self shot-timer) 0)

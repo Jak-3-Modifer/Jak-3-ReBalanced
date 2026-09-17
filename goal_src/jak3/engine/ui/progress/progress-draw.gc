@@ -529,7 +529,10 @@
                                arg0
                                (+ (- -20.0 (-> sv-24 x)) (-> sv-24 z))
                                (the-as float 24.5)
-                               (lookup-text! *common-text* arg1 #f)
+                               (if (= arg1 (text-id progress-secrets-endless-ammo))
+                                   "Skip Main Story Mission"
+                                   (lookup-text! *common-text* arg1 #f)
+                                   )
                                s1-0
                                0.75
                                35
@@ -583,7 +586,11 @@
                        (sv-144 arg0)
                        (sv-160 (+ (- -20.0 (-> sv-24 x)) (-> sv-24 z)))
                        (sv-176 (the-as float 24.5))
-                       (t0-3 (the-as object (lookup-text! *common-text* arg1 #f)))
+                       (t0-3 (the-as object
+                                       (if (= arg1 (text-id progress-secrets-endless-ammo))
+                                           "Skip Main Story Mission"
+                                           (lookup-text! *common-text* arg1 #f)
+                                           )))
                        )
                   (let ((f28-1 (sv-112 sv-128 sv-144 sv-160 sv-176 (the-as string t0-3) s1-0 0.75 35)))
                     (when arg4
@@ -3958,6 +3965,14 @@
 
 (defmethod secret-item-option-method-12 ((this secret-item-option))
   (cond
+    ((= (-> this secret) (game-secrets endless-ammo))
+     (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+              (!= (hero-mode-current-main-task) (game-task unknown))
+              )
+         0
+         5
+         )
+     )
     ((logtest? (-> this flags) (secret-item-option-flags sf0))
      5
      )
@@ -3985,6 +4000,9 @@
   (local-vars (v0-1 game-vehicles))
   (when (zero? (secret-item-option-method-12 this))
     (case (-> this secret)
+      (((game-secrets endless-ammo))
+       (hero-mode-skip-current-main-task!)
+       )
       (((game-secrets hero-mode))
        (logior! (-> *game-info* purchase-secrets) (-> this secret))
        )
@@ -4199,7 +4217,10 @@
                                     sv-192
                                     )
                                    (else
-                                     (lookup-text! *common-text* s0-4 #f)
+                                     (if (= s0-4 (text-id progress-secrets-endless-ammo))
+                                         "Skip Main Story Mission"
+                                         (lookup-text! *common-text* s0-4 #f)
+                                         )
                                      )
                                    )
                           )
@@ -4227,7 +4248,10 @@
                                             sv-240
                                             )
                                            (else
-                                             (lookup-text! *common-text* sv-208 #f)
+                                             (if (= sv-208 (text-id progress-secrets-endless-ammo))
+                                                 "Skip Main Story Mission"
+                                                 (lookup-text! *common-text* sv-208 #f)
+                                                 )
                                              )
                                            )
                                   )

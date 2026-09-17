@@ -2857,6 +2857,14 @@
   (dm-play-task-with-continue (the-as game-task (/ (the-as int arg0) 8)) (the-as string #f))
   )
 
+;; Starts a selected debug task with Hero Mode active before the task loads.
+(defun dm-play-hero-task ((arg0 game-task))
+  (logior! (-> *game-info* secrets) (game-secrets hero-mode))
+  (logior! (-> *game-info* purchase-secrets) (game-secrets hero-mode))
+  (update-task-masks 'event)
+  (dm-play-task arg0)
+  )
+
 (defun dm-play-race ((arg0 race-selection) (arg1 symbol))
   (let ((s5-0 (the-as string #f))
         (gp-0 0)
@@ -2885,7 +2893,7 @@
     )
   )
 
-(defun debug-menu-make-play-menu ((arg0 debug-menu-context))
+(defun debug-menu-make-play-menu-with-handler ((arg0 debug-menu-context) (arg1 string) (arg2 symbol))
   (local-vars (sv-144 string))
   (let ((s5-0 '()))
     (let ((s2-0 #x200000))
@@ -2943,7 +2951,7 @@
                 )
               )
             ;; og:preserve-this cons -> dcons
-            (set! s5-0 (dcons (dcons 'function (dcons (-> s3-0 name) (dcons (* s4-0 8) (dcons 'dm-play-task '())))) s5-0))
+            (set! s5-0 (dcons (dcons 'function (dcons (-> s3-0 name) (dcons (* s4-0 8) (dcons arg2 '())))) s5-0))
             )
           )
         )
@@ -2954,9 +2962,17 @@
             )
           )
       ;; og:preserve-this cons -> dcons
-      (debug-menu-make-from-template arg0 (dcons 'menu (dcons "Play" a3-15)))
+      (debug-menu-make-from-template arg0 (dcons 'menu (dcons arg1 a3-15)))
       )
     )
+  )
+
+(defun debug-menu-make-play-menu ((arg0 debug-menu-context))
+  (debug-menu-make-play-menu-with-handler arg0 "Play" 'dm-play-task)
+  )
+
+(defun debug-menu-make-hero-play-menu ((arg0 debug-menu-context))
+  (debug-menu-make-play-menu-with-handler arg0 "Hero Mode Play" 'dm-play-hero-task)
   )
 
 (defun dm-anim-tester-flag-func ((arg0 int) (arg1 debug-menu-msg))
@@ -6674,6 +6690,7 @@
       )
     (debug-menu-append-item s5-0 (debug-menu-make-task-menu arg0))
     (debug-menu-append-item s5-0 (debug-menu-make-play-menu arg0))
+    (debug-menu-append-item s5-0 (debug-menu-make-hero-play-menu arg0))
     )
   arg0
   )

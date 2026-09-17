@@ -224,7 +224,13 @@
     ((logtest? (penetrate) arg0)
      4.0
      )
-    ((logtest? (penetrate punch spin jak-dark-shot enemy-dark-shot) arg0)
+    ;; Dark Jak's normal punch carries both punch and dark-punch flags, so
+    ;; test the Dark tag before generic punch damage.  Spins use the same
+    ;; upgraded melee value.
+    ((logtest? (penetrate dark-punch spin) arg0)
+     8.0
+     )
+    ((logtest? (penetrate punch jak-dark-shot enemy-dark-shot) arg0)
      3.0
      )
     ((logtest? (penetrate
@@ -232,7 +238,6 @@
                  uppercut
                  tube
                  flut-attack
-                 dark-punch
                  explode
                  jak-yellow-shot
                  jak-red-shot

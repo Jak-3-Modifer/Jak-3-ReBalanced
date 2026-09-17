@@ -315,7 +315,11 @@
   ;; such as Robo Guard and flying-turret shots retain their normal damage.
   (if (and (= (-> this type) guard-shot)
            (= (-> arg0 type) target)
+           ;; City Port Assault runs from its resolution task node, but that
+           ;; node can remain open in an unrelated Hero Mode save. Require
+           ;; its combat level as well, so Arena 2 guard-style shots still hit.
            (task-node-open? (game-task-node city-port-assault-resolution))
+           (= (level-status? *level* 'lctypalt #f) 'active)
            )
       #f
       (let ((t9-0 (method-of-type projectile deal-damage!)))

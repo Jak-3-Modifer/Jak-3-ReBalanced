@@ -1,6 +1,11 @@
 ;;-*-Lisp-*-
 (in-package goal)
 
+(define *wascity-leaper-ring-speed-boost-active?* #f)
+(define *wascity-leaper-ring-speed-boost-time* (the-as time-frame 0))
+(define *wascity-leaper-ring-speed-boost-speed* 143360.0)
+(define *wascity-leaper-tight-board-active?* #f)
+
 ;; name: target-board.gc
 ;; name in dgo: target-board
 ;; dgos: GAME
@@ -1145,6 +1150,10 @@
   )
 
 (defbehavior board-add-thrust target ()
+  (when (and *wascity-leaper-ring-speed-boost-active?*
+             (time-elapsed? *wascity-leaper-ring-speed-boost-time* (seconds 0.3)))
+    (set! *wascity-leaper-ring-speed-boost-active?* #f)
+    )
   (let ((gp-0 (-> self control transv-ctrl)))
     (let* ((v1-1 gp-0)
            (f0-7 (cond
@@ -1191,7 +1200,10 @@
         (let ((f0-22 (atan (-> gp-0 x) (-> gp-0 z))))
           (vector-rotate-y! gp-0 gp-0 (fmin
                                         (* 0.03 (-> self clock time-adjust-ratio) (- f0-22))
-                                        (* (-> self control current-surface vel-turn) (seconds-per-frame))
+                                        (* (-> self control current-surface vel-turn)
+                                           (seconds-per-frame)
+                                           (if *wascity-leaper-tight-board-active?* 1.2 1.0)
+                                           )
                                         )
                             )
           )
@@ -1208,6 +1220,11 @@
         (when (-> self board stick-off)
           (set! f0-28 0.0)
           (set! f1-23 0.0)
+          )
+        ;; Player rings in the Wascity Leaper Race hold the Jetboard at their
+        ;; configured burst speed for 0.3 seconds.
+        (when *wascity-leaper-ring-speed-boost-active?*
+          (set! f1-23 *wascity-leaper-ring-speed-boost-speed*)
           )
         (when (and (not (time-elapsed? (-> self control last-time-touching-actor) (seconds 1)))
                    (>= f28-0 0.5)
@@ -1236,11 +1253,17 @@
         (set! (-> self board transv-max) f1-23)
         )
       )
-    (let ((f0-35 (-> self control current-surface transv-max))
+    (let ((f0-35 (if *wascity-leaper-ring-speed-boost-active?*
+                     *wascity-leaper-ring-speed-boost-speed*
+                     (-> self control current-surface transv-max)
+                     ))
           (v1-87 gp-0)
           )
-      (if (>= (sqrtf (+ (* (-> v1-87 x) (-> v1-87 x)) (* (-> v1-87 z) (-> v1-87 z)))) f0-35)
-          (vector-xz-normalize! gp-0 f0-35)
+      (if *wascity-leaper-ring-speed-boost-active?*
+          (vector-xz-normalize! gp-0 *wascity-leaper-ring-speed-boost-speed*)
+          (if (>= (sqrtf (+ (* (-> v1-87 x) (-> v1-87 x)) (* (-> v1-87 z) (-> v1-87 z)))) f0-35)
+              (vector-xz-normalize! gp-0 f0-35)
+              )
           )
       )
     (let ((s5-0 (new 'stack-no-clear 'vector)))
@@ -1555,7 +1578,12 @@
      )
     )
   (set! (-> self board shock-offset)
-        (* (-> self board shock-offset) (lerp-scale 0.99 0.98 (-> self control ctrl-xz-vel) 0.0 28672.0))
+        (* (-> self board shock-offset)
+           (if *wascity-leaper-tight-board-active?*
+               0.95
+               (lerp-scale 0.99 0.98 (-> self control ctrl-xz-vel) 0.0 28672.0)
+               )
+           )
         )
   (cond
     ((< 40960.0 (-> self board shock-offset))
@@ -1905,6 +1933,11 @@
     (else
       (set! (-> self control dynam gravity-length) 245760.0)
       )
+    )
+  ;; Leaper Race only: a little more gravity reduces hang time and makes the
+  ;; Jetboard settle onto the course sooner.
+  (when *wascity-leaper-tight-board-active?*
+    (set! (-> self control dynam gravity-length) (* (-> self control dynam gravity-length) 1.15))
     )
   (vector-float*!
     (-> self control dynam gravity)

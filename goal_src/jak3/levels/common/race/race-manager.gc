@@ -253,11 +253,12 @@
                        (< (+ (-> arg0 target-pos) (-> this target-pos-offset)) (-> this pos)))
                   (set! f0-10 (-> arg0 info ai-min-speed-factor))
                   )
-              ;; Klevier is rider 2 in Desert Course Race. Give only him a
-              ;; 1.025x speed increase over the race's 0.815 base factor.
+              ;; Klevier is rider 2 in Desert Course Race. Hero Mode gives
+              ;; only him a 1.2x speed increase over the race's base factor.
               (when (and (= (-> arg0 info task-node) (game-task-node desert-course-race-race))
-                         (= (-> this rider) 2))
-                (set! f0-10 (* f0-10 1.025))
+                         (= (-> this rider) 2)
+                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                (set! f0-10 (* f0-10 1.2))
                 )
               (seek! (-> this speed-factor) f0-10 (* 0.2 (seconds-per-frame)))
               )

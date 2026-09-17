@@ -1210,12 +1210,12 @@
         (-> this target-pos)
         (get-trans (the-as process-focusable s4-0) 3)
         s5-1
-        ;; Arena 3 Marauders use the same spread magnitude, but apply it a
-        ;; little more often (75% rather than 66%) for slightly looser aim.
+        ;; Arena 3 Marauders use the same spread magnitude, but apply it more
+        ;; often (85% rather than 66%) for moderately looser aim.
         (the-as float (if (rand-vu-percent?
                             (let ((manager (the-as task-manager (ppointer->process (-> this parent)))))
                               (if (and manager (= (-> manager node-info task) (game-task arena-fight-3)))
-                                  0.75
+                                  0.85
                                   0.66
                                   )
                               )
@@ -1869,13 +1869,27 @@
   (set! (-> self skip-jump) (-> arg1 skip-jump))
   (set-multi-focus self (-> arg1 multi-focus))
   (enemy-init-by-other arg0 arg1)
-  ;; Arena Fight 2 Marauders drop dark eco instead of their normal random
-  ;; ammunition pickup.  Marauders in other missions keep their usual drops.
+  ;; Arena Fight 2 and Arena Fight 3 Marauders drop one Dark Eco pill instead
+  ;; of their normal randomized ammunition pickup. Marauders in other missions
+  ;; keep their usual drops.
   (let ((manager (the-as task-manager (ppointer->process (-> self parent)))))
-    (when (and manager (= (-> manager node-info task) (game-task arena-fight-2)))
+    (when (and manager
+               (or (= (-> manager node-info task) (game-task arena-fight-2))
+                   (= (-> manager node-info task) (game-task arena-fight-3))
+                   ))
       (set! (-> self fact pickup-type) (pickup-type eco-pill-dark))
       (set! (-> self fact pickup-amount) 1.0)
       (set! (-> self fact pickup-spawn-amount) 1.0)
+      ;; Dark Eco normally expands into a two-pill group. Arena 3 can have
+      ;; enough simultaneous deaths to exhaust the live pickup pool, making
+      ;; later Marauders appear to drop nothing. Force one pill per kill for
+      ;; this mission only. Recycle uncollected pills after six seconds so a
+      ;; full Dark Eco meter cannot exhaust the shared pickup process pool.
+      ;; Retain Arena 2's existing behavior.
+      (when (= (-> manager node-info task) (game-task arena-fight-3))
+        (logior! (-> self fact options) (actor-option dont-override-fact fade-out))
+        (set! (-> self fact fade-time) (seconds 6))
+        )
       )
     )
   )

@@ -424,8 +424,12 @@
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
     (t9-0 this)
     )
-  (let ((t1-0 (-> this info index)))
-    (set-setting! 'vehicles 'set (sar t1-0 32) t1-0)
+  ;; An index of -1 accepts the existing unlocked vehicle selection without
+  ;; altering the garage's vehicle bitmask.
+  (when (!= (-> this info index) -1)
+    (let ((t1-0 (-> this info index)))
+      (set-setting! 'vehicles 'set (sar t1-0 32) t1-0)
+      )
     )
   (none)
   )

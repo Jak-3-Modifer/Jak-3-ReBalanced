@@ -59,6 +59,10 @@
 
 (define *desert-hover-checkpoint-valid* (the-as object #f))
 
+;; Hero Mode Marauders need to resolve their art and texture pages from the
+;; Desert Hover level rather than the shared desert vehicle level.
+(define *desert-hover-marauder-vehicle-level* (the-as symbol #f))
+
 ;; After the final Beast ejects Jak, the Sand Shark cannot be boarded again
 ;; until this mission is restarted. This is scoped by the mission flag above.
 (defmethod check-player-get-on ((this v-snake) (arg0 process-focusable))
@@ -96,8 +100,23 @@
   :enter (behavior ()
     (set! *desert-hover-vehicle-locked-out* #f)
     (set-setting! 'extra-bank '((desert2 desbst1)) 0.0 0)
-    (let ((t1-1 2))
-      (set-setting! 'vehicles 'set (shr t1-1 32) t1-1)
+    ;; Hero Mode adds the standard Wasteland Marauder encounter.  Keep the
+    ;; normal mission unchanged, and use the squad controller's regular
+    ;; off-screen spawning rather than a Desert Hover-specific spawn point.
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (set! *desert-hover-marauder-vehicle-level*
+            (-> *traffic-info* vehicle-levels (vehicle-type v-marauder)))
+      (set! (-> *traffic-info* vehicle-levels (vehicle-type v-marauder)) 'deshover)
+      (was-squad-manager-start self)
+      (set! (-> *was-squad-control* target-count) 3)
+      (set! (-> *was-squad-control* reserve-count) 40)
+      )
+    ;; Hero Mode preserves the vehicle chosen at the garage. Normal Mode
+    ;; retains the original Sand Shark requirement.
+    (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (let ((t1-1 2))
+        (set-setting! 'vehicles 'set (shr t1-1 32) t1-1)
+        )
       )
     (set! (-> self vehicle-h) (the-as handle #f))
     (set-setting! 'music #f 0.0 0)
@@ -109,6 +128,15 @@
     )
   :exit (behavior ()
     (set! *desert-hover-vehicle-locked-out* #f)
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (set! (-> *was-squad-control* target-count) 0)
+      (was-squad-manager-kill)
+      (when *desert-hover-marauder-vehicle-level*
+        (set! (-> *traffic-info* vehicle-levels (vehicle-type v-marauder))
+              *desert-hover-marauder-vehicle-level*)
+        (set! *desert-hover-marauder-vehicle-level* (the-as symbol #f))
+        )
+      )
     (stop-main-music)
     )
   :code sleep-code
@@ -172,11 +200,16 @@
     (if (and (not (handle->process (-> this vehicle-h)))
              *target*
              (focus-test? *target* pilot-riding)
-             (= (-> *target* pilot vehicle) (-> *vehicle-info* handle-by-vehicle-type 13))
+             (or (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                 (= (-> *target* pilot vehicle) (-> *vehicle-info* handle-by-vehicle-type 13)))
              )
         (set! (-> this vehicle-h) (-> *target* pilot vehicle))
         )
-    (let ((a0-12 (as-type (handle->process (-> *vehicle-info* handle-by-vehicle-type 13)) process-focusable)))
+    (let ((a0-12 (as-type (handle->process
+                            (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                (-> this vehicle-h)
+                                (-> *vehicle-info* handle-by-vehicle-type 13)))
+                          process-focusable)))
       (if (and a0-12 (focus-test? (the-as process-focusable a0-12) dead))
           (begin
             (when (nonzero? *desert-hover-checkpoint-mask*)

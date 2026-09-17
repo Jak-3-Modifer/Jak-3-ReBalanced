@@ -74,10 +74,6 @@
 
 (defconstant HERO_MODE_SECRETS
   (game-secrets hero-mode
-                endless-ammo
-                invulnerable
-                endless-dark
-                endless-light
                 unlimited-turbos
                 vehicle-hit-points
                 board-fast

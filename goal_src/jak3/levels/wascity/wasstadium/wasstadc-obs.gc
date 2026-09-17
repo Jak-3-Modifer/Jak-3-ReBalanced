@@ -130,14 +130,32 @@
     ;; the three starting crates managed by task-manager-arena-fight-2.  Test
     ;; the fight node directly because this crate dispenser's parent chain is
     ;; not a reliable way to recover the active task manager at runtime.
-    (set! (-> s4-0 pickup-type)
-          (if (and (task-node-open? (game-task-node arena-fight-2-fight))
-                   (not (task-node-closed? (game-task-node arena-fight-2-fight)))
-                   )
-              (pickup-type eco-pill-dark)
-              (pickup-type ammo-random)
-              )
-          )
+    ;; Reset the shared spawn fact before selecting this crate's contents.
+    (set! (-> s4-0 options) (actor-option))
+    (set! (-> s4-0 pickup-amount) 20.0)
+    (set! (-> s4-0 pickup-spawn-amount) 20.0)
+    (cond
+      ((and (task-node-open? (game-task-node arena-fight-2-fight))
+            (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+       (set! (-> s4-0 pickup-type) (pickup-type eco-pill-dark))
+       )
+      ((and (task-node-open? (game-task-node arena-fight-3-fight))
+            (not (task-node-closed? (game-task-node arena-fight-3-fight))))
+       ;; Arena 3 respawning crates contain ammo only: 35% Blue, 32% Red,
+       ;; and 33% Yellow.
+       (let ((ammo-roll (rand-vu-int-count 100)))
+         (set! (-> s4-0 pickup-type)
+               (cond
+                 ((< ammo-roll 35) (pickup-type ammo-blue))
+                 ((< ammo-roll 67) (pickup-type ammo-red))
+                 (else (pickup-type ammo-yellow))
+                 ))
+         )
+       )
+      (else
+        (set! (-> s4-0 pickup-type) (pickup-type ammo-random))
+        )
+      )
     (vector-copy! s5-0 (-> this root trans))
     (when (or (zero? (-> this crate-h)) (not (handle->process (-> this crate-h))))
       (let ((s5-1 (as-type
@@ -760,12 +778,15 @@
       (until (or (-> self go-up)
                  (time-elapsed?
                    gp-0
-                   (if (let ((parent (as-type (ppointer->process (-> self parent)) task-manager)))
-                         (and parent (= (-> parent node-info task) (game-task arena-fight-2)))
+                   (let ((parent (as-type (ppointer->process (-> self parent)) task-manager)))
+                     (if (and parent (= (-> parent node-info task) (game-task arena-fight-2)))
+                         (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                             (seconds 9999)
+                             (seconds 60)
+                             )
+                         (seconds 5)
                          )
-                       (seconds 60)
-                       (seconds 5)
-                       )
+                     )
                    )
                  )
         (when (>= (+ (current-time) (seconds -0.3)) (-> self next-lava-sound))
@@ -2537,11 +2558,79 @@
     )
   )
 
+(define *hero-arena-2-challenge* 0)
+
+(defun draw-hero-arena-2-prompt ((this task-manager-arena-fight-2))
+  (let ((font (new 'stack 'font-context *font-default-matrix* 32 290 0.0 (font-color default) (font-flags shadow kerning))))
+    (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+    (set-width! font 440)
+    (set-height! font 80)
+    (set-scale! font 0.8)
+    (case *hero-arena-2-challenge*
+      ((0) (format (clear *temp-string*) "Melee only."))
+      ((1) (format (clear *temp-string*) "Wave Concussor/Melee only."))
+      ((2) (format (clear *temp-string*) "Mass Inverter/Melee only."))
+      ((3) (format (clear *temp-string*) "Take no damage."))
+      )
+    (print-game-text *temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    )
+  )
 
 ;; WARN: Return type mismatch float vs none.
 (defmethod task-manager-arena-fight-base-method-34 ((this task-manager-arena-fight-2))
   (seek! (-> this crowd-intensity) 0.0 (* 5.0 (seconds-per-frame)))
   (none)
+  )
+
+(defmethod taskman-event-handler ((this task-manager-arena-fight-2) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
+  ;; Dark Jak can absorb an attack during a transition without advancing the
+  ;; shared hit-time marker.  The target's direct hit notification remains
+  ;; reliable, so fail this no-damage challenge from that event as well.
+  (if (and (= arg2 'notify)
+           (= (-> arg3 param 0) 'hit)
+           (nonzero? (-> this start-time))
+           (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+           (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+               (= *hero-arena-2-challenge* 3)
+               )
+           )
+      (go-fail this)
+      ((method-of-type task-manager-arena-fight-base taskman-event-handler) this arg0 arg1 arg2 arg3)
+      )
+  )
+
+(defun advance-hero-arena-2-platform! ((this task-manager-arena-fight-2))
+  "Sink the cleared Hero Mode platform, raise the next one, and begin its wave."
+  (if (< *hero-arena-2-challenge* 3)
+      (let* ((current-index *hero-arena-2-challenge*)
+             (next-index (+ current-index 1))
+             (current-platform (handle->process (-> this platform current-index)))
+             (next-platform (handle->process (-> this platform next-index)))
+             )
+        (when current-platform
+          (send-event current-platform 'go-down 24576.0)
+          )
+        (when next-platform
+          (send-event next-platform 'go-up)
+          )
+        (+! *hero-arena-2-challenge* 1)
+        (set-time! (-> this hint-time))
+        (set! (-> this count) (the-as uint 30))
+        (set! (-> this count-alive) (the-as uint 0))
+        (set! (-> this next-spawn) (current-time))
+        ;; Each weapon-only round supplies the ammo required for that weapon.
+        (when *target*
+          (case *hero-arena-2-challenge*
+            ((1) (send-event *target* 'get-pickup (pickup-type ammo-red) 1000.0))
+            ((2) (send-event *target* 'get-pickup (pickup-type ammo-dark) 1000.0))
+            ;; The final platform begins its own no-damage window; hits taken
+            ;; during the preceding three challenges do not carry into it.
+            ((3) (set! (-> this start-time) (-> *game-info* hit-time)))
+            )
+          )
+        )
+      (go (method-of-object this done))
+      )
   )
 
 (defstate active (task-manager-arena-fight-2)
@@ -2563,6 +2652,19 @@
     (set-time! (-> self state-time))
     )
   :exit (behavior ()
+    ;; The initial crates have been cleared and platform 1 is now active.
+    ;; Sink platforms 2-4 only at this point, after their processes are ready
+    ;; to receive the event. They remain down for the first 30 kills.
+    (when (and (= (-> self node-info task) (game-task arena-fight-2))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (dotimes (hero-platform-index 3)
+        (let ((hero-platform (handle->process (-> self platform (+ hero-platform-index 1)))))
+          (when hero-platform
+            (send-event hero-platform 'go-down 24576.0)
+            )
+          )
+        )
+      )
     (set! (-> self play-hint) #t)
     (set-time! (-> self hint-time))
     (set-setting! 'music 'arenafi 0.0 0)
@@ -2583,19 +2685,22 @@
     )
   :code (behavior ()
     (until #f
-      ;; Show the Arena Fight 2 no-damage challenge for three seconds.
+      ;; Show the current challenge for three seconds before the fight begins.
       (when (not (time-elapsed? (-> self state-time) (seconds 3)))
-        (let ((s5-0
-                (new 'stack 'font-context *font-default-matrix* 32 290 0.0 (font-color default) (font-flags shadow kerning))
-                )
+        (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+            (draw-hero-arena-2-prompt self)
+            (let ((s5-0
+                    (new 'stack 'font-context *font-default-matrix* 32 290 0.0 (font-color default) (font-flags shadow kerning))
+                    )
+                  )
+              (set! (-> s5-0 flags) (font-flags shadow kerning middle middle-vert large))
+              (set-width! s5-0 440)
+              (set-height! s5-0 80)
+              (set-scale! s5-0 0.8)
+              (format (clear *temp-string*) "Kill 30 marauders without taking damage!")
+              (print-game-text *temp-string* s5-0 #f 44 (bucket-id hud-draw-hud-alpha))
               )
-          (set! (-> s5-0 flags) (font-flags shadow kerning middle middle-vert large))
-          (set-width! s5-0 440)
-          (set-height! s5-0 80)
-          (set-scale! s5-0 0.8)
-          (format (clear *temp-string*) "Kill 30 marauders without taking damage!")
-          (print-game-text *temp-string* s5-0 #f 44 (bucket-id hud-draw-hud-alpha))
-          )
+            )
         )
       (if (not (handle->process (-> self arrow-h)))
           (go-virtual active)
@@ -2781,11 +2886,43 @@
     )
   ;; Fail immediately if Jak has taken damage since Arena Fight 2 began.
   (when (and (not (task-node-closed? (game-task-node arena-fight-2-fight)))
-             (> (-> *game-info* hit-time) (-> this start-time)))
+             (> (-> *game-info* hit-time) (-> this start-time))
+             (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                 (= *hero-arena-2-challenge* 3)
+                 ))
     (go-fail this)
     )
+  ;; Hero Mode weapon rules: platform 1 is melee/Dark Jak only, platform 2
+  ;; is Wave Concussor only, and platform 3 is Mass Inverter only.  R1 while
+  ;; in normal Jak form is always a gun shot, including a recalled gun.
+  (when (and *target*
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (< *hero-arena-2-challenge* 3)
+             (cpad-pressed? 0 r1)
+             )
+    (let ((used-gun (if (using-gun? *target*)
+                        (-> *target* gun using-gun-type)
+                        (-> *target* game gun-type)
+                        )))
+      (when (or (focus-test? *target* dark)
+                (zero? *hero-arena-2-challenge*)
+                (and (= *hero-arena-2-challenge* 1) (!= used-gun (pickup-type gun-red-2)))
+                (and (= *hero-arena-2-challenge* 2) (!= used-gun (pickup-type gun-dark-2)))
+                )
+        (go-fail this)
+        )
+      )
+    )
+  ;; Refresh the Hero Mode challenge label when the current platform changes.
+  (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (not (time-elapsed? (-> this hint-time) (seconds 3))))
+    (draw-hero-arena-2-prompt this)
+    )
   (task-manager-arena-fight-base-method-33 this)
-  (let ((v1-5 (-> this dj-train)))
+  ;; Hero Mode replaces Arena 2's Dark Jak training overlay with its own
+  ;; platform challenge prompts.
+  (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+    (let ((v1-5 (-> this dj-train)))
     (cond
       ((zero? v1-5)
        (+! (-> this dj-train) 1)
@@ -2857,6 +2994,7 @@
        (send-event *target* 'get-notify #f)
        )
       )
+      )
     )
   (when (and (time-elapsed? (-> this hint-time) (seconds 5)) (-> this play-hint) (kiosk?))
     (set! (-> this play-hint) #f)
@@ -2891,7 +3029,11 @@
           (set! (-> s5-5 z) -40960.0)
           (set! (-> s5-5 w) 1.0)
           (let ((s4-4 (new 'stack-no-clear 'quaternion)))
-            (when (and s3-4 (< (-> this next-go-down) (current-time)) (> (-> this count) 0))
+            (when (and s3-4
+                       (< (-> this next-go-down) (current-time))
+                       (> (-> this count) 0)
+                       (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                       )
               ;; Once the first platform has dropped, start each following
               ;; Arena Fight 2 lava event seven seconds later.
               (set! (-> this next-go-down) (+ (current-time) (seconds 7)))
@@ -2929,19 +3071,22 @@
       )
     )
   (when (and (zero? (-> this count-alive)) (zero? (-> this count)))
-    (let ((s5-6 #t))
-      (dotimes (s4-5 4)
-        (when (and (as-type (handle->process (-> this platform s4-5)) wstd-fight-plat)
-                   (send-event (handle->process (-> this platform s4-5)) 'is-down?)
-                   )
-          (set! s5-6 #f)
-          (send-event (handle->process (-> this platform s4-5)) 'go-up)
+    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (advance-hero-arena-2-platform! this)
+        (let ((s5-6 #t))
+          (dotimes (s4-5 4)
+            (when (and (as-type (handle->process (-> this platform s4-5)) wstd-fight-plat)
+                       (send-event (handle->process (-> this platform s4-5)) 'is-down?)
+                       )
+              (set! s5-6 #f)
+              (send-event (handle->process (-> this platform s4-5)) 'go-up)
+              )
+            )
+          (if s5-6
+              (go (method-of-object this done))
+              )
           )
         )
-      (if s5-6
-          (go (method-of-object this done))
-          )
-      )
     )
   (none)
   )
@@ -2967,6 +3112,7 @@
   (set! (-> this angle) (the-as uint 0))
   (set! (-> this gui-id) (new 'static 'sound-id))
   (set! (-> this dj-train) (the-as uint 0))
+  (set! *hero-arena-2-challenge* 0)
   (set! (-> this darkbomb) #f)
   (if (kiosk?)
       (talker-spawn-func (-> *talker-speech* 98) *entity-pool* (target-pos 0) (the-as region #f))
@@ -3124,7 +3270,12 @@
       )
     ;; The inherited field is a zero/nonzero fight-state marker.  It is set
     ;; only after the entry crates have supplied Blue Ammo.
-    (set! (-> self time-limit) (seconds 98))
+    (set! (-> self time-limit)
+          (if (>= (-> *game-info* sub-task-list (game-task-node arena-fight-3-fight) death-count)
+                  (the-as uint 4))
+              (seconds 103)
+              (seconds 98)
+              ))
     (set-time! (-> self start-time))
     (set! (-> self check-timer) 0)
     )
@@ -3137,9 +3288,9 @@
     )
   (task-manager-arena-fight-base-method-34 this)
   (task-manager-arena-fight-base-method-33 this)
-  ;; Switching weapons is allowed.  A failure occurs only when the player
-  ;; presses fire with something other than Vulcan Fury, or Blue Ammo reaches
-  ;; zero after Arena 3 has entered its active state.
+  ;; Switching weapons is allowed. When Jak has a gun out, check the active
+  ;; gun; when it is holstered, check the stored selection that R1 will recall.
+  ;; A recalled Vulcan is legal, while a recalled non-Vulcan fails the fight.
   (when (nonzero? (-> this start-time))
     ;; Refresh the lightweight arena fire/ember effect at each authored
     ;; position.  This remains local to the active Arena 3 fight.
@@ -3150,7 +3301,10 @@
     (when (or (<= (-> *game-info* gun-ammo 2) 0.0)
               (and (cpad-pressed? 0 r1)
                    (or (not *target*)
-                       (!= (-> *target* gun using-gun-type) (pickup-type gun-blue-1))
+                       (if (using-gun? *target*)
+                           (!= (-> *target* gun using-gun-type) (pickup-type gun-blue-1))
+                           (!= (-> *target* game gun-type) (pickup-type gun-blue-1))
+                           )
                        )
                    )
               )
@@ -3272,7 +3426,7 @@
                               (font-color default)
                               (font-flags shadow kerning))))
               (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
-              ;; Center the warning inside the 4:3-safe HUD width.
+              
               (set-width! font 400)
               (set-height! font 100)
               (set-scale! font 0.6)
@@ -3295,8 +3449,22 @@
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
     (t9-0 this)
     )
+  ;; Hero Mode reaches Arena 3 before the normal Gun Course.  Give its
+  ;; required Vulcan ammo when the task starts, so the authored entry gate can
+  ;; still open after the player breaks the three supply crates.
+  (when (and *target*
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+    (send-event *target* 'get-pickup (pickup-type ammo-blue) 1000.0)
+    )
   (set! (-> this start-time) 0)
-  (set! (-> this time-limit) (seconds 98))
+  ;; Arena 3 begins at 98 seconds. After Jak has died four times during this
+  ;; fight, subsequent attempts receive a 103-second limit.
+  (set! (-> this time-limit)
+        (if (>= (-> *game-info* sub-task-list (game-task-node arena-fight-3-fight) death-count)
+                (the-as uint 4))
+            (seconds 103)
+            (seconds 98)
+            ))
   (set! (-> this count) (the-as uint 30))
   (set! (-> this angle) (the-as uint 0))
   (if (kiosk?)

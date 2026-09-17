@@ -447,6 +447,8 @@
     (calculate-percentage (_type_) float)
     (inc-death-count! (_type_) none)
     (get-max-ammo-for-gun (_type_ pickup-type) float)
+    (get-dark-eco-capacity (_type_) float)
+    (get-light-eco-capacity (_type_) float)
     )
   )
 

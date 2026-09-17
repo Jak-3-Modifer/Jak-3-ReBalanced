@@ -1736,6 +1736,24 @@
 
 (define *nav-mesh-aid* #xb5d9)
 
+;; Hero Mode uses tighter Desert Rescue countdowns without altering the normal campaign.
+(defun configure-hero-mode-desert-rescue-timers! ()
+  (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (begin
+        (set! (-> *passenger-pos* 0 total-time) (seconds 80))
+        (set! (-> *passenger-pos* 1 total-time) (seconds 62))
+        (set! (-> *passenger-pos* 2 total-time) (seconds 60))
+        (set! (-> *passenger-pos* 3 total-time) (seconds 205))
+        )
+      (begin
+        (set! (-> *passenger-pos* 0 total-time) (seconds 100))
+        (set! (-> *passenger-pos* 1 total-time) (seconds 90))
+        (set! (-> *passenger-pos* 2 total-time) (seconds 90))
+        (set! (-> *passenger-pos* 3 total-time) (seconds 260))
+        )
+      )
+  )
+
 ;; WARN: Return type mismatch (array desert-passenger-info) vs none.
 (defmethod set-time-limit ((this task-manager-desert-rescue))
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
@@ -1746,9 +1764,18 @@
     )
   (set-setting! 'dust-storm-sound-scalar #f 0.9 0)
   (set-setting! 'extra-bank '((desert2 desresc1)) 0.0 0)
-  (let ((t1-2 2))
-    (set-setting! 'vehicles 'set (shr t1-2 32) t1-2)
-    )
+  (configure-hero-mode-desert-rescue-timers!)
+  ;; Normal Mode remains Sand Shark-only. Hero Mode accepts every earned
+  ;; vehicle except the Heat Seeker (v-fox) and Car-X (v-x-ride).
+  (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (let ((allowed-vehicles (the-as int (game-vehicles v-turtle v-snake v-scorpion v-toad v-rhino v-mirage))))
+        (set-setting! 'vehicles 'abs (shr allowed-vehicles 32) allowed-vehicles)
+        )
+
+      (let ((t1-2 2))
+        (set-setting! 'vehicles 'set (shr t1-2 32) t1-2)
+        )
+      )
   (set-setting! 'goggles 'abs 1.0 0)
   (set-setting! 'scarf 'abs 1.0 0)
   (set! (-> this desresc-path) *desresc-transport-path-0*)
@@ -1818,6 +1845,14 @@
   :trans (behavior ()
     ((-> (method-of-type task-manager active) trans))
     (cond
+      ;; On Hero Mode retries, wait for the player to select and board an
+      ;; eligible garage vehicle. The original mission instead spawns a Sand
+      ;; Shark here, which becomes an invalid tracked vehicle after a swap.
+      ((and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+            (or (not *target*)
+                (not (focus-test? *target* pilot-riding))))
+       #f
+       )
       ((task-node-open? (game-task-node desert-rescue-satellite-fight))
        (let ((gp-0 (new 'stack 'traffic-object-spawn-params)))
          (set! (-> gp-0 object-type) (traffic-type guard-a))
@@ -1835,7 +1870,12 @@
          (vector-copy! (-> gp-0 position) *snake-start-pos*)
          (quaternion-identity! (-> gp-0 rotation))
          (quaternion-rotate-y! (-> gp-0 rotation) (-> gp-0 rotation) *snake-start-angle*)
-         (set! (-> self jak-vehicle) (process->handle (vehicle-spawn (vehicle-type v-snake) gp-0)))
+         (set! (-> self jak-vehicle)
+               (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (process->handle (the-as process (send-event *target* 'get-vehicle)))
+                   (process->handle (vehicle-spawn (vehicle-type v-snake) gp-0))
+                   )
+               )
          )
        (set! (-> self current-transport) (the-as handle #f))
        (set! (-> self current-passenger) (the-as handle #f))
@@ -1864,7 +1904,12 @@
          (vector-copy! (-> gp-2 position) *snake-start-pos*)
          (quaternion-identity! (-> gp-2 rotation))
          (quaternion-rotate-y! (-> gp-2 rotation) (-> gp-2 rotation) *snake-start-angle*)
-         (set! (-> self jak-vehicle) (process->handle (vehicle-spawn (vehicle-type v-snake) gp-2)))
+         (set! (-> self jak-vehicle)
+               (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (process->handle (the-as process (send-event *target* 'get-vehicle)))
+                   (process->handle (vehicle-spawn (vehicle-type v-snake) gp-2))
+                   )
+               )
          )
        (set! (-> self current-transport) (the-as handle #f))
        (set! (-> self current-passenger) (the-as handle #f))

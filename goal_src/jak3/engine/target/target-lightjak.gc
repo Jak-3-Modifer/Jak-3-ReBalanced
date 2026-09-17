@@ -2830,7 +2830,7 @@
       0.0
       (let* ((f0-2 (-> self game eco-pill-light))
              (f26-0 (- (-> self fact health-max) (-> self fact health)))
-             (f30-0 (/ (-> *FACT-bank* eco-pill-light-max-default) (-> self fact health-max)))
+             (f30-0 (/ (get-light-eco-capacity (-> self game)) (-> self fact health-max)))
              (gp-1 (the int (fmin f26-0 (ceil (/ f0-2 f30-0)))))
              )
         (let ((v1-17 (ja-group)))

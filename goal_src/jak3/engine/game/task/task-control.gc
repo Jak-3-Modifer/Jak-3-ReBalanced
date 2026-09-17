@@ -84,12 +84,84 @@
   (cty-faction-evaluate-commands arg0)
   )
 
+(defun configure-hero-mode-desert-race-progression! ()
+  "Hero Mode bypasses Turtle Training: Artifact Race 1 unlocks Course Race.
+Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
+  (let ((course-intro (-> *game-info* sub-task-list (game-task-node desert-course-race-introduction)))
+        (artifact-intro (-> *game-info* sub-task-list (game-task-node desert-artifact-race-1-introduction)))
+        (hover-intro (-> *game-info* sub-task-list (game-task-node desert-hover-introduction)))
+        (hover-task (-> *game-info* play-list (game-task desert-hover)))
+        (rescue-task (-> *game-info* play-list (game-task desert-rescue)))
+        (rescue-vehicle-node (-> *game-info* sub-task-list (game-task-node desert-rescue-get-vehicle)))
+        (rescue-node (-> *game-info* sub-task-list (game-task-node desert-rescue-rescue)))
+        (leaper-intro (-> *game-info* sub-task-list (game-task-node wascity-leaper-race-introduction)))
+        (gun-game-intro (-> *game-info* sub-task-list (game-task-node wascity-gungame-introduction)))
+        (arena-3-intro (-> *game-info* sub-task-list (game-task-node arena-fight-3-introduction)))
+        )
+    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (begin
+          ;; Artifact Race 1 -> Course Race, with Turtle Training bypassed.
+          ;; Turtle Training normally closes its resolution prerequisite. Keep
+          ;; that state in Hero Mode so the Course Race can enter its regular
+          ;; track-start flow without playing the training.
+          ;; Leaper Race becomes available after the Temple Oracle mission.
+          (set! (-> artifact-intro parent-node 0) (game-task-node wascity-pre-game-resolution))
+          (set! (-> course-intro parent-node 0) (game-task-node desert-artifact-race-1-resolution))
+          (set! (-> hover-intro parent-node 0) (game-task-node desert-course-race-resolution))
+          (set! (-> hover-intro manager index) -1)
+          ;; Begin Hero Mode Desert Hover in the Turtle, but do not apply the
+          ;; normal-mode vehicle lock; the garage may still select any vehicle
+          ;; available to the player.
+          (set! (-> hover-task play-continue) "desert-start-turtle")
+          ;; The Rescue garage manager uses -1 as its unrestricted-vehicle
+          ;; index. This keeps all of Hero Mode's unlocked vehicles selectable.
+          (set! (-> rescue-vehicle-node manager index) -1)
+          ;; Rescue normally restarts at the Sand Shark-only continuation.
+          ;; In Hero Mode, return to the ordinary garage exit instead, so the
+          ;; vehicle picked after a retry is the same one the rescue manager
+          ;; adopts when the player enters the desert.
+          (set! (-> rescue-task play-continue) "wasdoors-desert")
+          (set! (-> rescue-node reset restart-info retry continue) "wasdoors-desert")
+          (set! (-> rescue-node reset quit-info retry continue) "wasdoors-desert")
+          (set! (-> rescue-node reset fail-info fail continue) "wasdoors-desert")
+          (set! (-> rescue-node reset death-info fail continue) "wasdoors-desert")
+          (unless (task-node-closed? (game-task-node desert-turtle-training-resolution))
+            (task-node-close! (game-task-node desert-turtle-training-resolution) 'event)
+            )
+          (set! (-> leaper-intro parent-node 0) (game-task-node temple-oracle-resolution))
+          (set! (-> gun-game-intro parent-node 0) (game-task-node city-power-game-resolution))
+          ;; Hero Mode makes Arena 3 available immediately after Desert Rescue.
+          (set! (-> arena-3-intro parent-node 0) (game-task-node desert-rescue-resolution))
+          )
+        (begin
+          ;; Restore the original story sequence whenever Hero Mode is inactive.
+          (set! (-> course-intro parent-node 0) (game-task-node desert-turtle-training-resolution))
+          (set! (-> artifact-intro parent-node 0) (game-task-node desert-course-race-resolution))
+          (set! (-> hover-intro parent-node 0) (game-task-node wascity-leaper-race-resolution))
+          (set! (-> hover-intro manager index) 2)
+          (set! (-> hover-task play-continue) "desert-start-snake")
+          (set! (-> rescue-vehicle-node manager index) 2)
+          ;; Keep the original Sand Shark continuation for Normal Mode.
+          (set! (-> rescue-task play-continue) "wasdoors-desert-snake")
+          (set! (-> rescue-node reset restart-info retry continue) "wasdoors-desert-snake")
+          (set! (-> rescue-node reset quit-info retry continue) "wasdoors-desert-snake")
+          (set! (-> rescue-node reset fail-info fail continue) "wasdoors-desert-snake")
+          (set! (-> rescue-node reset death-info fail continue) "wasdoors-desert-snake")
+          (set! (-> leaper-intro parent-node 0) (game-task-node desert-artifact-race-1-resolution))
+          (set! (-> gun-game-intro parent-node 0) (game-task-node desert-rescue-hold-doors))
+          (set! (-> arena-3-intro parent-node 0) (game-task-node wascity-gungame-resolution))
+          )
+    )
+  )
+  )
+
 (defun update-task-masks ((arg0 symbol))
   (local-vars (a3-2 symbol))
   (if (= arg0 'none)
       (return 0)
       )
   (do-nothing *level*)
+  (configure-hero-mode-desert-race-progression!)
   (cond
     ((or (= arg0 'debug) (= arg0 'level))
      )
@@ -864,6 +936,61 @@
       )
     )
   #f
+  )
+
+;; Optional missions are deliberately omitted. Hero Mode begins directly at
+;; Arena Fight 1, then later replaces Turtle Training with Artifact Race 1.
+(define *hero-mode-main-task-order*
+  (new 'static 'array game-task 61
+       (game-task arena-fight-1)
+       (game-task wascity-chase) (game-task wascity-pre-game)
+       (game-task desert-artifact-race-1) (game-task desert-course-race)
+       (game-task desert-hover) (game-task arena-fight-2)
+       (game-task desert-catch-lizards) (game-task desert-rescue)
+       (game-task wascity-gungame) (game-task arena-fight-3)
+       (game-task nest-eggs) (game-task temple-climb) (game-task desert-glide)
+       (game-task volcano-darkeco) (game-task temple-oracle)
+       (game-task wascity-leaper-race) (game-task desert-oasis-defense)
+       (game-task temple-tests) (game-task comb-travel) (game-task mine-explore)
+       (game-task mine-blow) (game-task mine-boss) (game-task sewer-met-hum)
+       (game-task city-vehicle-training) (game-task city-port-fight)
+       (game-task city-port-attack) (game-task city-gun-course-1)
+       (game-task city-sniper-fight) (game-task sewer-kg-met)
+       (game-task city-destroy-darkeco) (game-task forest-kill-plants)
+       (game-task city-destroy-grid) (game-task city-hijack-vehicle)
+       (game-task city-port-assault) (game-task city-gun-course-2)
+       (game-task city-blow-barricade) (game-task city-protect-hq)
+       (game-task sewer-hum-kg) (game-task city-power-game)
+       (game-task desert-artifact-race-2) (game-task nest-hunt)
+       (game-task desert-beast-battle) (game-task desert-jump-mission)
+       (game-task desert-chase-marauders) (game-task forest-ring-chase)
+       (game-task factory-sky-battle) (game-task factory-assault)
+       (game-task factory-boss) (game-task temple-defend) (game-task wascity-defend)
+       (game-task forest-turn-on-machine) (game-task precursor-tour)
+       (game-task city-blow-tower) (game-task tower-destroy)
+       (game-task palace-ruins-patrol) (game-task palace-ruins-attack)
+       (game-task comb-wild-ride) (game-task precursor-destroy-ship)
+       (game-task desert-final-boss) (game-task city-win)
+       ))
+
+(defun hero-mode-current-main-task ()
+  (dotimes (index 61)
+    (let ((task (-> *hero-mode-main-task-order* index)))
+      (when (not (task-complete? *game-info* task))
+        (return task)
+        )
+      )
+    )
+  (game-task unknown)
+  )
+
+(defun hero-mode-skip-current-main-task! ()
+  (let ((task (hero-mode-current-main-task)))
+    (if (!= task (game-task unknown))
+        (task-resolution-close! task)
+        #f
+        )
+    )
   )
 
 (defun task-close! ((arg0 string))

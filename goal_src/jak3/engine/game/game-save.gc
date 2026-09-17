@@ -2221,6 +2221,15 @@
       )
     )
   (label cfg-257)
+  ;; Hero saves may originate from a completed normal save, which used to
+  ;; carry purchased post-game cheats into the new Hero playthrough.  Hero
+  ;; Mode never permits those cheats, including on already-created saves.
+  (when (logtest? (-> this secrets) (game-secrets hero-mode))
+    (logclear! (-> this secrets)
+               (game-secrets endless-ammo invulnerable endless-dark endless-light))
+    (logclear! (-> this purchase-secrets)
+               (game-secrets endless-ammo invulnerable endless-dark endless-light))
+    )
   arg0
   )
 

@@ -1006,7 +1006,9 @@
   )
 
 (defmethod vehicle-method-108 ((this vehicle) (arg0 int))
-  (set-alert-level0 (-> this squad) arg0)
+  (when (-> this squad)
+    (set-alert-level0 (-> this squad) arg0)
+    )
   0
   (none)
   )
