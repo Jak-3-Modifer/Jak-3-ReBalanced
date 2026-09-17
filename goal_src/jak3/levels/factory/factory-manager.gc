@@ -118,16 +118,7 @@
 
 (define *fac-tmp-str* (new 'global 'string 128 (the-as string #f)))
 
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
-;; ERROR: Stack slot load at 448 mismatch: defined as size 4, got size 16
+
 (defmethod init-paths-for-list! ((this factory-manager) (arg0 factory-pathlist) (arg1 string))
   (set! (-> arg0 npath) 0)
   (set! (-> arg0 nloop) 0)
