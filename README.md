@@ -4,7 +4,7 @@
 
 # Jak 3 ReBalanced Beta
 Serves as a base template for another future mod.
-A revitalized approach to rebalancing the various elements of Jak 3, including missions, enemies, weapons, vehicles, bosses, and overall difficulty. This fresh perspective aims to enhance gameplay by fine-tuning the difficulty, ensuring a more strategic and dynamic experience for casual players.
+A revitalized approach to rebalancing Jak 3's gameplay, including missions, enemies, weapons, vehicles, bosses, and overall difficulty. This fresh perspective aims to enhance gameplay by fine-tuning difficulty and ensuring a more strategic, dynamic experience for casual players.
 
 ## Mod Details (as of latest patch)
 
@@ -109,9 +109,9 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 - Dark Satellite Mini Boss is faster; the player now needs to be in the laser radius to move on to the next phase
 
-- Metal Head Beasts are faster and turn more frequently; increase per kill. Player now gains 1 gem per kill
+- Metal Head Beasts' behavior is altered. Player now gains 1 gem per kill
 
-- Precursor Robot Boss is faster, with a new stage in the fight
+- Precursor Robot Boss attacks are faster, with a new stage in the fight
 
 - Robot enemies deal damage if caught in their explosive death; one mission exception (spider bot only)
 
@@ -127,7 +127,7 @@ A revitalized approach to rebalancing the various elements of Jak 3, including m
 
 - Metal Grunt and KG Bots move faster
 
-- Rat has a faster knocked-out state and dies from gunfire from one shot (any gun)
+- Rat has a faster knocked-out state and dies from gunfire with one shot (any gun)
 
 - Dark Bipedals have decreased knockback when attacked
 
