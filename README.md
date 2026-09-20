@@ -52,7 +52,7 @@ A revitalized approach to rebalancing Jak 3's gameplay, including missions, enem
 
 - Catch Lizards now uses the Tough Puppy instead
 
-- Artifact race 1 timer is tighter and marauders don't spawn in front of you
+- Artifact race 1 timer is tighter, and marauders don't spawn in front of you
 
 - During the chase marauder sequence, the bridges have been removed
 
@@ -82,7 +82,7 @@ A revitalized approach to rebalancing Jak 3's gameplay, including missions, enem
 
 `Vehicles`
 
-- Dune Hopper now has a burst fire
+- Dune Hopper now has burst fire
 
 - Dune Hopper now has a custom purchasable secret
 
@@ -92,15 +92,6 @@ A revitalized approach to rebalancing Jak 3's gameplay, including missions, enem
 
 - Blue Hellcat Cruiser has stiffer handling
 
-`Currency and Secrets`
-
-- Costs of gun upgrades increased
-
-- Costs of side missions increased
-
-- New custom orbs (more in the future)
-
-- New secrets (more in the future)
 
 
 `Enemies and Bosses`
@@ -109,7 +100,7 @@ A revitalized approach to rebalancing Jak 3's gameplay, including missions, enem
 
 - Dark Satellite Mini Boss is faster; the player now needs to be in the laser radius to move on to the next phase
 
-- Metal Head Beasts' behavior is altered. Player now gains 1 gem per kill
+- Metal Head Beasts' behavior is altered. The player now gains 1 gem per kill
 
 - Precursor Robot Boss attacks are faster, with a new stage in the fight
 
@@ -135,7 +126,19 @@ A revitalized approach to rebalancing Jak 3's gameplay, including missions, enem
 
 - KG robot transports have more HP, and their laser is faster
 
+`Currency and Secrets`
 
+- Costs of gun upgrades increased
+
+- Costs of side missions increased
+
+- New custom orbs (more in the future)
+
+- New secrets (more in the future)
+
+## Hero Mode
+
+Under Maintenance 
 
 
 
