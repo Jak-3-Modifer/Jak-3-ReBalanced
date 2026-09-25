@@ -2182,7 +2182,12 @@
 
 (defbehavior initialize-ammo-by-other ammo ((arg0 vector) (arg1 vector) (arg2 fact-info))
   (let ((s3-0 (-> arg2 pickup-type))
-        (f30-0 (-> arg2 pickup-spawn-amount))
+        ;; Every physical yellow-ammo pickup grants exactly five rounds.
+        (f30-0 (if (= (-> arg2 pickup-type) (pickup-type ammo-yellow))
+                   5.0
+                   (-> arg2 pickup-spawn-amount)
+                   )
+               )
         )
     (set! (-> self pickup-amount) f30-0)
     (set! (-> self pickup-type) s3-0)
@@ -2203,7 +2208,7 @@
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod init-common ((this ammo-collectable) (arg0 entity-actor) (arg1 pickup-type) (arg2 float))
-  (set! (-> this pickup-amount) arg2)
+  (set! (-> this pickup-amount) (if (= arg1 (pickup-type ammo-yellow)) 5.0 arg2))
   (set! (-> this pickup-type) arg1)
   (initialize-allocations this)
   (vector-copy! (-> this root trans) (-> arg0 extra trans))

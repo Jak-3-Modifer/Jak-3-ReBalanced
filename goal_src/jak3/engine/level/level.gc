@@ -3720,9 +3720,9 @@
                               (= (-> s3-0 name) 'minec))
                           (when (!= *mine-custom-sfx-ambience* 'mine-ac)
                             (stop-main-music)
-                            (play-main-music
-                              "music/mine_level.flac"
-                              (the int (* 20.0 (-> *setting-control* user-current sfx-volume))))
+                             (play-main-music
+                               "music/mine_level.flac"
+                               (the int (* 40.0 (-> *setting-control* user-current sfx-volume))))
                             (set! *mine-custom-sfx-ambience* 'mine-ac)
                             )
                           ;; Keep the normal Mine music setting available so
@@ -3733,9 +3733,9 @@
                          ((= (-> s3-0 name) 'mineb)
                           (when (!= *mine-custom-sfx-ambience* 'mine-b)
                             (stop-main-music)
-                            (play-main-music
-                              "music/mine_level_II.flac"
-                              (the int (* 20.0 (-> *setting-control* user-current sfx-volume))))
+                             (play-main-music
+                               "music/mine_level_II.flac"
+                               (the int (* 60.0 (-> *setting-control* user-current sfx-volume))))
                             (set! *mine-custom-sfx-ambience* 'mine-b)
                             )
                           ;; Mine B keeps its regular level music alongside the

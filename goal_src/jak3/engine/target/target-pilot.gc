@@ -490,6 +490,9 @@
         )
       )
     )
+  ;; Pilot mode bypasses target-real-post.  Preserve Dwarfism/Growth Spurt
+  ;; while Jak is seated without changing the vehicle's own scale.
+  (target-midget-jak-scale!)
   (ja-post)
   (joint-points)
   (update-transforms (-> self control))

@@ -7,6 +7,600 @@
 
 ;; DECOMP BEGINS
 
+(define *v-turtle-loadout-trigger-pos*
+  (new 'static 'vector :x 9348997.12 :y 126648.32 :z 698982.4 :w 1.0)
+  )
+
+(define *v-scorpion-loadout-trigger-pos*
+  (new 'static 'vector :x 9409536.0 :y 129884.16 :z 710492.16 :w 1.0)
+  )
+(define *v-scorpion-loadout-menu-open?* #f)
+(define *v-scorpion-loadout-menu-page* 0)
+(define *v-scorpion-loadout-menu-selection* 0)
+
+;; Coordinates are stored in the engine's 4096-units-per-meter scale.
+;; The shop itself is a safe positional trigger; its visible bush will be
+;; added only once its art group is built for WSD.
+(define *wasdoors-bbush-shop-pos*
+  (new 'static 'vector :x 9140224.0 :y 129187.84 :z 728596.48 :w 1.0)
+  )
+
+(define *wasdoors-bbush-shop-open?* #f)
+
+(defun wasdoors-v-turtle-faster-boost-unlocked? ()
+  (task-node-open? (game-task-node desert-course-race-resolution))
+  )
+
+(defun wasdoors-close-bbush-shop ()
+  (when *wasdoors-bbush-shop-open?*
+    (set! *wasdoors-bbush-shop-open?* #f)
+    (set! *popup-menu-open* #f)
+    (set-master-mode 'game)
+    )
+  (none)
+  )
+
+(defun wasdoors-draw-bbush-shop ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 56 65 0.0
+                   (font-color default)
+                   (font-flags shadow kerning)
+                   )))
+    (set! (-> font flags) (font-flags shadow kerning large))
+    (set-width! font 420)
+    (set-height! font 55)
+    (set-scale! font 0.48)
+    (set! (-> font color) (font-color cyan))
+    (format (clear *temp-string*) "Burning Bush Shop")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 145.0)
+    (set-scale! font 0.38)
+    (set! (-> font color) (font-color default))
+    (format (clear *temp-string*) "> Trade 1 Orb for 2 Orbs")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 210.0)
+    (set-scale! font 0.30)
+    (format (clear *temp-string*) "Orbs: ~D" (the int (-> *game-info* money)))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 285.0)
+    (format (clear *temp-string*) "<PAD_X> Buy     <PAD_CIRCLE> Exit")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    )
+  (none)
+  )
+
+(defun wasdoors-update-bbush-shop ()
+  (cond
+    (*wasdoors-bbush-shop-open?*
+     (wasdoors-draw-bbush-shop)
+     (cond
+       ((cpad-pressed? 0 x)
+        (if (>= (-> *game-info* money) 1.0)
+            (begin
+              ;; This changes only the spendable balance, not the lifetime orb total.
+              (-! (-> *game-info* money) 1.0)
+              (+! (-> *game-info* money) 2.0)
+              (sound-play "menu-pick")
+              )
+            (sound-play "menu-back")
+            )
+        (cpad-clear! 0 x)
+        )
+       ((cpad-pressed? 0 triangle circle select)
+        (wasdoors-close-bbush-shop)
+        )
+       )
+     )
+    ((and *target*
+          (not (focus-test? *target* pilot-riding))
+          (< (vector-vector-distance-squared (target-pos 0) *wasdoors-bbush-shop-pos*)
+             (square 8192.0)
+             ))
+     (let ((font (new 'stack 'font-context *font-default-matrix* 56 370 0.0
+                      (font-color default)
+                      (font-flags shadow kerning)
+                      )))
+       (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+       (set-width! font 400)
+       (set-height! font 80)
+       (set-scale! font 0.7)
+       (format (clear *temp-string*) "Press <PAD_X> to open shop")
+       (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+       (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+       )
+     (when (cpad-pressed? 0 x)
+       (set! *wasdoors-bbush-shop-open?* #t)
+       (set! *popup-menu-open* #t)
+       (set-master-mode 'menu)
+       (cpad-clear! 0 x)
+       )
+     )
+    )
+  (none)
+  )
+
+(defun wasdoors-draw-v-turtle-loadout-option-line ((font font-context) (text string) (y float) (selected? symbol) (equipped? symbol))
+  (set! (-> font origin y) y)
+  (set! (-> font color) (cond
+                          (equipped? (font-color orange))
+                          (selected? (font-color progress-old-selected))
+                          (else (font-color default))
+                          ))
+  (format (clear *temp-string*) text)
+  (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+  (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+  (none)
+  )
+
+(defun wasdoors-draw-v-turtle-loadout-menu ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 56 65 0.0
+                   (font-color default)
+                   (font-flags shadow kerning)
+                   )))
+    (set! (-> font flags) (font-flags shadow kerning large))
+    (set-width! font 400)
+    (set-height! font 50)
+
+    ;; Category or submenu title.
+    (set-scale! font 0.48)
+    (set! (-> font color) (font-color cyan))
+    (case *v-turtle-loadout-menu-page*
+      ((0) (format (clear *temp-string*) "Tough Puppy Loadout"))
+      ((1) (format (clear *temp-string*) "Weapons"))
+      ((2) (format (clear *temp-string*) "Abilities"))
+      (else (format (clear *temp-string*) "Defense"))
+      )
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+
+    (set-scale! font 0.4)
+    (case *v-turtle-loadout-menu-page*
+      ((0)
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 0) "> Weapons" "  Weapons")
+         135.0
+         (= *v-turtle-loadout-menu-selection* 0)
+         #f
+         )
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 1) "> Abilities" "  Abilities")
+         185.0
+         (= *v-turtle-loadout-menu-selection* 1)
+         #f
+         )
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 2) "> Defense" "  Defense")
+         235.0
+         (= *v-turtle-loadout-menu-selection* 2)
+         #f
+         )
+       )
+      ((1)
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 0) "> None" "  None")
+         150.0
+         (= *v-turtle-loadout-menu-selection* 0)
+         (= *v-turtle-weapon-loadout* 0)
+         )
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (v-turtle-mass-inverter-unlocked?)
+             (if (= *v-turtle-loadout-menu-selection* 1) "> Mass Inverter" "  Mass Inverter")
+             (if (= *v-turtle-loadout-menu-selection* 1) "> ???" "  ???"))
+         205.0
+         (= *v-turtle-loadout-menu-selection* 1)
+         (and (v-turtle-mass-inverter-unlocked?)
+              (= *v-turtle-weapon-loadout* 1))
+         )
+       )
+      ((2)
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 0) "> None" "  None")
+         90.0
+         (= *v-turtle-loadout-menu-selection* 0)
+         (= *v-turtle-ability-loadout* 0)
+         )
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 1) "> Vehicle Toughness" "  Vehicle Toughness")
+         130.0
+         (= *v-turtle-loadout-menu-selection* 1)
+         (logtest? (-> *game-info* secrets) (game-secrets vehicle-hit-points))
+         )
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (wasdoors-v-turtle-faster-boost-unlocked?)
+             (if (= *v-turtle-loadout-menu-selection* 2) "> Faster Boost Cooldown" "  Faster Boost Cooldown")
+             (if (= *v-turtle-loadout-menu-selection* 2) "> ???" "  ???"))
+         170.0
+         (= *v-turtle-loadout-menu-selection* 2)
+         (and (wasdoors-v-turtle-faster-boost-unlocked?)
+              (= *v-turtle-ability-loadout* 3))
+         )
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 3) "> Turret Jammer" "  Turret Jammer")
+         210.0
+         (= *v-turtle-loadout-menu-selection* 3)
+         (= *v-turtle-ability-loadout* 6)
+         )
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 4) "> Regenerative Armor" "  Regenerative Armor")
+         250.0
+         (= *v-turtle-loadout-menu-selection* 4)
+         (= *v-turtle-ability-loadout* 7)
+         )
+      )
+      (else
+        (wasdoors-draw-v-turtle-loadout-option-line
+          font
+          (if (= *v-turtle-loadout-menu-selection* 0) "> None" "  None")
+          120.0
+          (= *v-turtle-loadout-menu-selection* 0)
+          (= *v-turtle-defense-loadout* 0)
+          )
+        (wasdoors-draw-v-turtle-loadout-option-line
+          font
+          (if (= *v-turtle-loadout-menu-selection* 1) "> Damage Shield" "  Damage Shield")
+          155.0
+          (= *v-turtle-loadout-menu-selection* 1)
+          (= *v-turtle-defense-loadout* 4)
+          )
+        (wasdoors-draw-v-turtle-loadout-option-line
+          font
+          (if (= *v-turtle-loadout-menu-selection* 2) "> Emergency Repair" "  Emergency Repair")
+          195.0
+          (= *v-turtle-loadout-menu-selection* 2)
+          (= *v-turtle-defense-loadout* 5)
+          )
+        (wasdoors-draw-v-turtle-loadout-option-line
+          font
+          (if (= *v-turtle-loadout-menu-selection* 3) "> Camouflage" "  Camouflage")
+          235.0
+          (= *v-turtle-loadout-menu-selection* 3)
+          (= *v-turtle-defense-loadout* 8)
+          )
+        )
+      )
+
+    ;; Use one combined D-pad glyph for menu navigation.
+    (set-scale! font 0.3)
+    (wasdoors-draw-v-turtle-loadout-option-line
+      font
+      "<PAD_DPAD_DOWN>  Move"
+      305.0
+      #f
+      #f
+      )
+    (wasdoors-draw-v-turtle-loadout-option-line
+      font
+      (if (= *v-turtle-loadout-menu-page* 0)
+          "<PAD_X>  Select     <PAD_TRIANGLE>  Exit"
+          "<PAD_X>  Equip     <PAD_CIRCLE>  Back     <PAD_TRIANGLE>  Exit")
+      345.0
+      #f
+      #f
+      )
+    )
+  (none)
+  )
+
+(defun wasdoors-update-v-turtle-loadout-menu ()
+  (wasdoors-draw-v-turtle-loadout-menu)
+  (let ((last-selection (cond
+                          ((= *v-turtle-loadout-menu-page* 0) 2)
+                          ((= *v-turtle-loadout-menu-page* 2) 4)
+                          ((= *v-turtle-loadout-menu-page* 3) 3)
+                          (else 1)
+                          )))
+    (cond
+      ((cpad-pressed? 0 up)
+       (dec! *v-turtle-loadout-menu-selection*)
+       (when (< *v-turtle-loadout-menu-selection* 0)
+         (set! *v-turtle-loadout-menu-selection* last-selection)
+         )
+       (sound-play "menu-pick")
+       )
+      ((cpad-pressed? 0 down)
+       (inc! *v-turtle-loadout-menu-selection*)
+       (when (> *v-turtle-loadout-menu-selection* last-selection)
+         (set! *v-turtle-loadout-menu-selection* 0)
+         )
+       (sound-play "menu-pick")
+       )
+      ((cpad-pressed? 0 x)
+       (sound-play "menu-pick")
+       (case *v-turtle-loadout-menu-page*
+         ((0)
+          (set! *v-turtle-loadout-menu-page* (+ *v-turtle-loadout-menu-selection* 1))
+          (case *v-turtle-loadout-menu-page*
+            ((1) (set! *v-turtle-loadout-menu-selection* (if (= *v-turtle-weapon-loadout* 1) 1 0)))
+            ((2) (set! *v-turtle-loadout-menu-selection*
+                       (if (logtest? (-> *game-info* secrets) (game-secrets vehicle-hit-points))
+                           1
+                           (case *v-turtle-ability-loadout*
+                             ((3) 2)
+                             ((6) 3)
+                             ((7) 4)
+                             (else 0)
+                             ))))
+            (else (set! *v-turtle-loadout-menu-selection*
+                        (case *v-turtle-defense-loadout*
+                          ((4) 1)
+                          ((5) 2)
+                          ((8) 3)
+                          (else 0)
+                          )))
+            )
+         )
+         ((1)
+          (if (and (= *v-turtle-loadout-menu-selection* 1)
+                   (not (v-turtle-mass-inverter-unlocked?)))
+              (sound-play "menu-back")
+              (set-v-turtle-active-loadout! *v-turtle-loadout-menu-selection*))
+          )
+         ((2)
+          (if (and (= *v-turtle-loadout-menu-selection* 2)
+                   (not (wasdoors-v-turtle-faster-boost-unlocked?)))
+              (sound-play "menu-back")
+              (set-v-turtle-ability-loadout!
+                (case *v-turtle-loadout-menu-selection*
+                  ((0) 0)
+                  ((1) 2)
+                  ((2) 3)
+                  ((3) 6)
+                  (else 7)
+                  )))
+          )
+         (else
+           (set-v-turtle-defense-loadout!
+             (case *v-turtle-loadout-menu-selection*
+               ((0) 0)
+               ((1) 4)
+               ((2) 5)
+               (else 8)
+               ))
+           )
+         )
+       )
+      ((cpad-pressed? 0 triangle)
+       (close-v-turtle-loadout-menu)
+       )
+      ((cpad-pressed? 0 circle)
+       (when (!= *v-turtle-loadout-menu-page* 0)
+         (set! *v-turtle-loadout-menu-selection* (- *v-turtle-loadout-menu-page* 1))
+         (set! *v-turtle-loadout-menu-page* 0)
+         (sound-play "menu-pick")
+         )
+       )
+      )
+    )
+  (none)
+  )
+
+(defun wasdoors-update-v-turtle-loadout-trigger ()
+  ;; Mirror changes made from the Shop's Vehicle Toughness toggle back into
+  ;; the Tough Puppy Abilities selection.
+  (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+    (cond
+      ((logtest? (-> *game-info* secrets) (game-secrets vehicle-hit-points))
+       (when (!= *v-turtle-ability-loadout* 2)
+         (set! *v-turtle-ability-loadout* 2)
+         )
+       )
+      ((= *v-turtle-ability-loadout* 2)
+       (set! *v-turtle-ability-loadout* 0)
+       )
+      )
+    )
+  ;; Faster Boost Cooldown cannot remain equipped before its Course Race reward.
+  (when (and (= *v-turtle-ability-loadout* 3)
+             (not (wasdoors-v-turtle-faster-boost-unlocked?)))
+    (set! *v-turtle-ability-loadout* 0)
+    )
+  (when (and (= *v-turtle-weapon-loadout* 1)
+             (not (v-turtle-mass-inverter-unlocked?)))
+    (set! *v-turtle-weapon-loadout* 0)
+    )
+  (cond
+    ;; The Tough Puppy loadout system is exclusive to Hero Mode.  Keeping the
+    ;; gate here also prevents the prompt from appearing in a normal save.
+    ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (when *v-turtle-loadout-menu-open?*
+       (close-v-turtle-loadout-menu)
+       )
+     (set! *v-turtle-weapon-loadout* 0)
+     (set! *v-turtle-ability-loadout* 0)
+     (set! *v-turtle-defense-loadout* 0)
+     )
+    (*v-turtle-loadout-menu-open?*
+     (wasdoors-update-v-turtle-loadout-menu)
+     )
+    ((and *target*
+          (not (focus-test? *target* pilot-riding))
+          (< (vector-vector-distance-squared
+               (target-pos 0)
+               *v-turtle-loadout-trigger-pos*
+               )
+             (square 8192.0)
+             )
+          )
+     (let ((font (new 'stack 'font-context *font-default-matrix* 56 330 0.0
+                      (font-color default)
+                      (font-flags shadow kerning)
+                      )))
+       (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+       (set-width! font 400)
+       (set-height! font 80)
+       (set-scale! font 0.7)
+       (format (clear *temp-string*) "Press <PAD_X> to edit loadout")
+       (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+       (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+       )
+     (when (cpad-pressed? 0 x)
+       (open-v-turtle-loadout-menu)
+       (cpad-clear! 0 x)
+       )
+      )
+    )
+  (none)
+  )
+
+(defun wasdoors-close-v-scorpion-loadout-menu ()
+  (set-master-mode 'game)
+  (set! *v-scorpion-loadout-menu-open?* #f)
+  (set! *popup-menu-open* #f)
+  (none)
+  )
+
+(defun wasdoors-draw-v-scorpion-loadout-menu ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 56 65 0.0
+                   (font-color default) (font-flags shadow kerning))))
+    (set! (-> font flags) (font-flags shadow kerning large))
+    (set-width! font 400)
+    (set-height! font 50)
+    (set-scale! font 0.48)
+    (set! (-> font color) (font-color cyan))
+    (case *v-scorpion-loadout-menu-page*
+      ((0) (format (clear *temp-string*) "Sand Shark Loadout"))
+      ((1) (format (clear *temp-string*) "Abilities"))
+      (else (format (clear *temp-string*) "Defense")))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set-scale! font 0.4)
+    (case *v-scorpion-loadout-menu-page*
+      ((0)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 0) "> Abilities" "  Abilities")
+         155.0 (= *v-scorpion-loadout-menu-selection* 0) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 1) "> Defense" "  Defense")
+         205.0 (= *v-scorpion-loadout-menu-selection* 1) #f))
+      ((1)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 0) "> None" "  None")
+         90.0 (= *v-scorpion-loadout-menu-selection* 0) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 1) "> Vehicle Toughness" "  Vehicle Toughness")
+         130.0 (= *v-scorpion-loadout-menu-selection* 1) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (wasdoors-v-turtle-faster-boost-unlocked?)
+             (if (= *v-scorpion-loadout-menu-selection* 2) "> Faster Boost Cooldown" "  Faster Boost Cooldown")
+             (if (= *v-scorpion-loadout-menu-selection* 2) "> ???" "  ???"))
+         170.0 (= *v-scorpion-loadout-menu-selection* 2)
+         #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 3) "> Turret Jammer" "  Turret Jammer")
+         210.0 (= *v-scorpion-loadout-menu-selection* 3) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 4) "> Regenerative Armor" "  Regenerative Armor")
+         250.0 (= *v-scorpion-loadout-menu-selection* 4)
+         (logtest? (-> *game-info* secrets) (game-secrets gs62))))
+      (else
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 0) "> None" "  None")
+         120.0 (= *v-scorpion-loadout-menu-selection* 0) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 1) "> Damage Shield" "  Damage Shield")
+         155.0 (= *v-scorpion-loadout-menu-selection* 1) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 2) "> Emergency Repair" "  Emergency Repair")
+         195.0 (= *v-scorpion-loadout-menu-selection* 2) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-scorpion-loadout-menu-selection* 3) "> Camouflage" "  Camouflage")
+         235.0 (= *v-scorpion-loadout-menu-selection* 3) #f)))
+    (set-scale! font 0.3)
+    (wasdoors-draw-v-turtle-loadout-option-line font "<PAD_DPAD_DOWN>  Move" 305.0 #f #f)
+    (wasdoors-draw-v-turtle-loadout-option-line font
+      (if (= *v-scorpion-loadout-menu-page* 0)
+          "<PAD_X>  Select     <PAD_TRIANGLE>  Exit"
+          "<PAD_X>  Equip     <PAD_CIRCLE>  Back     <PAD_TRIANGLE>  Exit")
+      345.0 #f #f))
+  (none)
+  )
+
+(defun wasdoors-update-v-scorpion-loadout-menu ()
+  (wasdoors-draw-v-scorpion-loadout-menu)
+  (let ((last-selection (cond
+                          ((= *v-scorpion-loadout-menu-page* 0) 1)
+                          ((= *v-scorpion-loadout-menu-page* 1) 4)
+                          (else 3))))
+    (cond
+      ((cpad-pressed? 0 up)
+       (dec! *v-scorpion-loadout-menu-selection*)
+       (when (< *v-scorpion-loadout-menu-selection* 0)
+         (set! *v-scorpion-loadout-menu-selection* last-selection))
+       (sound-play "menu-pick"))
+      ((cpad-pressed? 0 down)
+       (inc! *v-scorpion-loadout-menu-selection*)
+       (when (> *v-scorpion-loadout-menu-selection* last-selection)
+         (set! *v-scorpion-loadout-menu-selection* 0))
+       (sound-play "menu-pick"))
+      ((cpad-pressed? 0 x)
+       (sound-play "menu-pick")
+       (case *v-scorpion-loadout-menu-page*
+         ((0)
+          (set! *v-scorpion-loadout-menu-page* (+ *v-scorpion-loadout-menu-selection* 1))
+          (set! *v-scorpion-loadout-menu-selection* 0))
+         ((1)
+          (if (= *v-scorpion-loadout-menu-selection* 4)
+              (logior! (-> *game-info* secrets) (game-secrets gs62))
+              (logclear! (-> *game-info* secrets) (game-secrets gs62))))
+         (else
+          (none)))
+       )
+      ((cpad-pressed? 0 triangle)
+       (wasdoors-close-v-scorpion-loadout-menu))
+      ((cpad-pressed? 0 circle)
+       (when (!= *v-scorpion-loadout-menu-page* 0)
+         (set! *v-scorpion-loadout-menu-selection* (- *v-scorpion-loadout-menu-page* 1))
+         (set! *v-scorpion-loadout-menu-page* 0)
+         (sound-play "menu-pick")))
+      ))
+  (none)
+  )
+
+(defun wasdoors-update-v-scorpion-loadout-trigger ()
+  (cond
+    ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (when *v-scorpion-loadout-menu-open?*
+       (wasdoors-close-v-scorpion-loadout-menu)))
+    (*v-scorpion-loadout-menu-open?*
+     (wasdoors-update-v-scorpion-loadout-menu))
+    ((and *target*
+          (not (focus-test? *target* pilot-riding))
+          (< (vector-vector-distance-squared (target-pos 0) *v-scorpion-loadout-trigger-pos*)
+             (square 8192.0)))
+     (let ((font (new 'stack 'font-context *font-default-matrix* 56 330 0.0
+                      (font-color default) (font-flags shadow kerning))))
+       (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+       (set-width! font 400)
+       (set-height! font 80)
+       (set-scale! font 0.7)
+       (format (clear *temp-string*) "Press <PAD_X> to edit loadout")
+       (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+       (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
+     (when (cpad-pressed? 0 x)
+       (set! *v-scorpion-loadout-menu-page* 0)
+       (set! *v-scorpion-loadout-menu-selection* 0)
+       (set! *v-scorpion-loadout-menu-open?* #t)
+       (set! *popup-menu-open* #t)
+       (set-master-mode 'menu)
+       (sound-play "menu-pick")
+       (cpad-clear! 0 x)))
+    )
+  (none)
+  )
+
 (defun wasdoors-point-inside? ((arg0 vector))
   (let ((gp-0 (new 'stack-no-clear 'inline-array 'vector 3)))
     (vector-copy! (-> gp-0 0) (new 'static 'vector :z -1.0 :w 957235.2))
@@ -83,11 +677,17 @@
     )
   :trans (behavior ()
     (repair-vehicles self)
+    (wasdoors-update-v-turtle-loadout-trigger)
+    (wasdoors-update-v-scorpion-loadout-trigger)
+    (wasdoors-update-bbush-shop)
     )
   :code sleep-code
   )
 
 (defbehavior wasdoors-manager-init-by-other wasdoors-manager ()
+  ;; This manager must continue drawing and reading menu input while gameplay
+  ;; processes are suspended by master mode.
+  (process-mask-clear! (-> self mask) menu pause)
   (go-virtual idle)
   )
 
@@ -101,6 +701,9 @@
 
 ;; WARN: Return type mismatch symbol vs none.
 (defun wasdoors-manager-kill ()
+  (close-v-turtle-loadout-menu)
+  (wasdoors-close-v-scorpion-loadout-menu)
+  (wasdoors-close-bbush-shop)
   (kill-by-type wasdoors-manager *active-pool*)
   (set! *wasdoors-manager* (the-as (pointer wasdoors-manager) #f))
   (none)

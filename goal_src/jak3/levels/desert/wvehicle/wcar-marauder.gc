@@ -15,6 +15,8 @@
 
 ;; DECOMP BEGINS
 
+(define-extern v-turtle-camouflage-hides-target? (function symbol))
+
 (defskelgroup skel-v-marauder interceptor interceptor-lod0-jg interceptor-idle-ja
               ((interceptor-lod0-mg (meters 999999)))
               :bounds (static-spherem 0 0 0 5.5)
@@ -123,14 +125,35 @@
   (let ((t9-0 (method-of-type wcar-base control-hook-ai)))
     (t9-0 this arg0)
     )
-  (let ((s5-0 (-> this target-status)))
-    (when (< 122880.0 (vector-vector-distance (-> s5-0 position) (-> this root trans)))
-      (let ((f1-0 (vector-length (-> s5-0 velocity))))
-        (set! (-> this turret-control inaccuracy) (* (-> this inaccuracy-factor) (fmax 1.0 (/ f1-0 (meters 20)))))
+  ;; Do not overwrite the Marauder's driving controls during Camouflage.  Its
+  ;; movement AI is stateful, and forcing its throttle and brake here can
+  ;; leave spawned desert vehicles in an invalid control state.  Camouflage
+  ;; instead prevents fresh turret tracking while preserving normal driving.
+  (unless (v-turtle-camouflage-hides-target?)
+    (let ((s5-0 (-> this target-status)))
+      (when (< 122880.0 (vector-vector-distance (-> s5-0 position) (-> this root trans)))
+        (let ((f1-0 (vector-length (-> s5-0 velocity))))
+          (set! (-> this turret-control inaccuracy)
+                (* (-> this inaccuracy-factor)
+                    ;; Tough Puppy Turret Jammer is passive while equipped.
+                   (if (and *target*
+                            (focus-test? *target* pilot-riding)
+                            (or (and (= *v-turtle-ability-loadout* 6)
+                                     (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-turtle)))
+                                 #f)
+                            )
+                       2.5
+                       1.0
+                       )
+                   (fmax 1.0 (/ f1-0 (meters 20)))
+                   )
+                )
+          )
+        (turret-control-method-11 (-> this turret-control) this (-> s5-0 position) (-> s5-0 velocity))
         )
-      (turret-control-method-11 (-> this turret-control) this (-> s5-0 position) (-> s5-0 velocity))
       )
     )
+
   (cond
     ((logtest? (vehicle-flag vf53) (-> this v-flags))
      (let ((v1-14 (-> this sub-state)))
@@ -447,6 +470,14 @@
   (set-info (-> this turret-control) *v-marauder-turret-control-info*)
   (logior! (-> this turret-control flags) (turret-flag no-rot-y-clamp))
   (set! (-> this turret-control ignore-handle) (process->handle this))
+  ;; Hero Mode Marauders begin with tighter turret aim.  Normal Mode retains
+  ;; the original 0.75 base inaccuracy.
+  (set! (-> *v-marauder-turret-guard-settings* inaccuracy)
+        (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+            0.2
+            0.75
+            )
+        )
   (set! (-> this turret-control guard-settings) *v-marauder-turret-guard-settings*)
   (spawn-wheels!
     this

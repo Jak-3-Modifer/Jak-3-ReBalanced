@@ -805,10 +805,13 @@
                )
          )
         ((30)
-         (set! (-> self gun ammo-required) (if (logtest? (game-secrets gun-upgrade-yellow-2) (-> *game-info* secrets))
-                                               10.0
-                                               5.0
-                                               )
+         ;; Beam Reflexor consumes four Yellow Ammo normally and eight with
+         ;; the Increased Deflections upgrade. Reflected hits add no cost.
+         (set! (-> self gun ammo-required)
+               (if (logtest? (game-secrets gun-upgrade-yellow-2) (-> *game-info* secrets))
+                   8.0
+                   4.0
+                   )
                )
          )
         ((31)
@@ -854,7 +857,13 @@
          (set! (-> self gun track-angle-mult) 1.75)
          (set! (-> self gun track-require) (the-as uint 26))
          (set! (-> self gun fire-delay)
-               (the-as uint (if (= (the-as int arg0) 29) 171 96))
+               ;; Hero Mode Yellow 1 uses a 0.45-second cooldown after its
+               ;; three-shot burst. Normal Mode retains the vanilla delay.
+               (the-as uint
+                 (if (= (the-as int arg0) 29)
+                     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode)) 135 171)
+                     96
+                     ))
                )
          (set! (-> self gun combo-fire-delay) (the-as uint 30))
          (set! (-> self gun track-beam-size) 819.2)
@@ -3319,36 +3328,78 @@
           )
       (case (-> gp-0 gun-control)
         ((1)
-         (when (and (cpad-pressed? (-> self control cpad number) r1)
-                    (< (the-as time-frame (+ (-> gp-0 fire-delay) -30)) (- (current-time) (-> gp-0 fire-time)))
-                    )
-           (set-time! (-> gp-0 fire-pending-time))
-           (if (zero? (-> self gun fire-pending))
-               (+! (-> self gun fire-pending) 1)
-               )
-           (set! (-> gp-0 fire-charge) 0.5)
-           )
-         (when (and (or (time-elapsed? (-> gp-0 fire-time) (the-as time-frame (-> gp-0 fire-delay)))
-                        (case (-> gp-0 combo-window-state)
-                          (('target-attack-air 'target-attack 'target-running-attack)
-                           (time-elapsed? (-> gp-0 fire-time) (the-as time-frame (-> gp-0 combo-fire-delay)))
+         (cond
+           ;; Yellow 1 prototype: one press queues three rounds.  The first
+           ;; fires immediately, the next two are spaced 0.10 seconds apart,
+           ;; and another burst cannot begin until 0.45 seconds after round 3.
+           ((and (= (-> gp-0 gun-type) (pickup-type gun-yellow-1))
+                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+            (when (and (cpad-pressed? (-> self control cpad number) r1)
+                       (time-elapsed? (-> gp-0 fire-time) (seconds 0.45))
+                       (or (>= (the-as float
+                                      (send-event *target* 'query 'pickup (pickup-type ammo-yellow)))
+                               3.0)
+                           (logtest? (target-flags tf16) (-> self target-flags))
+                           (logtest? (game-secrets endless-ammo) (-> self game secrets))
                            )
-                          )
-                        )
-                    (> (-> gp-0 fire-pending) 0)
-                    (-> self gun active?)
-                    )
-           (seekl! (-> self gun fire-pending) 0 1)
-           (cond
-             ((send-event self 'gun (-> gp-0 gun-type))
-              (set-time! (-> self gun fire-time))
+                       )
+              (set-time! (-> gp-0 fire-pending-time))
+              (set! (-> gp-0 fire-pending) 3)
+              (set! (-> gp-0 fire-charge) 0.5)
               )
-             (else
-               (set! (-> self gun fire-time) 0)
-               0
+            (when (and (> (-> gp-0 fire-pending) 0)
+                       (or (= (-> gp-0 fire-pending) 3)
+                           (time-elapsed? (-> gp-0 fire-time) (seconds 0.1))
+                           )
+                       (-> gp-0 active?)
+                       )
+              (seekl! (-> gp-0 fire-pending) 0 1)
+              (cond
+                ((send-event self 'gun (-> gp-0 gun-type))
+                 (set-time! (-> gp-0 fire-time))
+                 )
+                (else
+                  (set! (-> gp-0 fire-pending) 0)
+                  (set! (-> gp-0 fire-time) 0)
+                  0
+                  )
+                )
+              #t
+              )
+            )
+           (else
+             (when (and (cpad-pressed? (-> self control cpad number) r1)
+                        (< (the-as time-frame (+ (-> gp-0 fire-delay) -30)) (- (current-time) (-> gp-0 fire-time)))
+                        )
+               (set-time! (-> gp-0 fire-pending-time))
+               (if (zero? (-> self gun fire-pending))
+                   (+! (-> self gun fire-pending) 1)
+                   )
+               (set! (-> gp-0 fire-charge) 0.5)
+               )
+             (when (and (or (time-elapsed? (-> gp-0 fire-time) (the-as time-frame (-> gp-0 fire-delay)))
+                            (case (-> gp-0 combo-window-state)
+                              (('target-attack-air 'target-attack 'target-running-attack)
+                               (time-elapsed? (-> gp-0 fire-time) (the-as time-frame (-> gp-0 combo-fire-delay)))
+                               )
+                              )
+                            )
+                        (> (-> gp-0 fire-pending) 0)
+                        (-> self gun active?)
+                        )
+               (seekl! (-> self gun fire-pending) 0 1)
+               (cond
+                 ((send-event self 'gun (-> gp-0 gun-type))
+                  (set-time! (-> self gun fire-time))
+                  )
+                 (else
+                   (set! (-> self gun fire-time) 0)
+                   0
+                   )
+                 )
+               #t
                )
              )
-           #t
            )
          )
         ((2)
@@ -3572,6 +3623,9 @@
       )
     (update-rates! (-> self clock) f30-0)
     )
+  ;; Gun mode has its own post path, so reapply the regular-Jak size secret
+  ;; before animation transforms are finalized.
+  (target-midget-jak-scale!)
   (ja-post)
   (joint-points)
   (do-target-gspot)

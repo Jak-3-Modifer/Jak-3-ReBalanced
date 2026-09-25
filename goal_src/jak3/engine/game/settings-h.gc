@@ -195,9 +195,12 @@
   (gun-upgrade-ammo-blue 56)
   (gun-upgrade-ammo-dark 57)
   (dune-hopper-awd 58)
-  (gs59 59)
-  (gs60 60)
-  (gs61 61)
+  ;; Persistent cosmetic shop toggle: scales only regular Jak to half size.
+  (midget-jak 59)
+  ;; Persistent cosmetic shop toggle: scales only regular Jak to 1.3x size.
+  (growth-spurt 60)
+  ;; Persistent shop toggle: restores the giant scale used by Dark Jak internals.
+  (dark-giant 61)
   (gs62 62)
   (gs63 63)
   )

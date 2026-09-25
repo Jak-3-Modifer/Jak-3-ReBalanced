@@ -852,8 +852,19 @@
               )
             )
            (else
-             ;; Ring 10 uses a 30 m/s burst, ring 11 uses a 27 m/s burst, and all
-             ;; other player rings use the Jetboard's normal 35 m/s maximum.
+             ;; Ring eleven ends the opening Flut section.  Use the same eject
+             ;; path as a regular Wascity Flut being defeated so Flut dies but
+             ;; Jak survives.  The active state mounts the Jetboard afterward.
+             ;; Mark the phase complete immediately so this scripted loss of
+             ;; Flut cannot fail the race.
+             (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                        (= (-> this current-ring) 10)
+                        *target*)
+               (send-event *target* 'eject)
+               )
+             ;; Ring 10 uses a 30 m/s burst, ring 11 uses a 27 m/s burst,
+             ;; ring 22 adds 2 m/s to the current speed, and all other player
+             ;; rings use the Jetboard's normal 35 m/s maximum.
              ;; Challenger rings do not apply it.
              (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
                         *target*
@@ -862,6 +873,8 @@
                      (cond
                        ((= (-> this current-ring) 9) 122880.0)
                        ((= (-> this current-ring) 10) 110592.0)
+                       ((= (-> this current-ring) 21)
+                        (+ (-> *target* control ctrl-xz-vel) (meters 2)))
                        (else 143360.0)
                        ))
                (vector-xz-normalize!
@@ -1102,27 +1115,14 @@
     (if (focus-test? *target* grabbed)
         (process-release? *target*)
         )
-    ;; Hero Mode replaces the race Flut with Jak's Jetboard. Normal Mode
-    ;; explicitly enters the vanilla racer-Flut state instead of relying on
-    ;; the intro scene to have mounted Jak successfully.
-    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-        (begin
-          (when *target*
-            (send-event *target* 'change-mode 'board #f)
-            )
-          (until (and *target* (focus-test? *target* board))
-            (suspend)
-            )
-          )
-        (begin
-          (when (and *target* (not (focus-test? *target* flut)))
-            (send-event *target* 'change-mode 'flut #f 'racer -1)
-            )
-          (until (and *target* (focus-test? *target* flut))
-            (suspend)
-            )
-          )
-        )
+    ;; Begin on the race Flut.  Ring eleven triggers the scripted handoff to
+    ;; the Jetboard.
+    (when *target*
+      (send-event *target* 'change-mode 'flut #f 'racer -1)
+      )
+    (until (and *target* (focus-test? *target* flut))
+      (suspend)
+      )
     (set-setting! 'exclusive-load '((ignore all) (allow wasleapr)) 0.0 0)
     (let ((a1-9 (new 'stack-no-clear 'array 'symbol 10)))
       (set! (-> a1-9 9) #f)
@@ -1158,13 +1158,20 @@
         )
       (let ((s5-2 #f))
         (until (and (-> self ring-manager-entity) (= (-> *game-info* counter) 0.0))
-          ;; Hero Mode is Jetboard-only; Normal Mode is Flut-only.
-          (when (and *target*
-                     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-                         (not (focus-test? *target* board))
-                         (not (focus-test? *target* flut))
-                         ))
-            (send-event self 'fail)
+          ;; Normal Mode remains the vanilla Flut race. Hero Mode starts on
+          ;; Flut, then changes to Jetboard after ring eleven.
+          (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+              (if (<= (-> self current-ring) 10)
+                  (when (and *target* (not (focus-test? *target* flut)))
+                    (send-event self 'fail)
+                    )
+                  (when (and *target* (not (focus-test? *target* board)))
+                    (send-event *target* 'change-mode 'board #f)
+                    )
+                  )
+              (when (and *target* (not (focus-test? *target* flut)))
+                (send-event self 'fail)
+                )
             )
           (cond
             ((-> self ring-manager-entity)

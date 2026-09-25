@@ -2522,7 +2522,7 @@
     (vector-reset! (-> this collide-normal))
     (set! (-> this damage) 2.0)
     (if (logtest? (game-secrets gun-upgrade-blue-1) (-> *game-info* secrets))
-        (set! (-> this damage) 2.5)
+        (set! (-> this damage) 3.0)
         )
     (logior! (-> this options) (projectile-options po13))
     0

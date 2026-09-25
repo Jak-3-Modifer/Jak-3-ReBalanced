@@ -24,6 +24,16 @@
 (define-extern *wstd-fight-large-plat* (array plat-info))
 
 ;; DECOMP BEGINS
+;; Hero Mode Arena 2 gives the starting platform its own timed cycle.
+(define *hero-arena-2-start-platform* (the-as handle #f))
+(define *hero-arena-2-platform-2* (the-as handle #f))
+(define *hero-arena-2-platform-3* (the-as handle #f))
+(define *hero-arena-2-platform-4* (the-as handle #f))
+(define *hero-arena-2-platform-cycle-start* (the-as time-frame 0))
+(define *hero-arena-2-platform-1-phase* 0)
+(define *hero-arena-2-platform-2-phase* 0)
+(define *hero-arena-2-platform-3-phase* 0)
+(define *hero-arena-2-platform-4-phase* 0)
 
 (deftype task-manager-throne-rog (task-manager)
   ((arrow-h  handle)
@@ -141,16 +151,9 @@
        )
       ((and (task-node-open? (game-task-node arena-fight-3-fight))
             (not (task-node-closed? (game-task-node arena-fight-3-fight))))
-       ;; Arena 3 respawning crates contain ammo only: 35% Blue, 32% Red,
-       ;; and 33% Yellow.
-       (let ((ammo-roll (rand-vu-int-count 100)))
-         (set! (-> s4-0 pickup-type)
-               (cond
-                 ((< ammo-roll 35) (pickup-type ammo-blue))
-                 ((< ammo-roll 67) (pickup-type ammo-red))
-                 (else (pickup-type ammo-yellow))
-                 ))
-         )
+       ;; Arena 3 uses the Vulcan challenge, so every respawning crate supplies
+       ;; Blue Ammo just like its three starting crates.
+       (set! (-> s4-0 pickup-type) (pickup-type ammo-blue))
        )
       (else
         (set! (-> s4-0 pickup-type) (pickup-type ammo-random))
@@ -781,7 +784,14 @@
                    (let ((parent (as-type (ppointer->process (-> self parent)) task-manager)))
                      (if (and parent (= (-> parent node-info task) (game-task arena-fight-2)))
                          (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-                             (seconds 9999)
+                             (if (or (= (process->handle self) *hero-arena-2-start-platform*)
+                                     (= (process->handle self) *hero-arena-2-platform-2*)
+                                     (= (process->handle self) *hero-arena-2-platform-3*)
+                                     (= (process->handle self) *hero-arena-2-platform-4*)
+                                     )
+                                 (seconds 0)
+                                 (seconds 9999)
+                                 )
                              (seconds 60)
                              )
                          (seconds 5)
@@ -835,6 +845,20 @@
                 )
               )
             )
+          )
+        )
+      ;; The stock state immediately reverses after reaching the bottom.  The
+      ;; four Hero Mode Arena 2 platforms instead stay submerged until their
+      ;; timed schedule explicitly sends go-up.
+      (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                 (or (= (process->handle self) *hero-arena-2-start-platform*)
+                     (= (process->handle self) *hero-arena-2-platform-2*)
+                     (= (process->handle self) *hero-arena-2-platform-3*)
+                     (= (process->handle self) *hero-arena-2-platform-4*)
+                     )
+                 )
+        (while (not (-> self go-up))
+          (suspend)
           )
         )
       (while (< 0.0 f30-0)
@@ -2576,6 +2600,108 @@
     )
   )
 
+(defun update-hero-arena-2-platform-cycle! ((this task-manager-arena-fight-2))
+  "Run the Hero Mode Arena 2 platform timeline from one shared fight clock."
+  ;; Platform 1: up until 1:22, down until 2:36, then up.
+  (when (and (= *hero-arena-2-platform-1-phase* 0)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 82)))
+    (let ((platform (handle->process (-> this platform 0))))
+      (when platform
+        (send-event platform 'go-down 24576.0)
+        (set! *hero-arena-2-platform-1-phase* 1)
+        )
+      )
+    )
+  (when (and (= *hero-arena-2-platform-1-phase* 1)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 156)))
+    (let ((platform (handle->process (-> this platform 0))))
+      (when platform
+        (send-event platform 'go-up)
+        (set! *hero-arena-2-platform-1-phase* 2)
+        )
+      )
+    )
+
+  ;; Platform 2: down until 1:22, up for 40 seconds, down for 1:58, then up.
+  (when (and (= *hero-arena-2-platform-2-phase* 0)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 82)))
+    (let ((platform (handle->process (-> this platform 1))))
+      (when platform
+        (send-event platform 'go-up)
+        (set! *hero-arena-2-platform-2-phase* 1)
+        )
+      )
+    )
+  (when (and (= *hero-arena-2-platform-2-phase* 1)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 122)))
+    (let ((platform (handle->process (-> this platform 1))))
+      (when platform
+        (send-event platform 'go-down 24576.0)
+        (set! *hero-arena-2-platform-2-phase* 2)
+        )
+      )
+    )
+  (when (and (= *hero-arena-2-platform-2-phase* 2)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 240)))
+    (let ((platform (handle->process (-> this platform 1))))
+      (when platform
+        (send-event platform 'go-up)
+        (set! *hero-arena-2-platform-2-phase* 3)
+        )
+      )
+    )
+
+  ;; Platform 3: down until 2:02, up for 1:05, down for 52 seconds, then up.
+  (when (and (= *hero-arena-2-platform-3-phase* 0)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 122)))
+    (let ((platform (handle->process (-> this platform 2))))
+      (when platform
+        (send-event platform 'go-up)
+        (set! *hero-arena-2-platform-3-phase* 1)
+        )
+      )
+    )
+  (when (and (= *hero-arena-2-platform-3-phase* 1)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 187)))
+    (let ((platform (handle->process (-> this platform 2))))
+      (when platform
+        (send-event platform 'go-down 24576.0)
+        (set! *hero-arena-2-platform-3-phase* 2)
+        )
+      )
+    )
+  (when (and (= *hero-arena-2-platform-3-phase* 2)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 239)))
+    (let ((platform (handle->process (-> this platform 2))))
+      (when platform
+        (send-event platform 'go-up)
+        (set! *hero-arena-2-platform-3-phase* 3)
+        )
+      )
+    )
+
+  ;; Platform 4: down until 3:07, up for 52 seconds, then down.
+  (when (and (= *hero-arena-2-platform-4-phase* 0)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 187)))
+    (let ((platform (handle->process (-> this platform 3))))
+      (when platform
+        (send-event platform 'go-up)
+        (set! *hero-arena-2-platform-4-phase* 1)
+        )
+      )
+    )
+  (when (and (= *hero-arena-2-platform-4-phase* 1)
+             (time-elapsed? *hero-arena-2-platform-cycle-start* (seconds 239)))
+    (let ((platform (handle->process (-> this platform 3))))
+      (when platform
+        (send-event platform 'go-down 24576.0)
+        (set! *hero-arena-2-platform-4-phase* 2)
+        )
+      )
+    )
+  (none)
+  )
+
 ;; WARN: Return type mismatch float vs none.
 (defmethod task-manager-arena-fight-base-method-34 ((this task-manager-arena-fight-2))
   (seek! (-> this crowd-intensity) 0.0 (* 5.0 (seconds-per-frame)))
@@ -2600,19 +2726,11 @@
   )
 
 (defun advance-hero-arena-2-platform! ((this task-manager-arena-fight-2))
-  "Sink the cleared Hero Mode platform, raise the next one, and begin its wave."
+  "Advance the Hero Mode Arena 2 weapon challenge while the platforms follow their timed cycle."
   (if (< *hero-arena-2-challenge* 3)
-      (let* ((current-index *hero-arena-2-challenge*)
-             (next-index (+ current-index 1))
-             (current-platform (handle->process (-> this platform current-index)))
-             (next-platform (handle->process (-> this platform next-index)))
-             )
-        (when current-platform
-          (send-event current-platform 'go-down 24576.0)
-          )
-        (when next-platform
-          (send-event next-platform 'go-up)
-          )
+      (let ((platform-cycle-controlled? #t))
+        ;; Platform geometry follows the shared time schedule, independently
+        ;; of how quickly each 30-kill challenge is completed.
         (+! *hero-arena-2-challenge* 1)
         (set-time! (-> this hint-time))
         (set! (-> this count) (the-as uint 30))
@@ -2657,6 +2775,11 @@
     ;; to receive the event. They remain down for the first 30 kills.
     (when (and (= (-> self node-info task) (game-task arena-fight-2))
                (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (set-time! *hero-arena-2-platform-cycle-start*)
+      (set! *hero-arena-2-platform-1-phase* 0)
+      (set! *hero-arena-2-platform-2-phase* 0)
+      (set! *hero-arena-2-platform-3-phase* 0)
+      (set! *hero-arena-2-platform-4-phase* 0)
       (dotimes (hero-platform-index 3)
         (let ((hero-platform (handle->process (-> self platform (+ hero-platform-index 1)))))
           (when hero-platform
@@ -2919,6 +3042,10 @@
     (draw-hero-arena-2-prompt this)
     )
   (task-manager-arena-fight-base-method-33 this)
+  (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+    (update-hero-arena-2-platform-cycle! this)
+    )
   ;; Hero Mode replaces Arena 2's Dark Jak training overlay with its own
   ;; platform challenge prompts.
   (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
@@ -3156,6 +3283,7 @@
             )
           )
         )
+  (set! *hero-arena-2-start-platform* (-> this platform 0))
   (set! (-> this platform 1)
         (ppointer->handle
           (process-spawn
@@ -3169,6 +3297,7 @@
             )
           )
         )
+  (set! *hero-arena-2-platform-2* (-> this platform 1))
   (set! (-> this platform 2)
         (ppointer->handle
           (process-spawn
@@ -3182,6 +3311,7 @@
             )
           )
         )
+  (set! *hero-arena-2-platform-3* (-> this platform 2))
   (set! (-> this platform 3)
         (ppointer->handle (process-spawn
                             wstd-fight-plat
@@ -3194,6 +3324,7 @@
                             )
                           )
         )
+  (set! *hero-arena-2-platform-4* (-> this platform 3))
   (cond
     ((task-node-closed? (game-task-node arena-fight-2-fight))
      (let ((v1-33 (entity-by-name "wstd-arena-plat-10")))
@@ -3268,13 +3399,13 @@
           (t9-0)
           )
       )
-    ;; The inherited field is a zero/nonzero fight-state marker.  It is set
-    ;; only after the entry crates have supplied Blue Ammo.
+    ;; Use the shorter limit for the first two attempts, then grant the longer
+    ;; limit after Jak has failed the fight twice.
     (set! (-> self time-limit)
           (if (>= (-> *game-info* sub-task-list (game-task-node arena-fight-3-fight) death-count)
-                  (the-as uint 4))
-              (seconds 103)
-              (seconds 98)
+                  (the-as uint 2))
+              (seconds 112)
+              (seconds 94)
               ))
     (set-time! (-> self start-time))
     (set! (-> self check-timer) 0)
@@ -3431,7 +3562,7 @@
               (set-height! font 100)
               (set-scale! font 0.6)
               (format (clear *temp-string*)
-                      "<COLOR_BLUE>Vulcan<COLOR_WHITE>/Melee use only,~%don't run out of Ammo.")
+                      "<COLOR_BLUE>Vulcan<COLOR_WHITE>/Melee use only,~%No Ammo Depletion.")
               (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
               (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
               )
@@ -3443,8 +3574,7 @@
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod set-time-limit ((this task-manager-arena-fight-3))
-  ;; Enable the common task timer, then defer its countdown until the Arena 3
-  ;; entry sequence reaches the active fight state.
+  ;; Enable countdown.
   (logior! (-> this info mask) (task-manager-mask time-limit))
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
     (t9-0 this)
@@ -3457,13 +3587,11 @@
     (send-event *target* 'get-pickup (pickup-type ammo-blue) 1000.0)
     )
   (set! (-> this start-time) 0)
-  ;; Arena 3 begins at 98 seconds. After Jak has died four times during this
-  ;; fight, subsequent attempts receive a 103-second limit.
   (set! (-> this time-limit)
         (if (>= (-> *game-info* sub-task-list (game-task-node arena-fight-3-fight) death-count)
-                (the-as uint 4))
-            (seconds 103)
-            (seconds 98)
+                (the-as uint 2))
+            (seconds 112)
+            (seconds 94)
             ))
   (set! (-> this count) (the-as uint 30))
   (set! (-> this angle) (the-as uint 0))

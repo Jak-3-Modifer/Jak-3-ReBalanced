@@ -666,7 +666,9 @@
            (s5-1 (vector-! (new 'stack-no-clear 'vector) arg0 gp-0))
            )
       (let ((f0-0 (vector-length s5-1)))
-        (vector-normalize! s5-1 (fmin f0-0 (-> self enemy-info run-travel-speed)))
+        ;; Give the melee leap enough reach to carry past Jak's last position instead of
+        ;; stopping exactly at it.  This is attack-only; normal chase speed is unchanged.
+        (vector-normalize! s5-1 (fmin (* f0-0 1.5) (meters 12)))
         )
       (let ((a0-3 (-> self nav state))
             (v1-17 (vector+! (new 'stack-no-clear 'vector) gp-0 s5-1))
@@ -674,6 +676,7 @@
         (logclear! (-> a0-3 flags) (nav-state-flag directional-mode))
         (logior! (-> a0-3 flags) (nav-state-flag target-poly-dirty))
         (vector-copy! (-> a0-3 target-pos) v1-17)
+        (set! (-> self nav target-speed) (* (-> self enemy-info run-travel-speed) 1.5))
         )
       )
     0
@@ -717,10 +720,11 @@
     0
     )
   :code (behavior ()
-    (ja-no-eval :group! monster-frog-attack0-end-ja :num! (seek!) :frame-num 0.0)
+    ;; Shorten the time spent recovering before the frog can resume pressure.
+    (ja-no-eval :group! monster-frog-attack0-end-ja :num! (seek! max 1.5) :frame-num 0.0)
     (until (ja-done? 0)
       (suspend)
-      (ja :num! (seek!))
+      (ja :num! (seek! max 1.5))
       )
     (cond
       ((zero? (rnd-int self 4))
@@ -729,10 +733,10 @@
              (ja-channel-push! 1 (seconds 0.1))
              )
          )
-       (ja-no-eval :group! monster-frog-idle0-ja :num! (seek!) :frame-num 0.0)
+       (ja-no-eval :group! monster-frog-idle0-ja :num! (seek! max 1.5) :frame-num 0.0)
        (until (ja-done? 0)
          (suspend)
-         (ja :num! (seek!))
+         (ja :num! (seek! max 1.5))
          )
        )
       (else
@@ -741,10 +745,10 @@
               (ja-channel-push! 1 (seconds 0.1))
               )
           )
-        (ja-no-eval :group! monster-frog-idle1-ja :num! (seek!) :frame-num 0.0)
+        (ja-no-eval :group! monster-frog-idle1-ja :num! (seek! max 1.5) :frame-num 0.0)
         (until (ja-done? 0)
           (suspend)
-          (ja :num! (seek!))
+          (ja :num! (seek! max 1.5))
           )
         )
       )

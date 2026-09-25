@@ -322,13 +322,22 @@
                   44
                   (bucket-id hud-draw-hud-alpha)
                   )
-                (print-game-text
-                  (lookup-text! *common-text* (text-id text-0077) #f)
-                  sv-112
-                  #f
-                  44
-                  (bucket-id hud-draw-hud-alpha)
-                  )
+                (if (task-node-open? (game-task-node desert-course-race-race))
+                    (print-game-text
+                      "DAXTER DIED"
+                      sv-112
+                      #f
+                      44
+                      (bucket-id hud-draw-hud-alpha)
+                      )
+                    (print-game-text
+                      (lookup-text! *common-text* (text-id text-0077) #f)
+                      sv-112
+                      #f
+                      44
+                      (bucket-id hud-draw-hud-alpha)
+                      )
+                    )
                 )
             (set! (-> this strings 1 scale) 0.5)
             (set! (-> this strings 1 flags) (font-flags shadow kerning large))

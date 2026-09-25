@@ -86,14 +86,14 @@
     :vehicle-type (vehicle-type-u8 vt27)
     :transmission (new 'static 'vehicle-transmission-info :gear-count 1)
     :handling (new 'static 'vehicle-handling-info
-      :max-engine-thrust (meters 49)
-      :inv-max-engine-thrust 0.000006260016
-      :engine-response-rate 20.0
+      :max-engine-thrust (meters 70)
+      :inv-max-engine-thrust 0.000004382011
+      :engine-response-rate 38.0
       :engine-intake-factor 1.0
       :brake-factor 2.25
       :turbo-boost-factor 1.0
       :turbo-boost-duration (seconds 1)
-      :max-xz-speed (meters 40)
+      :max-xz-speed (meters 44)
       :player-turn-anim-min -1.0
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
@@ -103,13 +103,13 @@
       :cos-ground-effect-angle 0.42261827
       :spring-lift-factor 0.4
       :air-drag-factor 1.0
-      :steering-thruster-factor 3.0
-      :steering-thruster-max-gain 3.5
-      :steering-thruster-half-gain-speed (meters 15)
+      :steering-thruster-factor 3.55
+      :steering-thruster-max-gain 3.9
+      :steering-thruster-half-gain-speed (meters 17)
       :tire-steering-speed-factor 61440.0
-      :tire-friction-factor 0.6
-      :tire-static-friction 0.55
-      :tire-dynamic-friction 0.4
+      :tire-friction-factor 0.78
+      :tire-static-friction 0.68
+      :tire-dynamic-friction 0.51
       :tire-dynamic-friction-speed (meters 2)
       :tire-inv-max-friction-speed 0.000024414063
       :airfoil-factor 1.0
@@ -217,8 +217,8 @@
     :particles (new 'static 'vehicle-particle-info
       :headlight-count 2
       :taillight-count 2
-      :thruster-flame-width (meters 0.6)
-      :thruster-flame-length (meters 2)
+      :thruster-flame-width (meters 0.0)
+      :thruster-flame-length (meters 0)
       :thruster-local-pos (new 'static 'inline-array vector 2
         (new 'static 'vector :x 3072.0 :z -14336.0 :w 1.0)
         (new 'static 'vector :x -3072.0 :z -14336.0 :w 1.0)
@@ -324,7 +324,7 @@
       :engine-thrust-local-pos (new 'static 'vector :z -5734.4 :w 1.0)
       :brake-local-pos (new 'static 'vector :z -8192.0 :w 1.0)
       :wheel-count 4
-      :drive-wheel-count 2
+      :drive-wheel-count 4
       :front-wheel (new 'static 'vehicle-wheel-info
         :local-pos (new 'static 'vector :w 1.0)
         :inertia 1.0
@@ -332,8 +332,8 @@
         :scale 1.0
         :travel 2048.0
         :width 4096.0
-        :suspension-spring 0.5
-        :suspension-damping 0.5
+        :suspension-spring 0.62
+        :suspension-damping 0.72
         :forward-grip 1.0
         :side-grip 1.0
         :max-brake-torque 1.0
@@ -348,8 +348,8 @@
         :scale 1.0
         :travel 2048.0
         :width 4096.0
-        :suspension-spring 0.5
-        :suspension-damping 0.5
+        :suspension-spring 0.62
+        :suspension-damping 0.72
         :forward-grip 1.0
         :side-grip 1.0
         :max-brake-torque 1.0
@@ -827,8 +827,8 @@
 (define *h-car-c-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      :mass 9.0
-      :inv-mass 0.11111111
+      :mass 7.5
+      :inv-mass 0.13333334
       :linear-damping 0.995
       :angular-damping 0.995
       :bounce-factor 0.4
@@ -850,14 +850,14 @@
     :vehicle-type (vehicle-type-u8 vt27)
     :transmission (new 'static 'vehicle-transmission-info :gear-count 1)
     :handling (new 'static 'vehicle-handling-info
-      :max-engine-thrust (meters 35)
-      :inv-max-engine-thrust 0.0000069754465
-      :engine-response-rate 10.0
+      :max-engine-thrust (meters 72)
+      :inv-max-engine-thrust 0.000003391884
+      :engine-response-rate 42.0
       :engine-intake-factor 1.0
       :brake-factor 2.25
       :turbo-boost-factor 1.0
       :turbo-boost-duration (seconds 1)
-      :max-xz-speed (meters 40)
+      :max-xz-speed (meters 44)
       :player-turn-anim-min -1.0
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
@@ -867,13 +867,13 @@
       :cos-ground-effect-angle 0.42261827
       :spring-lift-factor 0.4
       :air-drag-factor 1.0
-      :steering-thruster-factor 3.0
-      :steering-thruster-max-gain 3.0
-      :steering-thruster-half-gain-speed (meters 15)
+      :steering-thruster-factor 3.8
+      :steering-thruster-max-gain 4.1
+      :steering-thruster-half-gain-speed (meters 18)
       :tire-steering-speed-factor 61440.0
-      :tire-friction-factor 0.75
-      :tire-static-friction 0.55
-      :tire-dynamic-friction 0.4
+      :tire-friction-factor 0.82
+      :tire-static-friction 0.7
+      :tire-dynamic-friction 0.53
       :tire-dynamic-friction-speed (meters 2)
       :tire-inv-max-friction-speed 0.000024414063
       :airfoil-factor 1.0
@@ -1091,7 +1091,7 @@
       :engine-thrust-local-pos (new 'static 'vector :z -9830.4 :w 1.0)
       :brake-local-pos (new 'static 'vector :z -12288.0 :w 1.0)
       :wheel-count 4
-      :drive-wheel-count 2
+      :drive-wheel-count 4
       :front-wheel (new 'static 'vehicle-wheel-info
         :local-pos (new 'static 'vector :w 1.0)
         :inertia 1.0
@@ -1099,8 +1099,8 @@
         :scale 1.0
         :travel 2048.0
         :width 4096.0
-        :suspension-spring 0.5
-        :suspension-damping 0.5
+        :suspension-spring 0.62
+        :suspension-damping 0.7
         :forward-grip 1.0
         :side-grip 1.0
         :max-brake-torque 1.0
@@ -1115,8 +1115,8 @@
         :scale 1.0
         :travel 2048.0
         :width 4096.0
-        :suspension-spring 0.5
-        :suspension-damping 0.5
+        :suspension-spring 0.62
+        :suspension-damping 0.7
         :forward-grip 1.0
         :side-grip 1.0
         :max-brake-torque 1.0

@@ -125,7 +125,11 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
           (set! (-> rescue-node reset quit-info retry continue) "wasdoors-desert")
           (set! (-> rescue-node reset fail-info fail continue) "wasdoors-desert")
           (set! (-> rescue-node reset death-info fail continue) "wasdoors-desert")
-          (unless (task-node-closed? (game-task-node desert-turtle-training-resolution))
+          ;; Closing a node also completes its prerequisite chain. Wait until
+          ;; Unlock Satellite is finished so bypassing Turtle Training cannot
+          ;; silently finish Arena Training, Arena 1, and Catch Kanga-Rats.
+          (when (and (task-node-closed? (game-task-node wascity-pre-game-resolution))
+                     (not (task-node-closed? (game-task-node desert-turtle-training-resolution))))
             (task-node-close! (game-task-node desert-turtle-training-resolution) 'event)
             )
           (set! (-> leaper-intro parent-node 0) (game-task-node temple-oracle-resolution))
@@ -938,11 +942,11 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
   #f
   )
 
-;; Optional missions are deliberately omitted. Hero Mode begins directly at
-;; Arena Fight 1, then later replaces Turtle Training with Artifact Race 1.
+;; Optional missions are deliberately omitted. Hero Mode starts with Arena
+;; Training and Arena Fight 1, then replaces Turtle Training with Artifact Race 1.
 (define *hero-mode-main-task-order*
-  (new 'static 'array game-task 61
-       (game-task arena-fight-1)
+  (new 'static 'array game-task 62
+       (game-task arena-training-1) (game-task arena-fight-1)
        (game-task wascity-chase) (game-task wascity-pre-game)
        (game-task desert-artifact-race-1) (game-task desert-course-race)
        (game-task desert-hover) (game-task arena-fight-2)
@@ -974,7 +978,7 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
        ))
 
 (defun hero-mode-current-main-task ()
-  (dotimes (index 61)
+  (dotimes (index 62)
     (let ((task (-> *hero-mode-main-task-order* index)))
       (when (not (task-complete? *game-info* task))
         (return task)

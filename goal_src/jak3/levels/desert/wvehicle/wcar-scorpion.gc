@@ -16,6 +16,16 @@
 
 ;; DECOMP BEGINS
 
+(define *v-scorpion-regen-time* (the-as time-frame 0))
+(define *v-scorpion-regen-active?* #f)
+(define *v-scorpion-regen-last-hit-points* 1.0)
+
+(defun v-scorpion-regen-enabled? ()
+  (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+       ;; gs62 is reserved internally for Sand Shark Regenerative Armor.
+       (logtest? (-> *game-info* secrets) (game-secrets gs62)))
+  )
+
 (deftype v-scorpion (wcar-base)
   ((jmod-axles       joint-mod-rotate-local  4 :inline)
    (jmod-shock-tops  joint-mod-rotate-local  4 :inline)
@@ -206,6 +216,26 @@
   )
 
 (defmethod vehicle-method-79 ((this v-scorpion))
+  ;; Regenerative Armor watches the live health value.  This catches every
+  ;; vehicle damage route, including ones that bypass apply-damage.
+  (when (logtest? (vehicle-flag player-driving) (-> this v-flags))
+    (cond
+      ((or (not (v-scorpion-regen-enabled?))
+           (>= (-> this hit-points) 1.0))
+       (set! *v-scorpion-regen-active?* #f))
+      (else
+       ;; A drop in live HP is a fresh hit, so delay the next repair by 1.5s.
+       (when (< (-> this hit-points) *v-scorpion-regen-last-hit-points*)
+         (set-time! *v-scorpion-regen-time*)
+         (set! *v-scorpion-regen-active?* #t))
+       (when (and *v-scorpion-regen-active?*
+                  (time-elapsed? *v-scorpion-regen-time* (seconds 1.5)))
+         (set! (-> this hit-points)
+               (fmin 1.0 (+ (-> this hit-points) 0.01250125)))
+         (set-time! *v-scorpion-regen-time*))
+       )
+      )
+    (set! *v-scorpion-regen-last-hit-points* (-> this hit-points)))
   (seek! (-> this gun-kick) 0.0 (* 32768.0 (seconds-per-frame)))
   (new 'stack-no-clear 'vector)
   (set! (-> this jmod-gun-kick transform trans z) (-> this gun-kick))
@@ -279,6 +309,8 @@
     (the-as pair 0)
     )
   (alloc-rbody-control! this *v-scorpion-constants*)
+  (set! *v-scorpion-regen-active?* #f)
+  (set! *v-scorpion-regen-last-hit-points* (-> this hit-points))
   (set! (-> this rider-hand-joint-array 0) 3)
   (init (-> this jmod-gun-turn) this (the-as uint 4) (joint-mod-base-flags attached))
   (init (-> this jmod-gun-tilt) this (the-as uint 5) (joint-mod-base-flags attached trans quat))

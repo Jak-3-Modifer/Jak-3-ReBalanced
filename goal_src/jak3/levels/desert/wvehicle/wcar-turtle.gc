@@ -7,6 +7,96 @@
 
 ;; DECOMP BEGINS
 
+(define *v-turtle-damage-immunity-time* (the-as time-frame 0))
+(define *v-turtle-damage-immunity-active?* #f)
+(define *v-turtle-damage-immunity-cooldown-time* (the-as time-frame 0))
+(define *v-turtle-damage-immunity-cooldown-active?* #f)
+(define *v-turtle-damage-shield-effect* (the-as handle #f))
+(define *v-turtle-repair-cooldown-time* (the-as time-frame 0))
+(define *v-turtle-repair-cooldown-active?* #f)
+(define *v-turtle-mass-inverter-cooldown-time* (the-as time-frame 0))
+(define *v-turtle-mass-inverter-cooldown-active?* #f)
+(define *v-turtle-regenerative-armor-time* (the-as time-frame 0))
+(define *v-turtle-regenerative-armor-active?* #f)
+(define *v-turtle-camouflage-time* (the-as time-frame 0))
+(define *v-turtle-camouflage-cooldown-time* (the-as time-frame 0))
+(define *v-turtle-camouflage-cooldown-active?* #f)
+(define *v-turtle-camouflage-active?* #f)
+(define *v-turtle-jammer-fade-active?* #f)
+(define *v-turtle-weapon-loadout* 0)
+(define *v-turtle-ability-loadout* 0)
+(define *v-turtle-defense-loadout* 0)
+(define *v-turtle-loadout-menu-open?* #f)
+(define *v-turtle-loadout-menu-page* 0)
+(define *v-turtle-loadout-menu-selection* 0)
+
+(defun v-turtle-mass-inverter-unlocked? ()
+  (task-node-open? (game-task-node desert-course-race-resolution))
+  )
+
+(defun set-v-turtle-active-loadout! ((loadout int))
+  ;; Vehicle Toughness uses the same live secret bit as the Shop entry.  This
+  ;; keeps both menus synchronized and avoids applying two toughness bonuses.
+  (cond
+    ((= loadout 0)
+     (set! *v-turtle-weapon-loadout* loadout))
+    ((= loadout 1)
+     (set! *v-turtle-weapon-loadout*
+           (if (v-turtle-mass-inverter-unlocked?) 1 0)))
+    ((or (= loadout 2) (= loadout 3) (= loadout 6) (= loadout 7))
+     (set! *v-turtle-ability-loadout* loadout)
+     (if (= loadout 2)
+         (logior! (-> *game-info* secrets) (game-secrets vehicle-hit-points))
+         (logclear! (-> *game-info* secrets) (game-secrets vehicle-hit-points))))
+    (else
+      (set! *v-turtle-defense-loadout* loadout)))
+  (none)
+  )
+
+(defun set-v-turtle-ability-loadout! ((loadout int))
+  (set! *v-turtle-ability-loadout* loadout)
+  (if (= loadout 2)
+      (logior! (-> *game-info* secrets) (game-secrets vehicle-hit-points))
+      (logclear! (-> *game-info* secrets) (game-secrets vehicle-hit-points)))
+  (none)
+  )
+
+(defun set-v-turtle-defense-loadout! ((loadout int))
+  (set! *v-turtle-defense-loadout* loadout)
+  (none)
+  )
+
+(defun close-v-turtle-loadout-menu ()
+  (set-master-mode 'game)
+  (set! *v-turtle-loadout-menu-open?* #f)
+  (set! *popup-menu-open* #f)
+  (none)
+  )
+
+(defun open-v-turtle-loadout-menu ()
+  ;; Open on an equipped category, or Weapons when nothing is equipped.
+  (cond
+    ((!= *v-turtle-weapon-loadout* 0)
+     (set! *v-turtle-loadout-menu-selection* 0)
+     )
+    ((!= *v-turtle-ability-loadout* 0)
+     (set! *v-turtle-loadout-menu-selection* 1)
+     )
+    ((!= *v-turtle-defense-loadout* 0)
+      (set! *v-turtle-loadout-menu-selection* 2)
+      )
+    (else
+      (set! *v-turtle-loadout-menu-selection* 0)
+      )
+    )
+  (set! *v-turtle-loadout-menu-page* 0)
+  (set! *v-turtle-loadout-menu-open?* #t)
+  (set! *popup-menu-open* #t)
+  (set-master-mode 'menu)
+  (sound-play "menu-pick")
+  (none)
+  )
+
 (deftype v-turtle (wcar-base)
   ((jmod-axles       joint-mod-rotate-local  4 :inline)
    (jmod-shock-tops  joint-mod-rotate-local  4 :inline)
@@ -16,6 +106,186 @@
    (spring-pos       vector                  :inline)
    (spring-vel       vector                  :inline)
    )
+  )
+
+(deftype v-turtle-shield-effect (process-drawable)
+  ((parent (pointer v-turtle) :override)
+   (tone rgba)
+   )
+  (:state-methods active)
+  )
+
+(defstate active (v-turtle-shield-effect)
+  :virtual #t
+  :code (behavior ()
+    (if (logtest? (-> group-lightjak-shield-start flags) (sp-group-flag sp13))
+        (part-tracker-spawn
+          part-tracker-subsampler
+          :to self
+          :group group-lightjak-shield-start
+          :target self
+          :mat-joint 3
+          )
+        (part-tracker-spawn part-tracker :to self :group group-lightjak-shield-start :target self :mat-joint 3)
+        )
+    (until #f
+      (ja-no-eval :group! jakb-shield-idle-ja :num! (seek!) :frame-num 0.0)
+      (until (ja-done? 0)
+        (suspend)
+        (ja :num! (seek!))
+        )
+      )
+    )
+  :post (behavior ()
+    (let ((vehicle (the-as v-turtle (ppointer->process (-> self parent))))
+          (camera (camera-matrix))
+          (camera-forward (new 'stack-no-clear 'vector))
+          (shield-pos (new 'stack-no-clear 'vector))
+          )
+      (set-vector! (-> self root scale) 8.0 8.0 8.0 1.0)
+      (vector-copy! shield-pos (-> vehicle root trans))
+      (+! (-> shield-pos y) (meters 1.0))
+      (vector-normalize-copy! camera-forward (-> camera fvec) 0.0)
+      (matrix->quaternion (-> self root quat) camera)
+      (vector+*! (-> self root trans) shield-pos camera-forward (meters 1.0))
+      )
+    (sound-play "ltjak-shield" :id (the-as sound-id (-> self tone)))
+    (ja-post)
+    )
+  )
+
+(defbehavior v-turtle-shield-effect-init v-turtle-shield-effect ()
+  (set! (-> self root) (new 'process 'trsqv))
+  (initialize-skeleton
+    self
+    (the-as skeleton-group (art-group-get-by-name *level* "skel-jchar-shield" (the-as (pointer level) #f)))
+    (the-as pair 0)
+    )
+  (logior! (-> self skel status) (joint-control-status blend-shape eye-anim))
+  (logior! (-> self draw status) (draw-control-status force-fade warp-cross-fade))
+  (set! (-> self draw force-fade) (the-as uint 128))
+  (set! (-> self tone) (the-as rgba (new-sound-id)))
+  (ja-channel-set! 1)
+  (go-virtual active)
+  (none)
+  )
+
+(defmethod deactivate ((this v-turtle-shield-effect))
+  (sound-play "shield-off")
+  (let ((sound-params (the-as sound-rpc-set-param (get-sound-buffer-entry))))
+    (set! (-> sound-params command) (sound-command set-param))
+    (set! (-> sound-params id) (the-as sound-id (-> this tone)))
+    (set! (-> sound-params params volume) -4)
+    (set! (-> sound-params auto-time) 48)
+    (set! (-> sound-params auto-from) 2)
+    (set! (-> sound-params params mask) (the-as uint 17))
+    (-> sound-params id)
+    )
+  (set! *v-turtle-damage-shield-effect* (the-as handle #f))
+  (call-parent-method this)
+  (none)
+  )
+
+(defun v-turtle-stop-damage-shield-effect! ()
+  (let ((effect (handle->process *v-turtle-damage-shield-effect*)))
+    (when effect
+      (deactivate effect)
+      )
+    )
+  (set! *v-turtle-damage-shield-effect* (the-as handle #f))
+  (none)
+  )
+
+(defun v-turtle-start-damage-shield-effect! ((this v-turtle))
+  (v-turtle-stop-damage-shield-effect!)
+  (set! *v-turtle-damage-shield-effect*
+        (ppointer->handle
+          (process-spawn
+            v-turtle-shield-effect
+            :init v-turtle-shield-effect-init
+            :name "v-turtle-damage-shield"
+            :to this
+            )))
+  (none)
+  )
+
+(defun v-turtle-set-camouflage! ((this v-turtle) (active? symbol))
+  ;; force-fade uses 128 as opaque, so 13 is approximately ten-percent
+  ;; opacity (ninety-percent transparent).
+  (cond
+    (active?
+     (logior! (-> this draw status) (draw-control-status force-fade))
+     (set! (-> this draw force-fade) (the-as uint 13))
+     )
+    (else
+      (set! (-> this draw force-fade) (the-as uint 128))
+      (logclear! (-> this draw status) (draw-control-status force-fade))
+      )
+    )
+  ;; The wheels are separate drawable processes and need the same fade.
+  (dotimes (wheel-index (-> this info physics-model wheel-count))
+    (let ((wheel-proc (handle->process (-> this wheel wheel-index handle))))
+      (when wheel-proc
+        (cond
+          (active?
+           (logior! (-> (the-as process-drawable wheel-proc) draw status)
+                    (draw-control-status force-fade))
+           (set! (-> (the-as process-drawable wheel-proc) draw force-fade) (the-as uint 13))
+           )
+          (else
+            (set! (-> (the-as process-drawable wheel-proc) draw force-fade) (the-as uint 128))
+            (logclear! (-> (the-as process-drawable wheel-proc) draw status)
+                       (draw-control-status force-fade))
+            )
+          )
+        )
+      )
+    )
+  (none)
+  )
+
+(defun v-turtle-set-jammer-fade! ((this v-turtle) (active? symbol))
+  ;; Turret Jammer leaves the Tough Puppy at ninety-percent opacity.
+  (cond
+    (active?
+     (logior! (-> this draw status) (draw-control-status force-fade))
+     (set! (-> this draw force-fade) (the-as uint 115))
+     )
+    (else
+      (set! (-> this draw force-fade) (the-as uint 128))
+      (logclear! (-> this draw status) (draw-control-status force-fade))
+      )
+    )
+  (dotimes (wheel-index (-> this info physics-model wheel-count))
+    (let ((wheel-proc (handle->process (-> this wheel wheel-index handle))))
+      (when wheel-proc
+        (cond
+          (active?
+           (logior! (-> (the-as process-drawable wheel-proc) draw status)
+                    (draw-control-status force-fade))
+           (set! (-> (the-as process-drawable wheel-proc) draw force-fade) (the-as uint 115))
+           )
+          (else
+            (set! (-> (the-as process-drawable wheel-proc) draw force-fade) (the-as uint 128))
+            (logclear! (-> (the-as process-drawable wheel-proc) draw status)
+                       (draw-control-status force-fade))
+            )
+          )
+        )
+      )
+    )
+  (none)
+  )
+
+(defun v-turtle-camouflage-hides-target? ()
+  (if (and *v-turtle-camouflage-active?*
+           *target*
+           (focus-test? *target* pilot-riding)
+           (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-turtle))
+           )
+      #t
+      #f
+      )
   )
 
 
@@ -112,6 +382,149 @@
   )
 
 (defmethod vehicle-method-79 ((this v-turtle))
+  ;; R1 activates equipped weapon modules.
+  (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (cpad-pressed? 0 r1)
+             )
+    (case *v-turtle-weapon-loadout*
+      ((1)
+       (when (v-turtle-mass-inverter-unlocked?)
+         (when (or (not *v-turtle-mass-inverter-cooldown-active?*)
+                   (time-elapsed? *v-turtle-mass-inverter-cooldown-time* (seconds 8))
+                   )
+           (process-spawn
+             gun-gravity
+             (-> this root trans)
+             (-> this rbody matrix fvec)
+             :name "v-turtle-mass-inverter"
+             :to *entity-pool*
+             )
+           (set-time! *v-turtle-mass-inverter-cooldown-time*)
+           (set! *v-turtle-mass-inverter-cooldown-active?* #t)
+           )
+         )
+       )
+      )
+    )
+  ;; D-pad Right activates or toggles equipped defense. so you dont die hello?
+  (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (cpad-pressed? 0 right)
+             )
+    (case *v-turtle-defense-loadout*
+      ((4)
+       (when (and (not *v-turtle-damage-immunity-active?*)
+                  (or (not *v-turtle-damage-immunity-cooldown-active?*)
+                      (time-elapsed? *v-turtle-damage-immunity-cooldown-time* (seconds 35))
+                      )
+                  )
+         (set-time! *v-turtle-damage-immunity-time*)
+         (set! *v-turtle-damage-immunity-active?* #t)
+         (set! *v-turtle-damage-immunity-cooldown-active?* #f)
+         ;; Plays the custom cue as soound cue that goes 'sgjshndblkgh' noises
+         (unless (play-sound-file
+                   "sfx/shield_cue.flac"
+                   (the int (* 40.0 (-> *setting-control* user-current sfx-volume))))
+           (sound-play "shield-on"))
+         (v-turtle-start-damage-shield-effect! this)
+         )
+       )
+      ((5)
+       (when (and (< 0.0 (-> this hit-points))
+                  (<= (-> this hit-points) 0.15)
+                  (or (not *v-turtle-repair-cooldown-active?*)
+                      (time-elapsed? *v-turtle-repair-cooldown-time* (seconds 40))
+                      )
+                  )
+         (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
+         (set-time! *v-turtle-repair-cooldown-time*)
+         (set! *v-turtle-repair-cooldown-active?* #t)
+         )
+       )
+      ((8)
+       (when (and (not *v-turtle-camouflage-active?*)
+                  (or (not *v-turtle-camouflage-cooldown-active?*)
+                      (time-elapsed? *v-turtle-camouflage-cooldown-time* (seconds 25))
+                      )
+                  )
+         (set-time! *v-turtle-camouflage-time*)
+         (set! *v-turtle-camouflage-active?* #t)
+         (set! *v-turtle-camouflage-cooldown-active?* #f)
+         (v-turtle-set-camouflage! this #t)
+         )
+       )
+      )
+    )
+  ;; Damage Shield protects the Tough Puppy for four seconds.  Its forty-second
+  ;; cooldown begins when protection ends.
+  (when (and *v-turtle-damage-immunity-active?*
+             (or (time-elapsed? *v-turtle-damage-immunity-time* (seconds 4))
+                 (!= *v-turtle-defense-loadout* 4)
+                 )
+             )
+    (set! *v-turtle-damage-immunity-active?* #f)
+    (set-time! *v-turtle-damage-immunity-cooldown-time*)
+    (set! *v-turtle-damage-immunity-cooldown-active?* #t)
+    (v-turtle-stop-damage-shield-effect!)
+    )
+  ;; Faster Boost Cooldown doubles the normal turbo-ready recharge rate.
+  (when (and (= *v-turtle-ability-loadout* 3)
+             (not (logtest? (vehicle-flag turbo-boost) (-> this v-flags)))
+             )
+    (set! (-> this turbo-ready)
+          (fmin 1.0 (+ (-> this turbo-ready) (* 0.5 (seconds-per-frame))))
+          )
+    )
+  ;; Regenerative Armor restores one of the Tough Puppy's 30 HP every four
+  ;; seconds after it takes damage.  Taking another hit restarts the interval.
+  (cond
+    ((!= *v-turtle-ability-loadout* 7)
+     (set! *v-turtle-regenerative-armor-active?* #f)
+     )
+    ((and *v-turtle-regenerative-armor-active?*
+          (time-elapsed? *v-turtle-regenerative-armor-time* (seconds 4))
+          )
+     (set! (-> this hit-points)
+           (fmin 1.0 (+ (-> this hit-points) 0.033333335))
+           )
+     (if (>= (-> this hit-points) 1.0)
+         (set! *v-turtle-regenerative-armor-active?* #f)
+         (set-time! *v-turtle-regenerative-armor-time*)
+         )
+     )
+    )
+  ;; Camouflage lasts ten seconds.  Its twenty-five-second cooldown begins when the
+  ;; effect ends, so successive activations are at least thirty-five seconds apart.
+  (when (and *v-turtle-camouflage-active?*
+             (time-elapsed? *v-turtle-camouflage-time* (seconds 10))
+             )
+    (set! *v-turtle-camouflage-active?* #f)
+    (set-time! *v-turtle-camouflage-cooldown-time*)
+    (set! *v-turtle-camouflage-cooldown-active?* #t)
+    (v-turtle-set-camouflage! this #f)
+    )
+  ;; Unequipping Camouflage ends it immediately and starts its cooldown.
+  (when (and *v-turtle-camouflage-active?* (!= *v-turtle-defense-loadout* 8))
+    (set! *v-turtle-camouflage-active?* #f)
+    (set-time! *v-turtle-camouflage-cooldown-time*)
+    (set! *v-turtle-camouflage-cooldown-active?* #t)
+    (v-turtle-set-camouflage! this #f)
+    )
+  ;; Turret Jammer has a lighter, passive ten-percent transparency effect.
+  (cond
+    (*v-turtle-camouflage-active?*
+     (set! *v-turtle-jammer-fade-active?* #f)
+     )
+    ((= *v-turtle-ability-loadout* 6)
+     (when (not *v-turtle-jammer-fade-active?*)
+       (set! *v-turtle-jammer-fade-active?* #t)
+       (v-turtle-set-jammer-fade! this #t)
+       )
+     )
+    (*v-turtle-jammer-fade-active?*
+     (set! *v-turtle-jammer-fade-active?* #f)
+     (v-turtle-set-jammer-fade! this #f)
+     )
+    )
   (set-vector! (-> this root scale) 1.0 1.0 1.07 1.0)
   (let ((s5-0 (new 'stack-no-clear 'inline-array 'quaternion 3)))
     (set-vector! (-> s5-0 2) -3640.889 3640.889 3640.889 -3640.889)
@@ -225,6 +638,15 @@
   (vector-reset! (-> this ant-tip-vel))
   (vector-reset! (-> this spring-pos))
   (vector-reset! (-> this spring-vel))
+  (set! *v-turtle-damage-immunity-active?* #f)
+  (set! *v-turtle-damage-immunity-cooldown-active?* #f)
+  (set! *v-turtle-damage-shield-effect* (the-as handle #f))
+  (set! *v-turtle-repair-cooldown-active?* #f)
+  (set! *v-turtle-mass-inverter-cooldown-active?* #f)
+  (set! *v-turtle-regenerative-armor-active?* #f)
+  (set! *v-turtle-camouflage-cooldown-active?* #f)
+  (set! *v-turtle-camouflage-active?* #f)
+  (set! *v-turtle-jammer-fade-active?* #f)
   (spawn-wheels!
     this
     (the-as skeleton-group (art-group-get-by-name *level* "skel-v-turtle-wheel" (the-as (pointer level) #f)))
@@ -233,5 +655,19 @@
     (the-as skeleton-group #f)
     )
   0
+  (none)
+  )
+
+(defmethod apply-damage ((this v-turtle) (arg0 float) (arg1 rigid-body-impact))
+  (when *v-turtle-damage-immunity-active?*
+    (set! arg0 0.0)
+    )
+  (when (and (= *v-turtle-ability-loadout* 7) (> arg0 0.0))
+    (set-time! *v-turtle-regenerative-armor-time*)
+    (set! *v-turtle-regenerative-armor-active?* #t)
+    )
+  (let ((parent-apply-damage (method-of-type wcar-base apply-damage)))
+    (parent-apply-damage this arg0 arg1)
+    )
   (none)
   )

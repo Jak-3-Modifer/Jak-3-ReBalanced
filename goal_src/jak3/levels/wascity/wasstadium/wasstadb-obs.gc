@@ -971,10 +971,19 @@
         )
       (cond
         ((zero? gp-0)
-         (go-virtual done)
+         (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             ;; Intentionally require 36 pickups from the arena's 35 tokens.
+             ;; Hero Mode remains one token short and cannot enter done.
+             (set! (-> *game-info* counter) 1.0)
+             (go-virtual done)
+             )
          )
         (else
-          (set! (-> *game-info* counter) (the float gp-0))
+          (set! (-> *game-info* counter)
+                (the float
+                  (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                      (+ gp-0 1)
+                      gp-0)))
           (set! (-> *game-info* timer) (- (current-time) (-> self state-time)))
           )
         )
