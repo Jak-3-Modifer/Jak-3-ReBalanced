@@ -24,8 +24,6 @@ The project also lays the groundwork for a future Jak 3 mod.
 
 ---
 
----
-
 # Releases
 
 Development builds/patches are released periodically while the mod remains in beta.
