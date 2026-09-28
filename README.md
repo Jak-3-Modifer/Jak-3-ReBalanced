@@ -2,146 +2,228 @@
 > You can watch a showcase of the mod [here](https://github.com/open-goal/jak-project/blob/master/README.md).
 
 
-# Jak 3 ReBalanced Beta
-Serves as a base template for another future mod.
-A revitalized approach to rebalancing Jak 3's gameplay, including missions, enemies, weapons, vehicles, bosses, and overall difficulty. This fresh perspective aims to enhance gameplay by fine-tuning difficulty and ensuring a more strategic, dynamic experience for casual players.
+# Jak 3 ReBalanced
 
-## Mod Details (as of latest patch)
+> A gameplay rebalance for **Jak 3** on PC, featuring redesigned combat balance, tougher enemies, altered missions, vehicle changes, new encounters, and additional secrets.
 
-`Weapons and Ammo`
+**Status:** Beta  
+**Platform:** OpenGOAL  
+**Game:** Jak 3
 
-- Beam Reflexor ammo consumption is 6; 8 with the increased deflections upgrade
+---
 
-- You start every weapon with no ammo, except the scatter gun; only one bullet
+## About
 
-- Needle Lazer ammo cost is 6 pre-ammo efficiency; ammo cost is 3 with ammo efficiency 
+**Jak 3 ReBalanced** is a gameplay overhaul that offers a more challenging and varied way to experience Jak 3.
 
-- Blaster ammo pickup gives 5 instead of 10
+Rather than simply increasing enemy health or damage, the mod adjusts weapons, enemies, vehicles, missions, bosses, abilities, progression, and encounter design to encourage players to make greater use of Jak 3's full combat sandbox.
 
-- Blaster's rate of fire is slightly slower
+The goal is to create a more strategic, dynamic experience while remaining approachable for players familiar with the original game.
 
-- Blaster deals 4 base damage and 5 with the damage upgrade
+The project also lays the groundwork for a future Jak 3 mod.
 
-- Wave Concussor gives a 5-meter boost in the air
+---
 
-- Scatter Gun deals 6 damage at 7 meters; 2 damage beyond 8 meters. Scatter Gun max range is 15 meters
+# Project Roadmap
 
-- Arc Welder does 1 damage per ammo use
+Jak 3 ReBalanced aims to:
 
-- Mass inverter affects Jak as well
+- Buff or nerf certain weapons
+- Give weapons niche roles
+- Encourage greater use of Light and Dark powers
+- Make vehicles feel different
+- Make boss fights more mechanically interesting
+- Create meaningful reasons to use Jak 3's full arsenal
+- Hear player feedback on difficulty balance
+- Add a new gameplay experience for Hero Mode
 
-- Every weapon's TTK has been tuned to suit the difficulty
+The goal isn't simply to make Jak 3 harder, but to make its existing mechanics matter more.
 
-`Light Jak and Dark Jak`
+---
 
-- Light Jak Melee/Shield deals damage to Eco Creatures and Dark Bipedals
+## Highlights
 
-- Light Eco pickups give less
+- Rebalanced Morph Gun weapons and ammo economy
+- Reworked vehicle weapons and handling
+- Stronger and more varied enemy behaviors
+- Modified bosses and mini-boss encounters
+- Changes to Light Jak and Dark Jak
+- Redesigned mission and side-mission challenges
+- New secrets and custom content
+- Reworked Hero Mode (Coming Soon)
+- Adjusted progression and upgrade costs
+- New music in selected missions
+- Increased overall difficulty without relying solely on inflated enemy health
 
-- Missions that encourage the use of Light Freeze
+---
 
-- Dark Jak is immune to Dark Bipedals and Eco creatures
+# Gameplay Changes
 
-- Light Eco pickups have replaced green Eco pickups, except for one mission
+## 🔫 Weapons & Ammo
 
-`Missions and Side Missions`
+- Beam Reflexor ammo consumption increased to **6**
+- Beam Reflexor ammo consumption becomes **8** with the increased-deflections upgrade
+- Most weapons begin with no ammunition
+- The Scatter Gun begins with only **1 shot**
+- Needle Lazer costs **6 ammo** before Ammo Efficiency
+- Needle Lazer costs **3 ammo** after Ammo Efficiency
+- Blaster ammo pickups give **5 ammo instead of 10**
+- Blaster firing rate is slightly slower
+- Blaster deals **4 base damage**
+- Blaster deals **5 damage** after its damage upgrade
+- Wave Concussor provides a **5-meter aerial boost**
+- Scatter Gun deals **6 damage within 7 meters**
+- Scatter Gun deals **2 damage beyond 8 meters**
+- Scatter Gun maximum range is **15 meters**
+- Arc Welder deals **1 damage per ammo consumed**
+- Mass Inverter also affects Jak
+- Weapon time-to-kill values have been individually tuned for the mod's difficulty
 
-- Arenas have different challenges: timed, no damage, or no ammo depletion
+---
 
-- Kangarats are faster (if on lizard)
+## ☀️ Light Jak & 🌑 Dark Jak
 
-- Catch Lizards now uses the Tough Puppy instead
+- Light Jak's melee and shield attacks damage Eco Creatures and Dark Bipedals
+- Light Eco pickups provide less energy
+- Certain missions encourage the use of **Light Freeze**
+- Dark Jak is immune to attacks from Dark Bipedals and Eco Creatures
+- Most Green Eco pickups have been replaced with Light Eco pickups
 
-- Artifact race 1 timer is tighter, and marauders don't spawn in front of you
+---
 
-- During the chase marauder sequence, the bridges have been removed
+## 🎯 Missions & Side Missions
 
-- One Custom side mission
+Several missions have been redesigned or adjusted to provide new challenges.
 
-- New weapons added to city port assault mission
+Changes include:
 
-- Some changes to factory level
+- Arena challenges involving:
+  - Time limits
+  - No-damage objectives
+  - Unlimited-ammo variants
+- Kangarats flee faster while Jak rides Flut
+- **Catch Lizards** now uses the Tough Puppy
+- Artifact Race 1 has a stricter time limit
+- Marauders no longer spawn directly in front of the player during Artifact Race 1
+- Bridges have been removed from the Marauder chase sequence
+- One custom side mission has been added
+- New weapons appear during the City Port Assault mission
+- Factory encounters have been modified
+- Eco Mine encounters have been modified
+- **Hunt Metal Heads** uses an unused music track
+- Hunt Metal Heads now awards **4 Skull Gems**
+- The Forest uses different music
+- Forest Ring Challenges have been modified
+- A new mini-boss appears during **Protect HQ**
+- The Mine Train travels faster
+- **Beat Kleiver's Turret Score** has been altered
+- Sniper Cannons can kill Jak in one shot
 
-- Some changes to the eco mine level
+---
 
-- Different music for Hunt Metal Heads (unused track)
+## 🚙 Vehicles
 
-- Some changes to Hunt Metal Heads; player now gains 4 skull gems
+Vehicle combat and handling have been further balanced.
 
-- New music for Forest level
-
-- Changes to Forest Rings Challenges
-
-- New Mini-Boss for Protect HQ
-
-- Mine Train is faster
-
-- Beat Kleiver's Turret Score mission is altered
-
-- Sniper Cannons one-shot you
-
-`Vehicles`
-
-- Dune Hopper now has burst fire
-
-- Dune Hopper now has a custom purchasable secret
-
-- Vehicles weapon TTK has been altered
-
-- Gila Stomper is front-heavy
-
+- Dune Hopper now uses burst fire
+- Dune Hopper has a new purchasable secret
+- Vehicle weapon time-to-kill values have been rebalanced
+- Gila Stomper is more front-heavy
 - Blue Hellcat Cruiser has stiffer handling
 
+---
+
+## 👾 Enemies & Bosses
+
+Enemy behavior has been adjusted to make encounters more dangerous and varied.
+
+- Eco Creatures cannot be damaged by the Morph Gun or Dark Jak combos
+- Dark Satellite mini-boss moves faster
+- Jak must remain within the Dark Satellite laser radius before progressing to the next phase
+- Metal Head Beast behavior has been modified
+- Metal Head Beasts award **1 Skull Gem per kill**
+- Precursor Robot attacks are faster
+- The Precursor Robot fight contains an additional stage
+- Destroyed robot enemies can damage Jak with their explosions
+- Spider Bots have one mission-specific exception
+- Destroyed Marauder vehicles can damage the player
+- Marauder chase variants fire rapid **four-shot bursts**
+- Volcano Flamers fire **3 grenades**
+- Temple Flamers fire **2 grenades** and move faster
+- Most enemies have increased health
+- Spyder Gunners fire more accurately and at greater range
+- Metal Grunts move faster
+- KG Bots move faster
+- Rats recover from their knocked-out state faster
+- Rats die from a single Morph Gun projectile
+- Dark Bipedals have reduced knockback
+- Eco Creatures have reduced knockback
+- KG transports have increased health
+- KG transport lasers travel faster
+
+---
+
+## 💰 Currency & Secrets
+
+Progression has been adjusted so upgrades and optional content require more investment.
+
+- Gun upgrades cost more Orbs
+- Side missions cost more
+- Custom Precursor Orb placements have been added
+- New secrets have been added
+- Additional secrets and Orb changes are planned
+
+---
+
+# Hero Mode
+
+> **Currently under maintenance.**
+
+Hero Mode balancing is still being developed and may change substantially between releases.
+
+---
+
+# Installation
+
+Jak 3 ReBalanced is designed for use with **OpenGOAL**.
+
+### Recommended
+
+Install the mod through the OpenGOAL Launcher if it is available in your launcher build.
+
+### Manual Installation
+
+Manual installation instructions can be added here for development builds or custom OpenGOAL setups.
+
+---
+
+# Releases
+
+Development builds are released periodically while the mod remains in beta.
+
+For individual patch changes, bug fixes, and version history, see the repository's **Releases** page.
+
+Because the mod is actively being balanced, gameplay values may change between versions.
+
+---
+
+# Feedback & Bug Reports
+
+I welcome balance feedback and bug reports.
+
+When reporting a balance issue or bug/crash/softlock, including the following information is especially helpful:
+
+- Mission or encounter
+- Weapon or ability used
+- Difficulty/problem encountered
+- Location
+- If bug/crash/softlock, must be recreatable
+- Submit your report to the OpenGoal Discord at https://discord.com/invite/VZbXMHXzWv
 
 
-`Enemies and Bosses`
 
-- Eco Creatures take no damage from the Morph Gun or Dark Jak Combos
+# Disclaimer
 
-- Dark Satellite Mini Boss is faster; the player now needs to be in the laser radius to move on to the next phase
+Jak 3 ReBalanced is a fan-made modification and is not affiliated with or endorsed by Naughty Dog, Sony Interactive Entertainment, or the OpenGOAL development team.
 
-- Metal Head Beasts' behavior is altered. The player now gains 1 gem per kill
-
-- Precursor Robot Boss attacks are faster, with a new stage in the fight
-
-- Robot enemies deal damage if caught in their explosive death; one mission exception (spider bot only)
-
-- Marauder vehicles deal damage if (player is) caught in their explosive death
-
-- Marauder chase variant fires four-shot bursts in rapid succession
-
-- Flamer volcano variant fires 3 grenades, while the temple variant fires 2 and moves faster
-
-- Most enemies' HP has been increased
-
-- Spyder Gunner fires straighter and farther
-
-- Metal Grunt and KG Bots move faster
-
-- Rat has a faster knocked-out state and dies from gunfire with one shot (any gun)
-
-- Dark Bipedals have decreased knockback when attacked
-
-- Eco Creatures have decreased knockback when attacked
-
-- KG robot transports have more HP, and their laser is faster
-
-`Currency and Secrets`
-
-- Costs of gun upgrades increased
-
-- Costs of side missions increased
-
-- New custom orbs (more in the future)
-
-- New secrets (more in the future)
-
-## Hero Mode
-
-Under Maintenance 
-
-
-
-
-
-
+Jak and Daxter and related properties belong to their respective owners.
