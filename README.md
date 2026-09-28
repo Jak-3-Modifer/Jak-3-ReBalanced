@@ -195,15 +195,15 @@ Hero Mode balancing is still being developed and may change substantially betwee
 
 # Installation
 
-Jak 3 ReBalanced is designed for use with **OpenGOAL**.
+Jak 3 ReBalanced is designed for use with **OpenGOAL**. Use the link to install it if you haven't already: https://opengoal.dev/docs/usage/installation/
 
 ### Recommended
 
-Install the mod through the OpenGOAL Launcher if it is available in your launcher build.
+Install the mod through the OpenGOAL Launcher if it is available in your launcher build. Use the link to install the verified mods: https://jakmods.dev/
 
 ### Manual Installation
 
-Manual installation instructions can be added here for development builds or custom OpenGOAL setups.
+https://raw.githubusercontent.com/Jak-3-Modifer/Jak-3-ReBalanced/main/mods.json
 
 ---
 
