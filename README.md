@@ -84,7 +84,6 @@ The goal isn't simply to make Jak 3 harder, but to make its existing mechanics m
 - Wave Concussor provides a **5-meter aerial boost**
 - Scatter Gun deals **6 damage within 7 meters**
 - Scatter Gun deals **2 damage beyond 8 meters**
-- Scatter Gun maximum range is **15 meters**
 - Arc Welder deals **1 damage per ammo consumed**
 - Mass Inverter also affects Jak
 - Weapon time-to-kill values have been individually tuned for the mod's difficulty
