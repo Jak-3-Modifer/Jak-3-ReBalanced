@@ -10,13 +10,13 @@ A revitalized approach to rebalancing Jak 3's gameplay, including missions, enem
 
 `Weapons and Ammo`
 
-- Beam Reflexor ammo cost is 5; 10 with the increased deflections upgrade
+- Beam Reflexor ammo consumption is 6; 8 with the increased deflections upgrade
 
 - You start every weapon with no ammo, except the scatter gun; only one bullet
 
 - Needle Lazer ammo cost is 6 pre-ammo efficiency; ammo cost is 3 with ammo efficiency 
 
-- Blaster ammo pickup gives 3 instead of 10
+- Blaster ammo pickup gives 5 instead of 10
 
 - Blaster's rate of fire is slightly slower
 
