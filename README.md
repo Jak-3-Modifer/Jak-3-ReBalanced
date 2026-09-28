@@ -24,6 +24,18 @@ The project also lays the groundwork for a future Jak 3 mod.
 
 ---
 
+---
+
+# Releases
+
+Development builds/patches are released periodically while the mod remains in beta.
+
+For individual patch changes, bug fixes, and version history, see the repository's **Releases** page.
+
+Please note that because the mod is actively being balanced, gameplay values may vary between versions.
+
+---
+
 # Project Roadmap
 
 Jak 3 ReBalanced aims to:
