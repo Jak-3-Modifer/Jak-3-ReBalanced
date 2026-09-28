@@ -1517,11 +1517,55 @@
                (f26-0 25486.22)
                (v1-26 (/ (the-as int (rand-uint31-gen *random-generator*)) 256))
                (v1-27 (the-as number (logior #x3f800000 v1-26)))
-               (f0-11 (+ f28-0 (* f26-0 (+ -1.0 (the-as float v1-27))) (vector-y-angle s2-1)))
+               ;; Weapon choices need to be clearly separated.  Assign each
+               ;; gun family a different third of the room rather than using
+               ;; the shared random point that could stack several pickups.
+               (f0-11
+                 (case arg0
+                   (((pickup-type gun-red-1) (pickup-type gun-red-2) (pickup-type gun-red-3))
+                    (+ 0.0 (vector-y-angle s2-1))
+                    )
+                   (((pickup-type gun-blue-1) (pickup-type gun-blue-2) (pickup-type gun-blue-3))
+                    (+ 21845.0 (vector-y-angle s2-1))
+                    )
+                   (((pickup-type gun-yellow-1) (pickup-type gun-yellow-2) (pickup-type gun-yellow-3))
+                    (+ 43690.0 (vector-y-angle s2-1))
+                    )
+                   (else
+                     (+ f28-0
+                        (* f26-0 (+ -1.0 (the-as float v1-27)))
+                        (vector-y-angle s2-1))
+                     )
+                   )
+                 )
                )
-          (vector-rotate-around-y! s3-1 *z-vector* f0-11)
+        (vector-rotate-around-y! s3-1 *z-vector* f0-11)
           )
-        (vector+float*! s3-1 s4-2 s3-1 f30-1)
+        ;; Wave 3 presents four weapon choices.  Put each one at a distinct
+        ;; arena landmark so selecting one cannot accidentally collect another.
+        (if (and (= (-> this current-room-index) 2)
+                 (or (= arg0 (pickup-type gun-yellow-2))
+                     (= arg0 (pickup-type gun-blue-1))
+                     (= arg0 (pickup-type gun-blue-2))
+                     (= arg0 (pickup-type gun-yellow-3))
+                     )
+                 )
+            (case arg0
+              (((pickup-type gun-yellow-2))
+               (vector-copy! s3-1 (-> this current-room node-positions 0))
+               )
+              (((pickup-type gun-blue-1))
+               (vector-copy! s3-1 (-> this current-room node-positions 1))
+               )
+              (((pickup-type gun-blue-2))
+               (vector-copy! s3-1 (-> this current-room node-positions 2))
+               )
+              (else
+                (vector-copy! s3-1 (-> this current-room center-pos))
+                )
+              )
+            (vector+float*! s3-1 s4-2 s3-1 f30-1)
+            )
         (let ((s4-3 (new 'stack-no-clear 'vector))
               (a0-17 (find-nearest-nav-mesh s3-1 (the-as float #x7f800000)))
               )
@@ -1564,13 +1608,18 @@
             )
           )
       ;; Check the selected finite weapon's own ammo pool. Beam Reflexor needs
-      ;; two yellow ammo, Gyro Burster needs eleven, and Arc Welder needs one
+       ;; six yellow ammo normally (eight with Increased Deflections), Gyro
+       ;; Burster needs eleven, and Arc Welder needs one
       ;; blue ammo to fire again. Arc Welder drains ammo continuously and may
       ;; leave a positive remainder below one.
       (when (and (!= (-> this ammo-special gun-type) (pickup-type gun-yellow-1))
                  (or (<= remaining-ammo 0.0)
                      (and (= (-> this ammo-special gun-type) (pickup-type gun-yellow-2))
-                          (< remaining-ammo 2.0)
+                          (< remaining-ammo
+                             (if (logtest? (game-secrets gun-upgrade-yellow-2)
+                                           (-> *game-info* secrets))
+                                 8.0
+                                 6.0))
                           )
                      (and (= (-> this ammo-special gun-type) (pickup-type gun-yellow-3))
                           (< remaining-ammo 11.0)

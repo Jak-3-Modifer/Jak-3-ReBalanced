@@ -1153,6 +1153,7 @@
    (snd-spool-explosion         sound-id)
    (antenna-explode-part        sparticle-launch-control)
    (next-lightning-time         time-frame)
+   (hero-repeat-slam?           symbol)
    )
   (:state-methods
     sat-idle
@@ -1524,6 +1525,7 @@
   (set! (-> this should-rise?) #f)
   (set! (-> this play-anim?) #t)
   (set! (-> this was-spinning?) #f)
+  (set! (-> this hero-repeat-slam?) #f)
   (none)
   )
 
@@ -2028,6 +2030,8 @@
     (neo-sat-method-230 self)
     (if (and (-> self was-doing-cone-check?)
              (not (-> self was-player-inside-cone?))
+             (not (and (zero? (-> self current-stage))
+                       (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
              )
         (go-virtual hostile)
         )
@@ -2059,6 +2063,15 @@
   :virtual #t
   :event enemy-event-handler
   :enter (behavior ()
+    (when (and (= (-> self current-stage) 1)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (set-time! (-> self state-time))
+      (set! (-> self desired-float-height) 49152.0)
+      (set! (-> self bob-speed-scalar) 10.0)
+      (set! (-> self ground-offset) 40960.0)
+      (set! (-> self max-speed) 163840.0)
+      (sound-play "sat-hover" :id (-> self snd-hover))
+      )
     (let ((v1-0 self))
       (if (not (logtest? (enemy-flag ef37) (-> v1-0 enemy-flags)))
           (set! (-> v1-0 enemy-flags) (the-as enemy-flag (logior (enemy-flag ef39) (-> v1-0 enemy-flags))))
@@ -2084,19 +2097,52 @@
     (neo-sat-method-230 self)
     (if (and (-> self was-doing-cone-check?)
              (not (-> self was-player-inside-cone?))
+             (not (and (zero? (-> self current-stage))
+                       (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
              )
         (go-virtual hostile)
         )
     (seek! (-> self anim-speed) 3.0 (* 0.15 (seconds-per-frame)))
-    (vector-! (-> self nav-vector) (-> self shockwave-origin) (-> self root trans))
+    (if (and (= (-> self current-stage) 1)
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+        (let ((aim-pos (new 'stack-no-clear 'vector)))
+          (vector-copy! aim-pos (target-pos 0))
+          (when *target*
+            (let ((lead (new 'stack-no-clear 'vector)))
+              (vector-float*! lead (get-transv *target*) 18.0)
+              (set! (-> lead y) 0.0)
+              (when (> (vector-length lead) (meters 6))
+                (vector-normalize! lead (meters 6))
+                )
+              (vector+! aim-pos aim-pos lead)
+              )
+            )
+          (let ((nav-state (-> self nav state)))
+            (when (> (vector-vector-xz-distance (-> nav-state target-pos) aim-pos) (meters 1))
+              (logior! (-> nav-state flags) (nav-state-flag target-poly-dirty))
+              (vector-copy! (-> nav-state target-pos) aim-pos)
+              )
+            )
+          (vector-! (-> self nav-vector) aim-pos (-> self root trans))
+          )
+        (vector-! (-> self nav-vector) (-> self shockwave-origin) (-> self root trans))
+        )
     (set! (-> self nav-vector y) 0.0)
     (vector-normalize! (-> self nav-vector) 1.0)
+    (when (and (= (-> self current-stage) 1)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (time-elapsed? (-> self state-time) (seconds 1)))
+      (set! (-> self max-speed) 81920.0)
+      )
     (neo-sat-method-203 self #f)
     (neo-sat-method-233 self)
     (neo-sat-method-220 self)
     (neo-sat-method-201 self)
-    (dotimes (gp-0 (-> *neo-sat-laser-array* length))
-      (neo-sat-method-206 self (-> *neo-sat-laser-array* gp-0 joint) #f)
+    (when (not (and (= (-> self current-stage) 1)
+                    (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+      (dotimes (gp-0 (-> *neo-sat-laser-array* length))
+        (neo-sat-method-206 self (-> *neo-sat-laser-array* gp-0 joint) #f)
+        )
       )
     (set! (-> self spin-current) 49152.0)
     (quaternion-rotate-y!
@@ -2104,9 +2150,19 @@
       (-> self disc-joint rotation)
       (* (-> self spin-current) (seconds-per-frame))
       )
-    (if (< (vector-vector-xz-distance (-> self root trans) (-> self shockwave-origin)) 901.12)
-        (go-virtual neo-sat-drill-prepare)
-        )
+    (let ((slam-distance (vector-vector-xz-distance (-> self root trans) (-> self nav state target-pos))))
+      (if (and (= (-> self current-stage) 1)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+          (when (or (< slam-distance (meters 3))
+                    (time-elapsed? (-> self state-time) (seconds 6)))
+            (vector-copy! (-> self shockwave-origin) (-> self root trans))
+            (go-virtual neo-sat-drill-prepare)
+            )
+          (if (< (vector-vector-xz-distance (-> self root trans) (-> self shockwave-origin)) 901.12)
+              (go-virtual neo-sat-drill-prepare)
+              )
+          )
+      )
     )
   :code sleep-code
   :post (behavior ()
@@ -2119,6 +2175,14 @@
   :event enemy-event-handler
   :enter (behavior ()
     (set-time! (-> self state-time))
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (set! (-> self current-height-probe-index) 0)
+      )
+    (when (and (zero? (-> self current-stage))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (sound-stop (-> self snd-laser-burn))
+      (neo-sat-method-208 self)
+      )
     (let ((v1-2 self))
       (set! (-> v1-2 enemy-flags) (the-as enemy-flag (logclear (-> v1-2 enemy-flags) (enemy-flag ef37))))
       (set! (-> v1-2 nav callback-info) *null-nav-callback-info*)
@@ -2132,7 +2196,11 @@
     )
   :trans (behavior ()
     (neo-sat-method-220 self)
-    (if (time-elapsed? (-> self state-time) (seconds 1.0))
+    (if (time-elapsed? (-> self state-time)
+                       (if (and (zero? (-> self current-stage))
+                                (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                           (seconds 2.0)
+                           (seconds 1.0)))
         (go-virtual neo-sat-drill-attack)
         )
     (if (-> self hit-player?)
@@ -2435,7 +2503,9 @@
   )
 
 (defmethod neo-sat-method-210 ((this neo-sat))
-  (if (< (square 143360.0) (vector-vector-xz-distance-squared (-> this root trans) (-> this focus-pos)))
+  (if (and (not (and (= (-> this current-stage) 1)
+                     (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+           (< (square 143360.0) (vector-vector-xz-distance-squared (-> this root trans) (-> this focus-pos))))
       (go (method-of-object this ground-burst))
       )
   (-> this spin-current)
@@ -2452,7 +2522,11 @@
               (seconds-per-frame)
               )
            )
-         (f0-11 (/ f0-10 20))
+         (f0-11 (/ f0-10
+                   (if (and (= (-> this current-stage) 1)
+                            (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                       13.333333
+                       20.0)))
          )
     (+! (-> this spin-speed) f0-11)
     )
@@ -2462,7 +2536,9 @@
                    50062.223
                    )
                   ((= v1-19 1)
-                   50062.223
+                   (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                       75093.336
+                       50062.223)
                    )
                   ((= v1-19 2)
                    36408.89
@@ -2574,9 +2650,27 @@
       )
     )
   :trans (behavior ()
+    ;; Hero Mode stage two repeats the whip-and-slam cycle until the next
+    ;; 40-HP threshold, even if that threshold was reached on impact.
+    (when (and (= (-> self current-stage) 1)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (<= (-> self hit-points) 40.0))
+      (set! (-> self should-rise?) #f)
+      (send-event self 'rise-up)
+      )
     (neo-sat-method-210 self)
     (neo-sat-method-211 self)
     (neo-sat-method-228 self)
+    (when (and (= (-> self current-stage) 1)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (time-elapsed? (-> self state-time) (seconds 5)))
+      (vector-copy! (-> self shockwave-origin) (target-pos 0))
+      (set! (-> self was-doing-cone-check?) #f)
+      (set! (-> self hit-player?) #f)
+      (set! (-> self was-spinning?) #t)
+      (set! (-> self hero-repeat-slam?) #t)
+      (go-virtual ground-burst)
+      )
     )
   :code sleep-code
   :post (behavior ()
@@ -2585,6 +2679,12 @@
   )
 
 ;; WARN: Return type mismatch float vs none.
+(defun neo-sat-shockwave-visual-lift ((sat neo-sat))
+  (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (meters 1)
+      0.0)
+  )
+
 (defun sparticle-height-set ((arg0 sparticle-system) (arg1 sparticle-cpuinfo) (arg2 vector))
   (let ((a0-3 (the-as neo-sat (handle->process (-> *alive-neo-sats* (shr (the int (-> arg1 omega)) 16)))))
         (a1-2 (new 'stack-no-clear 'vector))
@@ -2595,7 +2695,7 @@
     (set! (-> a1-2 w) 1.0)
     (when a0-3
       (set! (-> arg2 y) (neo-sat-method-218 a0-3 a1-2))
-      (+! (-> arg2 y) 2048.0)
+      (+! (-> arg2 y) (+ 2048.0 (neo-sat-shockwave-visual-lift a0-3)))
       )
     )
   (none)
@@ -2638,7 +2738,7 @@
           )
       (vector+float*! s4-0 (-> this shockwave-origin) v1-1 f0-3)
       )
-    (set! (-> s4-0 y) (neo-sat-method-218 this s4-0))
+    (set! (-> s4-0 y) (+ (neo-sat-method-218 this s4-0) (neo-sat-shockwave-visual-lift this)))
     (set! (-> arg0 x) (-> s4-0 x))
     (set! (-> arg0 y) (-> s4-0 y))
     (set! (-> arg0 z) (-> s4-0 z))
@@ -2686,7 +2786,7 @@
                      (s1-0 (new 'stack-no-clear 'vector))
                      )
                 (vector+float*! s1-0 (-> this shockwave-origin) s0-0 f28-1)
-                (set! (-> s1-0 y) (neo-sat-method-218 this s1-0))
+                (set! (-> s1-0 y) (+ (neo-sat-method-218 this s1-0) (neo-sat-shockwave-visual-lift this)))
                 (set! (-> *part-id-table* 1679 init-specs 3 initial-valuef) (lerp 409.6 2457.6 (/ f28-1 (meters 40))))
                 (let* ((f26-2 (-> *part-id-table* 1679 init-specs 3 initial-valuef))
                        (f24-1 1.0)
@@ -2713,7 +2813,7 @@
                        (s2-2 (new 'stack-no-clear 'vector))
                        )
                   (vector+float*! s2-2 (-> this shockwave-origin) s1-1 f28-1)
-                  (set! (-> s2-2 y) (neo-sat-method-218 this s2-2))
+                  (set! (-> s2-2 y) (+ (neo-sat-method-218 this s2-2) (neo-sat-shockwave-visual-lift this)))
                   (let ((a2-7 (matrix-f-u-compose (new 'stack-no-clear 'matrix) s1-1 *up-vector*)))
                     (vector-copy! (-> a2-7 trans) s2-2)
                     (set! (-> *part-id-table* 1680 init-specs 9 initial-valuef)
@@ -2856,7 +2956,11 @@
     (set! (-> self bob-speed-scalar) 1.0)
     (logior! (-> self focus-status) (focus-status dangerous))
     (set! (-> self root transv quad) (the-as uint128 0))
-    (set! (-> self desired-float-height) 16384.0)
+    (set! (-> self desired-float-height)
+          (if (and (zero? (-> self current-stage))
+                   (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+              -102400.0
+              16384.0))
     (vector-copy! (-> self start-thrust-pos) (-> self root trans))
     (set-time! (-> self state-time))
     )
@@ -2881,7 +2985,11 @@
              )
            )
           (else
-            (let* ((f1-11 (* 0.008333334 (the float (- (current-time) (-> self state-time)))))
+            (let* ((f1-11 (* (if (and (zero? (-> self current-stage))
+                                      (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                                 0.033333335
+                                 0.008333334)
+                              (the float (- (current-time) (-> self state-time)))))
                    (f0-10 (fmax 0.0 (fmin 1.0 f1-11)))
                    )
               (vector-lerp! (-> self root trans) (-> self start-thrust-pos) a2-0 f0-10)
@@ -2915,6 +3023,7 @@
     (neo-sat-method-207 self)
     (set! (-> self hit-player?) #f)
     (set! (-> self wander-generate-time) 0)
+    (set-time! (-> self new-spin-time))
     (let ((v1-4 (-> self current-stage)))
       (cond
         ((zero? v1-4)
@@ -2932,7 +3041,9 @@
     (set! (-> self was-doing-cone-check?) #f)
     )
   :trans (behavior ()
-    (if (-> self hit-player?)
+    (if (and (-> self hit-player?)
+             (not (and (zero? (-> self current-stage))
+                       (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))))
         (go-virtual hostile)
         )
     (seek! (-> self anim-speed) 3.0 (* 0.15 (seconds-per-frame)))
@@ -2966,19 +3077,43 @@
     (if (-> self was-doing-cone-check?)
         (neo-sat-method-230 self)
         )
-    ;; Leaving the active laser cone resets this phase. This applies to stage
-    ;; zero as well as the later stages.
+    ;; Hero Mode stage two needs five continuous seconds inside the laser
+    ;; radius. Leaving it resets the countdown without ending the sweep.
+    (when (and (= (-> self current-stage) 1)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (-> self was-doing-cone-check?))
+      (if (-> self was-player-inside-cone?)
+          (when (time-elapsed? (-> self new-spin-time) (seconds 5))
+            (vector-copy! (-> self shockwave-origin) (-> self root trans))
+            (go-virtual neo-sat-drill-prepare)
+            )
+          (set-time! (-> self new-spin-time))
+          )
+      )
+    ;; In Hero Mode's first stage, escaping the cone starts the slam. Keep
+    ;; the original reset behavior for normal mode and later stages.
     (if (and (-> self was-doing-cone-check?)
              (not (-> self was-player-inside-cone?))
+             (not (and (= (-> self current-stage) 1)
+                       (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
              )
-        (go-virtual hostile)
+        (if (and (zero? (-> self current-stage))
+                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+            (begin
+              (vector-copy! (-> self shockwave-origin) (-> self root trans))
+              (go-virtual neo-sat-drill-prepare)
+              )
+            (go-virtual hostile)
+            )
         )
     (neo-sat-method-220 self)
     (neo-sat-method-201 self)
     (let* ((v1-41 (-> self current-stage))
            (f30-1 (cond
                     ((zero? v1-41)
-                     -10012.444
+                     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                         -8647.111
+                         -10012.444)
                      )
                     ((= v1-41 1)
                      -10922.667
@@ -2989,8 +3124,15 @@
                     )
                   )
            )
-      (seek! (-> self laser-rotate-angle) f30-1 (* 1820.4445 (seconds-per-frame)))
-      (if (and (-> self was-doing-cone-check?)
+      (seek! (-> self laser-rotate-angle) f30-1
+             (* (if (and (zero? v1-41)
+                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                    5461.3335
+                    1820.4445)
+                (seconds-per-frame)))
+      (if (and (not (and (or (zero? v1-41) (= v1-41 1))
+                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+               (-> self was-doing-cone-check?)
                (-> self was-player-inside-cone?)
                (>= 182.04445 (fabs (- (-> self laser-rotate-angle) f30-1)))
                (let ((v1-50 (- (current-time) (-> self state-time)))
@@ -3013,11 +3155,16 @@
           (go neo-sat-drill-halting)
           )
       (let ((gp-1 #t))
-        (when (< (-> self laser-rotate-angle) -9102.223)
+        (when (< (-> self laser-rotate-angle)
+                 (if (and (zero? v1-41)
+                          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                     -8192.0
+                     -9102.223))
           (set! gp-1 #f)
           (when (not (-> self was-doing-cone-check?))
             (set! (-> self was-doing-cone-check?) #t)
             (set! (-> self was-player-inside-cone?) (neo-sat-method-232 self (target-pos 0)))
+            (set-time! (-> self new-spin-time))
             )
           )
         (dotimes (s5-2 (-> *neo-sat-laser-array* length))
@@ -3028,7 +3175,11 @@
         (if (< 32585.955 f0-24)
             (set! f0-24 (lerp 32768.0 49152.0 (* 0.00055555557 (the float (- (current-time) (-> self state-time))))))
             )
-        (set! (-> self spin-current) f0-24)
+        (set! (-> self spin-current)
+              (if (and (zero? v1-41)
+                       (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                  (* 3.0 f0-24)
+                  f0-24))
         )
       )
     (quaternion-rotate-y!
@@ -3236,7 +3387,13 @@
     (seek! (-> self desired-float-height) 49152.0 (* 327680.0 (seconds-per-frame)))
     (neo-sat-method-228 self)
     (if (time-elapsed? (-> self state-time) (seconds 1.5))
-        (go-virtual hostile)
+        (if (-> self hero-repeat-slam?)
+            (begin
+              (set! (-> self hero-repeat-slam?) #f)
+              (go-virtual neo-sat-drill-returning)
+              )
+            (go-virtual hostile)
+            )
         )
     )
   :code sleep-code
@@ -3558,7 +3715,9 @@
   (let ((s5-1 (vector<-cspace! (new 'stack-no-clear 'vector) (-> this node-list data arg0)))
         (s4-1 (new 'stack-no-clear 'vector))
         (f30-0 491520.0)
-        (s2-1 (if arg1
+        (s2-1 (if (or arg1
+                      (and (zero? (-> this current-stage))
+                           (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
                   1091
                   65
                   )
@@ -3596,15 +3755,33 @@
                      )
                  )
                )
-           (send-event
-             s2-4
-             'attack
-             #f
-             (static-attack-info
-               :mask (vehicle-impulse-factor)
-               ((id (new-attack-id)) (damage 4.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'shock))
+           ;; Keep Jak in the sustained laser collision mask in Hero Mode.
+           ;; A direct hit deals damage through the normal death/retry path.
+           (if (and (zero? (-> this current-stage))
+                    (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                    *target*
+                    (= s2-4 *target*))
+               (send-event
+                 *target*
+                 'attack
+                 #f
+                 (static-attack-info
+                   :mask (vehicle-impulse-factor)
+                   ((id (new-attack-id)) (damage 16.0) (vehicle-damage-factor 1.0)
+                    (vehicle-impulse-factor 1.0) (mode 'shock))
+                   )
+                 )
+               (send-event
+                 s2-4
+                 'attack
+                 #f
+                 (static-attack-info
+                   :mask (vehicle-impulse-factor)
+                   ((id (new-attack-id)) (damage 4.0) (vehicle-damage-factor 1.0)
+                    (vehicle-impulse-factor 1.0) (mode 'shock))
+                   )
+                 )
                )
-             )
            (send-event this 'notify 'attack s2-4)
            )
          (vector-normalize! (-> s3-1 move-dist) (+ 2048.0 (vector-length (-> s3-1 move-dist))))
@@ -3776,7 +3953,7 @@
   )
 
 (defmethod neo-sat-method-220 ((this neo-sat))
-  (dotimes (s5-0 8)
+  (dotimes (s5-0 (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode)) 16 8))
     (if (>= (-> this current-height-probe-index) 1225)
         (return 0)
         )
@@ -3827,7 +4004,9 @@
         (s5-1 (neo-sat-method-232 this (target-pos 0)))
         )
     (let ((v1-1 s5-1))
-      (when (or (and s4-0 (not v1-1)) (and v1-1 (not s4-0)))
+      (when (and (or (and s4-0 (not v1-1)) (and v1-1 (not s4-0)))
+                 (not (and (or (zero? (-> this current-stage)) (= (-> this current-stage) 1))
+                           (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))))
         (send-event
           (handle->process (-> this focus handle))
           'attack

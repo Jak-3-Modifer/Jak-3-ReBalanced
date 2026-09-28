@@ -11,6 +11,21 @@
   ()
   )
 
+(defmethod apply-damage ((this v-snake) (amount float) (impact rigid-body-impact))
+  ;; Record only damage that actually lowered the driven Sand Shark's HP.
+  (let ((old-health (-> this hit-points)))
+    ((method-of-type wcar-base apply-damage) this amount impact)
+    (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+               (< (-> this hit-points) old-health))
+      (unless *sand-shark-repair-active?*
+        (set! *sand-shark-repair-update-seen?* #f))
+      (set! *sand-shark-repair-active?* #t)
+      (set-time! *sand-shark-repair-time*)
+      (format #t "Sand Shark damaged: HP ~f~%"
+              (* (-> this hit-points) (-> this info damage hit-points)))))
+  (none)
+  )
+
 
 (defmethod vehicle-method-62 ((this v-snake))
   (let ((s5-0 (-> this root root-prim)))

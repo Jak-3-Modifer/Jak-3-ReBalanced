@@ -11,13 +11,6 @@
   (new 'static 'vector :x 9348997.12 :y 126648.32 :z 698982.4 :w 1.0)
   )
 
-(define *v-scorpion-loadout-trigger-pos*
-  (new 'static 'vector :x 9409536.0 :y 129884.16 :z 710492.16 :w 1.0)
-  )
-(define *v-scorpion-loadout-menu-open?* #f)
-(define *v-scorpion-loadout-menu-page* 0)
-(define *v-scorpion-loadout-menu-selection* 0)
-
 ;; Coordinates are stored in the engine's 4096-units-per-meter scale.
 ;; The shop itself is a safe positional trigger; its visible bush will be
 ;; added only once its art group is built for WSD.
@@ -455,152 +448,6 @@
   (none)
   )
 
-(defun wasdoors-close-v-scorpion-loadout-menu ()
-  (set-master-mode 'game)
-  (set! *v-scorpion-loadout-menu-open?* #f)
-  (set! *popup-menu-open* #f)
-  (none)
-  )
-
-(defun wasdoors-draw-v-scorpion-loadout-menu ()
-  (let ((font (new 'stack 'font-context *font-default-matrix* 56 65 0.0
-                   (font-color default) (font-flags shadow kerning))))
-    (set! (-> font flags) (font-flags shadow kerning large))
-    (set-width! font 400)
-    (set-height! font 50)
-    (set-scale! font 0.48)
-    (set! (-> font color) (font-color cyan))
-    (case *v-scorpion-loadout-menu-page*
-      ((0) (format (clear *temp-string*) "Sand Shark Loadout"))
-      ((1) (format (clear *temp-string*) "Abilities"))
-      (else (format (clear *temp-string*) "Defense")))
-    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-    (set-scale! font 0.4)
-    (case *v-scorpion-loadout-menu-page*
-      ((0)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 0) "> Abilities" "  Abilities")
-         155.0 (= *v-scorpion-loadout-menu-selection* 0) #f)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 1) "> Defense" "  Defense")
-         205.0 (= *v-scorpion-loadout-menu-selection* 1) #f))
-      ((1)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 0) "> None" "  None")
-         90.0 (= *v-scorpion-loadout-menu-selection* 0) #f)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 1) "> Vehicle Toughness" "  Vehicle Toughness")
-         130.0 (= *v-scorpion-loadout-menu-selection* 1) #f)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (wasdoors-v-turtle-faster-boost-unlocked?)
-             (if (= *v-scorpion-loadout-menu-selection* 2) "> Faster Boost Cooldown" "  Faster Boost Cooldown")
-             (if (= *v-scorpion-loadout-menu-selection* 2) "> ???" "  ???"))
-         170.0 (= *v-scorpion-loadout-menu-selection* 2)
-         #f)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 3) "> Turret Jammer" "  Turret Jammer")
-         210.0 (= *v-scorpion-loadout-menu-selection* 3) #f)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 4) "> Regenerative Armor" "  Regenerative Armor")
-         250.0 (= *v-scorpion-loadout-menu-selection* 4)
-         (logtest? (-> *game-info* secrets) (game-secrets gs62))))
-      (else
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 0) "> None" "  None")
-         120.0 (= *v-scorpion-loadout-menu-selection* 0) #f)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 1) "> Damage Shield" "  Damage Shield")
-         155.0 (= *v-scorpion-loadout-menu-selection* 1) #f)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 2) "> Emergency Repair" "  Emergency Repair")
-         195.0 (= *v-scorpion-loadout-menu-selection* 2) #f)
-       (wasdoors-draw-v-turtle-loadout-option-line font
-         (if (= *v-scorpion-loadout-menu-selection* 3) "> Camouflage" "  Camouflage")
-         235.0 (= *v-scorpion-loadout-menu-selection* 3) #f)))
-    (set-scale! font 0.3)
-    (wasdoors-draw-v-turtle-loadout-option-line font "<PAD_DPAD_DOWN>  Move" 305.0 #f #f)
-    (wasdoors-draw-v-turtle-loadout-option-line font
-      (if (= *v-scorpion-loadout-menu-page* 0)
-          "<PAD_X>  Select     <PAD_TRIANGLE>  Exit"
-          "<PAD_X>  Equip     <PAD_CIRCLE>  Back     <PAD_TRIANGLE>  Exit")
-      345.0 #f #f))
-  (none)
-  )
-
-(defun wasdoors-update-v-scorpion-loadout-menu ()
-  (wasdoors-draw-v-scorpion-loadout-menu)
-  (let ((last-selection (cond
-                          ((= *v-scorpion-loadout-menu-page* 0) 1)
-                          ((= *v-scorpion-loadout-menu-page* 1) 4)
-                          (else 3))))
-    (cond
-      ((cpad-pressed? 0 up)
-       (dec! *v-scorpion-loadout-menu-selection*)
-       (when (< *v-scorpion-loadout-menu-selection* 0)
-         (set! *v-scorpion-loadout-menu-selection* last-selection))
-       (sound-play "menu-pick"))
-      ((cpad-pressed? 0 down)
-       (inc! *v-scorpion-loadout-menu-selection*)
-       (when (> *v-scorpion-loadout-menu-selection* last-selection)
-         (set! *v-scorpion-loadout-menu-selection* 0))
-       (sound-play "menu-pick"))
-      ((cpad-pressed? 0 x)
-       (sound-play "menu-pick")
-       (case *v-scorpion-loadout-menu-page*
-         ((0)
-          (set! *v-scorpion-loadout-menu-page* (+ *v-scorpion-loadout-menu-selection* 1))
-          (set! *v-scorpion-loadout-menu-selection* 0))
-         ((1)
-          (if (= *v-scorpion-loadout-menu-selection* 4)
-              (logior! (-> *game-info* secrets) (game-secrets gs62))
-              (logclear! (-> *game-info* secrets) (game-secrets gs62))))
-         (else
-          (none)))
-       )
-      ((cpad-pressed? 0 triangle)
-       (wasdoors-close-v-scorpion-loadout-menu))
-      ((cpad-pressed? 0 circle)
-       (when (!= *v-scorpion-loadout-menu-page* 0)
-         (set! *v-scorpion-loadout-menu-selection* (- *v-scorpion-loadout-menu-page* 1))
-         (set! *v-scorpion-loadout-menu-page* 0)
-         (sound-play "menu-pick")))
-      ))
-  (none)
-  )
-
-(defun wasdoors-update-v-scorpion-loadout-trigger ()
-  (cond
-    ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-     (when *v-scorpion-loadout-menu-open?*
-       (wasdoors-close-v-scorpion-loadout-menu)))
-    (*v-scorpion-loadout-menu-open?*
-     (wasdoors-update-v-scorpion-loadout-menu))
-    ((and *target*
-          (not (focus-test? *target* pilot-riding))
-          (< (vector-vector-distance-squared (target-pos 0) *v-scorpion-loadout-trigger-pos*)
-             (square 8192.0)))
-     (let ((font (new 'stack 'font-context *font-default-matrix* 56 330 0.0
-                      (font-color default) (font-flags shadow kerning))))
-       (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
-       (set-width! font 400)
-       (set-height! font 80)
-       (set-scale! font 0.7)
-       (format (clear *temp-string*) "Press <PAD_X> to edit loadout")
-       (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-       (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
-     (when (cpad-pressed? 0 x)
-       (set! *v-scorpion-loadout-menu-page* 0)
-       (set! *v-scorpion-loadout-menu-selection* 0)
-       (set! *v-scorpion-loadout-menu-open?* #t)
-       (set! *popup-menu-open* #t)
-       (set-master-mode 'menu)
-       (sound-play "menu-pick")
-       (cpad-clear! 0 x)))
-    )
-  (none)
-  )
-
 (defun wasdoors-point-inside? ((arg0 vector))
   (let ((gp-0 (new 'stack-no-clear 'inline-array 'vector 3)))
     (vector-copy! (-> gp-0 0) (new 'static 'vector :z -1.0 :w 957235.2))
@@ -678,7 +525,6 @@
   :trans (behavior ()
     (repair-vehicles self)
     (wasdoors-update-v-turtle-loadout-trigger)
-    (wasdoors-update-v-scorpion-loadout-trigger)
     (wasdoors-update-bbush-shop)
     )
   :code sleep-code
@@ -702,7 +548,6 @@
 ;; WARN: Return type mismatch symbol vs none.
 (defun wasdoors-manager-kill ()
   (close-v-turtle-loadout-menu)
-  (wasdoors-close-v-scorpion-loadout-menu)
   (wasdoors-close-bbush-shop)
   (kill-by-type wasdoors-manager *active-pool*)
   (set! *wasdoors-manager* (the-as (pointer wasdoors-manager) #f))

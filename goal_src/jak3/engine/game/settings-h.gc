@@ -202,6 +202,7 @@
   ;; Persistent shop toggle: restores the giant scale used by Dark Jak internals.
   (dark-giant 61)
   (gs62 62)
+  ;; Reserved shop-toggle bit for the Wave Concussor self-launch effect.
   (gs63 63)
   )
 ;; ---game-secrets

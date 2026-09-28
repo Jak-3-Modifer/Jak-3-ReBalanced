@@ -7,6 +7,10 @@
 
 ;; DECOMP BEGINS
 
+(define *sand-shark-repair-active?* #f)
+(define *sand-shark-repair-update-seen?* #f)
+(define *sand-shark-repair-time* (the-as time-frame 0))
+
 ;; Dust Demon drivetrain selection: RWD by default, with player D-pad control.
 (define *dust-demon-4wd?* #f)
 (define *gila-stomper-fwd?* #f)
@@ -369,6 +373,29 @@
          )
         )
       )
+    ;; Repair the player's Sand Shark before the health bar reads its HP.
+    ;; The damage callback owns the timer; polling HP here restarted it on
+    ;; every small health change and could keep repair from ever firing.
+    (when (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+      (when (and *sand-shark-repair-active?*
+                 (not *sand-shark-repair-update-seen?*))
+        (set! *sand-shark-repair-update-seen?* #t)
+        (format #t "Sand Shark repair armed in driving update: HP ~f~%"
+                (* (-> this hit-points) (-> this info damage hit-points))))
+      (when (and *sand-shark-repair-active?*
+                 (> (-> this hit-points) 0.0)
+                 (< (-> this hit-points) 1.0)
+                 (not (logtest? (vehicle-flag dead) (-> this v-flags)))
+                 (time-elapsed? *sand-shark-repair-time* (seconds 1.5)))
+        (set! (-> this hit-points)
+              (fmin 1.0 (+ (-> this hit-points) (-> this info damage inv-hit-points))))
+        (set-time! *sand-shark-repair-time*)
+        (format #t "Sand Shark repair: HP ~f~%"
+                (* (-> this hit-points) (-> this info damage hit-points)))))
+    (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+               (or (>= (-> this hit-points) 1.0)
+                   (<= (-> this hit-points) 0.0)))
+      (set! *sand-shark-repair-active?* #f))
     (let ((v1-39 *game-info*))
       (set! (-> v1-39 health-bar-vehicle) (-> this hit-points))
       (set! (-> v1-39 race-number-turbos) (the int (-> this turbo-supply)))

@@ -805,12 +805,12 @@
                )
          )
         ((30)
-         ;; Beam Reflexor consumes four Yellow Ammo normally and eight with
+         ;; Beam Reflexor consumes six Yellow Ammo normally and eight with
          ;; the Increased Deflections upgrade. Reflected hits add no cost.
          (set! (-> self gun ammo-required)
                (if (logtest? (game-secrets gun-upgrade-yellow-2) (-> *game-info* secrets))
                    8.0
-                   4.0
+                    6.0
                    )
                )
          )
@@ -2723,7 +2723,8 @@
             (set! (-> v1-24 frame-num) 9.0)
             )
            ((and (= (-> v1-24 frame-group) jakb-gun-red-fire-2-ja) (< (-> v1-24 frame-num) 9.0))
-            (let ((a0-65 (new-stack-vector0)))
+            (when (logtest? (-> self game secrets) (game-secrets gs63))
+              (let ((a0-65 (new-stack-vector0)))
               (let ((f0-17 (vector-dot (-> self control dynam gravity-normal) (-> self control transv))))
                 0.0
                 (vector-! a0-65 (-> self control transv) (vector-float*! a0-65 (-> self control dynam gravity-normal) f0-17))
@@ -2749,6 +2750,7 @@
                   (ja :group! jakb-launch-jump-loop-ja :num! min)
                   )
                 )
+              )
               )
             (set! (-> v1-24 frame-num) 10.0)
             )
