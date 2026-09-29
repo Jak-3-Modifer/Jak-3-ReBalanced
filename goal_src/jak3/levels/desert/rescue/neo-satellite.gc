@@ -2581,9 +2581,13 @@
 ;; WARN: Return type mismatch number vs float.
 (defmethod get-damage-from-attack ((this neo-sat) (arg0 object) (arg1 event-message-block))
   "Compute hit point damage for an attack message."
-  (let ((v0-1 (the-as number (call-parent-method this arg0 arg1))))
-    (if (logtest? (penetrate dark-bomb dark-smack) (-> (the-as attack-info (-> arg1 param 1)) penetrate-using))
+  (let ((attack (the-as attack-info (-> arg1 param 1)))
+        (v0-1 (the-as number (call-parent-method this arg0 arg1))))
+    (if (logtest? (penetrate dark-bomb dark-smack) (-> attack penetrate-using))
         (set! v0-1 #x41f00000)
+        )
+    (if (lightjak-player-gun-attack? attack)
+        (set! v0-1 (* (the-as float v0-1) 2.0))
         )
     (the-as float v0-1)
     )

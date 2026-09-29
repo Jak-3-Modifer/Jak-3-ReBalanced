@@ -1434,7 +1434,7 @@
     (when (time-elapsed? (-> self last-deduct-ammo-time) (seconds 0.1))
       (adjust-player-ammo-over-time
         (the-as int (- (current-time) (-> self last-deduct-ammo-time)))
-        7.5
+        30.0
         (pickup-type ammo-blue)
         10000.0
         )
@@ -2236,9 +2236,15 @@
       )
   (when (logtest? (game-secrets gun-upgrade-blue-2) (-> *game-info* secrets))
     (if (logtest? (process-mask kg-robot) (-> arg0 mask))
-        ;; KG robots apply their shared 50% resistance after this, producing
-        ;; a final Robot Shock multiplier of 5x base damage.
-        (set! (-> this damage) (* 10.0 (-> this damage)))
+        ;; KG robots apply their shared 50% resistance after this. Scale the
+        ;; Arc Wielder hit to 5x base within 15 m of Jak, or 2x farther away.
+        (set! (-> this damage)
+              (* (if (<= (vector-vector-distance (target-pos 0)
+                                                 (get-trans (the-as process-focusable arg0) 0))
+                         (meters 15))
+                     10.0
+                     4.0)
+                 (-> this damage)))
         )
     )
   (if (< (mod (the-as int (rand-uint31-gen *random-generator*)) 11) 2)

@@ -689,27 +689,31 @@
 (set! (-> *prebot-large-eco-creature-nav-enemy-info* fact-defaults) *fact-info-enemy-defaults*)
 
 (defun eco-creature-blocked-penetrate? ((arg0 penetrate))
-  "True for resolved Morph-Gun and Dark Jak penetration flags."
-  (logtest? (penetrate
-              dark-skin
-              dark-punch
-              dark-bomb
-              dark-smack
-              jak-yellow-shot
-              jak-red-shot
-              jak-blue-shot
-              jak-dark-shot
-              jak-red-shockwave
-              jak-dark-nuke
-              jak-dark-blackhole
-              )
-            arg0)
+  "Dark Jak attacks never work; Morph-Gun hits require active Light Jak."
+  (or (logtest? (penetrate dark-skin dark-punch dark-bomb dark-smack) arg0)
+      (and (logtest? (penetrate
+                       jak-yellow-shot
+                       jak-red-shot
+                       jak-blue-shot
+                       jak-dark-shot
+                       jak-red-shockwave
+                       jak-dark-nuke
+                       jak-dark-blackhole
+                       penetrate40
+                       )
+                     arg0)
+           (not (and *target*
+                     (nonzero? (-> *target* lightjak))
+                     (focus-test? *target* light)
+                     (not (logtest? (-> *target* lightjak stage) (lightjak-stage ls1))))))
+      )
   )
 
 (defun eco-creature-blocked-attack? ((arg0 event-message-block))
   "True for Jak's Morph-Gun shots and Dark Jak attacks."
   (let ((attack (the-as attack-info (-> arg0 param 1))))
-    (or (= (-> attack mode) 'gravity-end)
+    (or (and (= (-> attack mode) 'gravity-end)
+             (not (lightjak-player-gun-attack? attack)))
         (eco-creature-blocked-penetrate? (-> attack penetrate-using))
         )
     )
@@ -753,8 +757,23 @@
       #f
       ((method-of-type enemy send-attack-from-tshape) this arg0 arg1 arg2)))
 
+(defmethod get-penetrated-by ((this prebot-large-eco-creature))
+  "Let gun hits reach the event handler, which gates damage on Light Jak."
+  (logior ((method-of-type enemy get-penetrated-by) this)
+          (penetrate
+            jak-yellow-shot
+            jak-red-shot
+            jak-blue-shot
+            jak-dark-shot
+            jak-red-shockwave
+            jak-dark-nuke
+            jak-dark-blackhole
+            penetrate40
+            ))
+  )
+
 (defmethod get-damage-from-attack ((this prebot-large-eco-creature) (arg0 object) (arg1 event-message-block))
-  "All Eco Creature sizes take zero damage from resolved gun and Dark Jak hits."
+  "Gun damage requires Light Jak; Dark Jak attacks remain ineffective."
   (if (or (eco-creature-blocked-attack? arg1)
           (eco-creature-blocked-penetrate? (-> this incoming penetrate-using)))
       0.0
@@ -1585,6 +1604,14 @@
                                     mech-punch
                                     dark-punch
                                     dark-smack
+                                    jak-yellow-shot
+                                    jak-red-shot
+                                    jak-blue-shot
+                                    jak-dark-shot
+                                    jak-red-shockwave
+                                    jak-dark-nuke
+                                    jak-dark-blackhole
+                                    penetrate40
                                     flut
                                     )
           )
@@ -2544,6 +2571,14 @@
                                     mech-punch
                                     dark-punch
                                     dark-smack
+                                    jak-yellow-shot
+                                    jak-red-shot
+                                    jak-blue-shot
+                                    jak-dark-shot
+                                    jak-red-shockwave
+                                    jak-dark-nuke
+                                    jak-dark-blackhole
+                                    penetrate40
                                     flut
                                     )
           )
@@ -3341,6 +3376,14 @@
                                     mech-punch
                                     dark-punch
                                     dark-smack
+                                    jak-yellow-shot
+                                    jak-red-shot
+                                    jak-blue-shot
+                                    jak-dark-shot
+                                    jak-red-shockwave
+                                    jak-dark-nuke
+                                    jak-dark-blackhole
+                                    penetrate40
                                     flut
                                     )
           )

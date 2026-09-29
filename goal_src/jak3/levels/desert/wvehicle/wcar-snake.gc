@@ -15,7 +15,8 @@
   ;; Record only damage that actually lowered the driven Sand Shark's HP.
   (let ((old-health (-> this hit-points)))
     ((method-of-type wcar-base apply-damage) this amount impact)
-    (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+    (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (logtest? (vehicle-flag player-driving) (-> this v-flags))
                (< (-> this hit-points) old-health))
       (unless *sand-shark-repair-active?*
         (set! *sand-shark-repair-update-seen?* #f))

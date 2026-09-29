@@ -522,6 +522,13 @@
          (-> *TARGET-bank* spin-radius)
          )
        (set! (-> self control penetrate-using) (penetrate touch spin))
+       (when (and (or (= arg0 'spin) (= arg0 'spin-air))
+                  (focus-test? self dark)
+                  (nonzero? (-> self darkjak))
+                  (logtest? (-> self darkjak stage) (darkjak-stage active))
+                  )
+         (logior! (-> self control penetrate-using) (penetrate dark-punch))
+         )
        )
       (('board-spin)
        (sphere<-vector+r!

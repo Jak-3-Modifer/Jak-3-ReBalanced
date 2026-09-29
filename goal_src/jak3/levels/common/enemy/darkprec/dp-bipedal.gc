@@ -1052,10 +1052,13 @@
 
 (defmethod get-damage-from-attack ((this dp-bipedal) (arg0 object) (arg1 event-message-block))
   "Compute hit point damage for an attack message."
-  (if (type? arg0 guard-shot)
-      0.5
-      ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1)
-      )
+  (let ((damage (if (type? arg0 guard-shot)
+                    0.5
+                    ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1))))
+    (if (lightjak-player-gun-attack? (the-as attack-info (-> arg1 param 1)))
+        (* damage 2.0)
+        damage)
+    )
   )
 
 ;; Dark Bipedals can still detect and attack Jak while Dark Invisibility is
@@ -1074,17 +1077,18 @@
 (defun dp-bipedal-dark-attack? ((arg0 event-message-block))
   "True for Dark Morph-Gun shots and Dark Jak attacks."
   (let ((attack (the-as attack-info (-> arg0 param 1))))
-    (or (= (-> attack mode) 'gravity-end)
-        (logtest? (penetrate
-                    dark-skin
-                    dark-punch
-                    dark-bomb
-                    dark-smack
-                    jak-dark-shot
-                    jak-dark-blackhole
-                    )
-                  (-> attack penetrate-using)
-                  )
+    (and (not (lightjak-player-gun-attack? attack))
+         (or (= (-> attack mode) 'gravity-end)
+             (logtest? (penetrate
+                         dark-skin
+                         dark-punch
+                         dark-bomb
+                         dark-smack
+                         jak-dark-shot
+                         jak-dark-blackhole
+                         )
+                       (-> attack penetrate-using)
+                       ))
         )
     )
   )

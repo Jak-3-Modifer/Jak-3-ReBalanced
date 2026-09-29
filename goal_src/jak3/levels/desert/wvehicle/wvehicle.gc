@@ -376,7 +376,12 @@
     ;; Repair the player's Sand Shark before the health bar reads its HP.
     ;; The damage callback owns the timer; polling HP here restarted it on
     ;; every small health change and could keep repair from ever firing.
-    (when (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+    (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+               (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+      (set! *sand-shark-repair-active?* #f)
+      (set! *sand-shark-repair-update-seen?* #f))
+    (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
       (when (and *sand-shark-repair-active?*
                  (not *sand-shark-repair-update-seen?*))
         (set! *sand-shark-repair-update-seen?* #t)

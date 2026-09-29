@@ -2115,28 +2115,50 @@
   )
 
 (defun kg-robot-player-weapon-or-melee? ((arg0 attack-info))
-  "True for Jak's standard melee attacks and every gun-mod damage type."
-  (logtest?
-    (penetrate
-      generic-attack
-      lunge
-      flop
-      punch
-      spin
-      roll
-      uppercut
-      bonk
-      tube
-      jak-yellow-shot
-      jak-red-shot
-      jak-blue-shot
-      jak-dark-shot
-      jak-red-shockwave
-      jak-dark-nuke
-      jak-dark-blackhole
-      )
-    (-> arg0 penetrate-using)
+  "True for Jak's standard melee attacks and gun mods, excluding Dark Jak melee."
+  (and (not (logtest? (penetrate dark-punch) (-> arg0 penetrate-using)))
+       (logtest?
+         (penetrate
+           generic-attack
+           lunge
+           flop
+           punch
+           spin
+           roll
+           uppercut
+           bonk
+           tube
+           jak-yellow-shot
+           jak-red-shot
+           jak-blue-shot
+           jak-dark-shot
+           jak-red-shockwave
+           jak-dark-nuke
+           jak-dark-blackhole
+           )
+         (-> arg0 penetrate-using)
+         )
     )
+  )
+
+(defun lightjak-player-gun-attack? ((arg0 attack-info))
+  "True when an active Light Jak is using one of Jak's Morph-Gun attacks."
+  (and *target*
+       (nonzero? (-> *target* lightjak))
+       (focus-test? *target* light)
+       (not (logtest? (-> *target* lightjak stage) (lightjak-stage ls1)))
+       (logtest? (penetrate
+                   jak-yellow-shot
+                   jak-red-shot
+                   jak-blue-shot
+                   jak-dark-shot
+                   jak-red-shockwave
+                   jak-dark-nuke
+                   jak-dark-blackhole
+                   penetrate40
+                   )
+                 (-> arg0 penetrate-using))
+       )
   )
 
 (defmethod get-damage-from-attack ((this enemy) (arg0 object) (arg1 event-message-block))
