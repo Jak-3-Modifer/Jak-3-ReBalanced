@@ -91,7 +91,8 @@ Please note that because the mod is actively being balanced, gameplay values may
 ## ☀️ Light Jak & 🌑 Dark Jak
 
 - Light Jak's melee and shield attacks damage Eco Creatures and Dark Bipedals
-- Light Eco pickups provide less energy
+- Use of Weapons in Light Jak mode causes greater damage to Eco Creatures and Dark Bipedals
+- Light Eco pickups provide less to the meter
 - Certain missions encourage the use of **Light Freeze**
 - Dark Jak is immune to attacks from Dark Bipedals and Eco Creatures
 - Most Green Eco pickups have been replaced with Light Eco pickups
