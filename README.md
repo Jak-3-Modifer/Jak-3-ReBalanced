@@ -79,10 +79,10 @@ Please note that because the mod is actively being balanced, gameplay values may
 - Blaster firing rate is slightly slower
 - Blaster deals **4 base damage**
 - Blaster deals **5 damage** after its damage upgrade
-- Wave Concussor provides a **5-meter aerial boost**
 - Scatter Gun deals **6 damage within 7 meters**
 - Scatter Gun deals **2 damage beyond 8 meters**
-- Arc Welder deals **1 damage per ammo consumed**
+- Arc Welder drains faster
+- Robot Shock is more effective than vanilla 
 - Mass Inverter also affects Jak
 - Weapon time-to-kill values have been individually tuned for the mod's difficulty
 
