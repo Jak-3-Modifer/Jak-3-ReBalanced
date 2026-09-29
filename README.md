@@ -201,7 +201,7 @@ Install the mod through the OpenGOAL Launcher if it is available in your launche
 
 ### Manual Installation
 
-https://raw.githubusercontent.com/Jak-3-Modifer/Jak-3-ReBalanced/main/mods.json
+Press the settings icon, then copy and paste this URL into the mods section: https://raw.githubusercontent.com/Jak-3-Modifer/Jak-3-ReBalanced/main/mods.json
 
 ---
 
@@ -226,7 +226,8 @@ When reporting a balance issue or bug/crash/softlock, including the following in
 - Difficulty/problem encountered
 - Location
 - If bug/crash/softlock, must be recreatable
-- Submit your report to the OpenGoal Discord at https://discord.com/invite/VZbXMHXzWv
+
+Submit your report to the OpenGoal Discord at https://discord.com/invite/VZbXMHXzWv
 
 
 
