@@ -46,9 +46,9 @@ The goal isn't simply to make Jak 3 harder, but to make its existing mechanics m
 - Rebalanced Morph Gun weapons and ammo economy
 - Reworked vehicle weapons and handling
 - Stronger and more varied enemy behaviors
-- Modified bosses and mini-boss encounters
+- Modified bosses and mini-bosses
 - Changes to Light Jak and Dark Jak
-- Redesigned mission and side-mission challenges
+- Alterations of missions and side-mission challenges
 - New secrets and custom content
 - Reworked Hero Mode (Coming Soon)
 - Adjusted progression and upgrade costs
@@ -81,6 +81,7 @@ Please note that because the mod is actively being balanced, gameplay values may
 - Blaster deals **5 damage** after its damage upgrade
 - Scatter Gun deals **6 damage within 7 meters**
 - Scatter Gun deals **2 damage beyond 8 meters**
+- Wave Concussor has a custom secret
 - Arc Welder drains faster
 - Robot Shock is more effective than vanilla 
 - Mass Inverter also affects Jak
@@ -109,15 +110,15 @@ Changes include:
   - Time limits
   - No-damage objectives
   - Unlimited-ammo variants
-- Kangarats flee faster while Jak rides Flut
+- Kangarats flee faster while Jak rides Lizard
 - **Catch Lizards** now uses the Tough Puppy
 - Artifact Race 1 has a stricter time limit
 - Marauders no longer spawn directly in front of the player during Artifact Race 1
 - Bridges have been removed from the Marauder chase sequence
 - One custom side mission has been added
-- New weapons appear during the City Port Assault mission
-- Factory encounters have been modified
-- Eco Mine encounters have been modified
+- Different weapons appear during the City Port Assault mission
+- Factory has been modified
+- Eco Mine has been modified
 - **Hunt Metal Heads** uses an unused music track
 - Hunt Metal Heads now awards **4 Skull Gems**
 - The Forest uses different music
@@ -187,7 +188,7 @@ Progression has been adjusted so upgrades and optional content require more inve
 
 > **Currently under maintenance.**
 
-Hero Mode balancing is still being developed and may change substantially between releases.
+The Hero Mode experience is still being developed and may change substantially between releases. As of now you are soft-locked in the first mission.
 
 ---
 
