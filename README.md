@@ -85,7 +85,7 @@ Please note that because the mod is actively being balanced, gameplay values may
 - Arc Welder drains faster
 - Robot Shock is more effective than vanilla 
 - Mass Inverter also affects Jak
-- Weapon time-to-kill values have been individually tuned for the mod's difficulty
+- Weapon TTK values have been individually tuned for the mod's difficulty
 
 ---
 
