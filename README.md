@@ -18,7 +18,7 @@
 
 Rather than simply increasing enemy health or damage, the mod adjusts weapons, enemies, vehicles, missions, bosses, abilities, progression, and encounter design to encourage players to make greater use of Jak 3's full combat sandbox.
 
-The goal is to create a more strategic, dynamic experience while remaining approachable for players familiar with the original game.
+The goal is to create a more strategic, dynamic experience while remaining approachable for casual players of the original game.
 
 The project also lays the groundwork for a future Jak 3 mod.
 
@@ -48,7 +48,7 @@ The goal isn't simply to make Jak 3 harder, but to make its existing mechanics m
 - Stronger and more varied enemy behaviors
 - Modified bosses and mini-bosses
 - Changes to Light Jak and Dark Jak
-- Alterations of missions and side-mission challenges
+- Small to Big Alterations to missions and side-mission challenges
 - New secrets and custom content
 - Reworked Hero Mode (Coming Soon)
 - Adjusted progression and upgrade costs
@@ -188,7 +188,7 @@ Progression has been adjusted so upgrades and optional content require more inve
 
 > **Currently under maintenance.**
 
-The Hero Mode experience is still being developed and may change substantially between releases. As of now you are soft-locked in the first mission.
+The Hero Mode experience is still being developed and may change substantially between releases. As of now, you are soft-locked in the first mission.
 
 ---
 
