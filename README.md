@@ -1,5 +1,5 @@
 > [!NOTE]
-> You can watch a showcase of the mod [here](https://github.com/open-goal/jak-project/blob/master/README.md).
+> You can watch a showcase of the mod [here](https://youtu.be/ry4AJo1XTPI?t=8772).
 
 
 # Jak 3 ReBalanced
