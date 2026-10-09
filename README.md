@@ -97,7 +97,8 @@ Please note that because the mod is actively being balanced, gameplay values may
 - Certain missions encourage the use of **Light Freeze**
 - Dark Jak is immune to attacks from Dark Bipedals and Eco Creatures
 - Most Green Eco pickups have been replaced with Light Eco pickups
-- Dark Jak can wield the morph gun, but can't deal damage to Dark Bipedals/Dark Satalite/Eco Creature
+- Dark Jak can wield the morph gun, but can't deal damage to Dark Bipedals/Dark Satalite/Eco Creatures
+- Press L1 + R1 to use Dark Strike 
 
 ---
 
