@@ -12,6 +12,45 @@
 
 ;; DECOMP BEGINS
 
+;; Private Scatter Gun visuals; shared parts 214/215 also serve the RPG.
+(defmacro define-darkjak-scatter-particle (name specs)
+  (set! *last-field-id* -1)
+  `(define ,name
+     (new 'static 'sparticle-launcher
+       :init-specs (new 'static 'inline-array sp-field-init-spec ,(1+ (length specs))
+         ,@(apply process-init-spec specs)
+         (new 'static 'sp-field-init-spec :field (sp-field-id spt-end))))))
+
+(define-darkjak-scatter-particle *darkjak-scatter-flash*
+  ((:texture (gun-enemy-muzzleflash level-default-sprite))
+   (:birth-func 'birth-func-set-quat)
+   (:num 1.0) (:scale-x (meters 8)) (:scale-y (meters 8))
+   (:r 151.0) (:g 30.0) (:b 88.0) (:a 128.0)
+   (:fade-a -2.56) (:timer (seconds 0.167))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-14 left-multiply-quat))))
+
+(define-darkjak-scatter-particle *darkjak-scatter-glow-1*
+  ((:texture (glow level-default-sprite))
+   (:num 1.0) (:scale-x (meters 2.5) (meters 0.5))
+   (:rot-x (degrees 4.5)) (:rot-z (degrees 0) (degrees 3600))
+   (:scale-y :copy scale-x)
+   (:r 151.0) (:g 30.0) (:b 88.0) (:a 96.0)
+   (:scalevel-x (meters 0.053333335)) (:scalevel-y :copy scalevel-x)
+   (:fade-a -2.4) (:timer (seconds 0.135))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3 glow))
+   (:userdata 12288.0)))
+
+(define-darkjak-scatter-particle *darkjak-scatter-glow-2*
+  ((:texture (glow level-default-sprite))
+   (:num 1.0) (:scale-x (meters 2.5) (meters 0.5))
+   (:rot-x (degrees 4.5)) (:rot-z (degrees 0) (degrees 3600))
+   (:scale-y :copy scale-x)
+   (:r 151.0) (:g 30.0) (:b 88.0) (:a 96.0)
+   (:scalevel-x (meters 0.21333334)) (:scalevel-y :copy scalevel-x)
+   (:fade-a -4.8) (:timer (seconds 0.067))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3 glow))
+   (:userdata 12288.0)))
+
 (deftype gun-red-shot (process-drawable)
   ((parent       (pointer gun)        :override)
    (root         collide-shape-moving :override)
@@ -130,7 +169,12 @@
     (set! (-> v1-6 attack-id) a0-9)
     (set! (-> this attack-id) a0-9)
     )
-  (set! (-> this part) (create-launch-control group-gun-red3-shot-glow this))
+  ;; Shared Flamer grenade group (216): snapshot Dark Jak at firing time.
+  ;; Keep the player's grenade physics and collision, replacing only its visuals.
+  (set! (-> this part)
+        (if (and *target* (focus-test? *target* dark))
+            (create-launch-control (-> *part-group-id-table* 216) this)
+            (create-launch-control group-gun-red3-shot-glow this)))
   (set! (-> this blast-radius) 81920.0)
   (set! (-> this max-speed) 327680.0)
   (set! (-> this timeout) (seconds 3))
@@ -144,15 +188,16 @@
     (vector-copy! (-> this root scale) v1-15)
     )
   (set! (-> this immediate-detonation?) #f)
-  (light-trail-tracker-spawn
-    light-trail-tracker-projectile
-    :to this
-    :param-list ((tracked-obj (process->handle this))
-     (appearance *red-shot-3-trail*)
-     (max-num-crumbs (the int (* 0.5 (the float (-> *red-shot-3-trail* max-age)))))
-     (track-immediately? #t)
-     )
-    )
+  (unless (= (-> this part group) (-> *part-group-id-table* 216))
+    (light-trail-tracker-spawn
+      light-trail-tracker-projectile
+      :to this
+      :param-list ((tracked-obj (process->handle this))
+       (appearance *red-shot-3-trail*)
+       (max-num-crumbs (the int (* 0.5 (the float (-> *red-shot-3-trail* max-age)))))
+       (track-immediately? #t)
+       )
+      ))
   0
   (none)
   )
@@ -234,7 +279,7 @@
                                 'attack
                                 #f
                                 (static-attack-info :mask (vehicle-impulse-factor) ((id (-> this attack-id))
-                                                                                    (damage 12.0)
+                                                                                    (damage (target-darkjak-gun-damage 12.0))
                                                                                     (vehicle-damage-factor 3.0)
                                                                                     (vehicle-impulse-factor 1.0)
                                                                                     (mode 'explode)
@@ -271,7 +316,7 @@
                         'attack
                         #f
                         (static-attack-info :mask (vehicle-impulse-factor) ((id (-> this attack-id))
-                                                                            (damage 12.0)
+                                                                            (damage (target-darkjak-gun-damage 12.0))
                                                                             (vehicle-damage-factor 3.0)
                                                                             (vehicle-impulse-factor 1.0)
                                                                             (mode 'instant-death)
@@ -405,7 +450,9 @@
   (if (logtest? (-> this root status) (collide-status touch-surface))
       (sound-play "red3-bounce")
       )
-  (call-parent-method this)
+  ;; Flamer grenades are particles, not the player's grenade mesh.
+  (unless (= (-> this part group) (-> *part-group-id-table* 216))
+    (call-parent-method this))
   (none)
   )
 
@@ -674,7 +721,7 @@
       (send-event arg0 'attack #f (static-attack-info
                                     :mask (vehicle-impulse-factor)
                                     ((id (new-attack-id))
-                                     (damage f0-4)
+                                     (damage (target-darkjak-gun-damage f0-4))
                                      (vehicle-damage-factor 1.0)
                                      (vehicle-impulse-factor 1.0)
                                      (mode a0-4)
@@ -762,8 +809,10 @@
         (set! (-> self ammo-drained) f30-0)
         )
       )
-    (set! (-> *part-id-table* 372 init-specs 2 initial-valuef) (lerp 3276.8 8192.0 (-> self strength)))
-    (set! (-> *part-id-table* 373 init-specs 2 initial-valuef) (lerp 8192.0 14336.0 (-> self strength)))
+    (set! (-> (get-field-spec-by-id (-> *part-id-table* 372) (sp-field-id spt-scale-x)) initial-valuef)
+          (lerp 3276.8 8192.0 (-> self strength)))
+    (set! (-> (get-field-spec-by-id (-> *part-id-table* 373) (sp-field-id spt-scale-x)) initial-valuef)
+          (lerp 8192.0 14336.0 (-> self strength)))
     (if (and (time-elapsed? (-> self state-time) (seconds 0.1))
              (or (not (cpad-hold? 0 r1))
                  (and *target*
@@ -1288,6 +1337,9 @@
     (let ((s5-0 (new 'stack-no-clear 'red-2-ring-init-params)))
       (vector-copy! (-> s5-0 pos) v1-0)
       (let ((v1-3 (process-spawn red-2-ring s5-0 :name "red-2-ring" :to this)))
+        (when (and v1-3 *target* (focus-test? *target* dark))
+          (set-vector! (-> (the-as red-2-ring (-> v1-3 0)) draw color-mult)
+                       0.5921569 0.11764706 0.34509805 1.0))
         (if v1-3
             (set! (-> this explosion-1) (ppointer->handle v1-3))
             )
@@ -1313,13 +1365,15 @@
       (cpad-set-buzz! (-> *cpad-list* cpads 0) 1 (the int (* 255.0 f30-0)) (the-as time-frame a3-0))
       )
     (sound-play "red2-shot")
+    (target-darkjak-drain-gun-eco!)
     (set-time! (-> self state-time))
     (set! (-> self max-radius) (lerp (-> self min-charge-radius) (-> self max-charge-radius) (-> self strength)))
     (/ (-> self max-radius) (-> self max-charge-radius))
     (let ((f0-15 (/ (-> self max-radius) (meters 20))))
       0.0
       (let ((f1-5 (/ (* 2.0 (- (* 163840.0 f0-15) (-> self max-radius))) (square f0-15))))
-        (set! (-> *part-id-table* 353 init-specs 9 initial-valuef) (* 1.2 f1-5))
+        (set! (-> (get-field-spec-by-id (-> *part-id-table* 353) (sp-field-id spt-omega)) initial-valuef)
+              (* 1.2 f1-5))
         )
       (let ((v1-15 (the int (* 150.0 f0-15))))
         (set! (-> *part-id-table* 354 init-specs 3 initial-valuef) (the-as float (+ v1-15 -25)))
@@ -1408,8 +1462,10 @@
     )
   :post (behavior ()
     (set-vector! (new 'stack-no-clear 'vector) 1.9 0.0 0.0 (-> self alpha-scalar))
-    (set! (-> *part-id-table* 229 init-specs 2 initial-valuef) (* 2.0 (-> self current-ring-radius)))
-    (set! (-> *part-id-table* 229 init-specs 7 initial-valuef) (* 128.0 (-> self current-ring-alpha)))
+    (set! (-> (get-field-spec-by-id (-> *part-id-table* 229) (sp-field-id spt-scale-x)) initial-valuef)
+          (* 2.0 (-> self current-ring-radius)))
+    (set! (-> (get-field-spec-by-id (-> *part-id-table* 229) (sp-field-id spt-a)) initial-valuef)
+          (* 128.0 (-> self current-ring-alpha)))
     (set! (-> *part-id-table* 226 init-specs 3 initial-valuef)
           (lerp 20480.0 24576.0 (/ (-> self max-radius) (-> self max-charge-radius)))
           )
@@ -1712,7 +1768,7 @@
       (set! (-> gp-0 scale) 1.0)
       (set! (-> gp-0 group) group-gun-dark-shot-hit)
       (set! (-> gp-0 collide-with) (collide-spec))
-      (set! (-> gp-0 damage) 2.0)
+      (set! (-> gp-0 damage) (target-darkjak-gun-damage 2.0))
       (set! (-> gp-0 damage-scale) 1.0)
       (set! (-> gp-0 vehicle-damage-factor) 1.0)
       (set! (-> gp-0 vehicle-impulse-factor) 1.0)
@@ -1744,7 +1800,7 @@
                'attack
                (-> block param 0)
                (static-attack-info :mask (vehicle-impulse-factor) ((id (-> self attack-id))
-                                                                   (damage 2.0)
+                                                                   (damage (target-darkjak-gun-damage 2.0))
                                                                    (vehicle-damage-factor 1.0)
                                                                    (vehicle-impulse-factor 1.0)
                                                                    (mode 'explode)
@@ -1860,6 +1916,9 @@
                 )
               )
           (when s5-4
+            (when (focus-test? self dark)
+              (set-vector! (-> (the-as manipy (-> s5-4 0)) draw color-mult)
+                           0.5921569 0.11764706 0.34509805 1.0))
             (send-event (ppointer->process s5-4) 'anim-mode 'play1)
             (send-event (ppointer->process s5-4) 'anim "idle")
             (forward-up->quaternion (-> (the-as manipy (-> s5-4 0)) root quat) (-> gp-0 fire-dir-out) *up-vector*)
@@ -1965,7 +2024,7 @@
           'attack
           arg1
           (static-attack-info :mask (vehicle-impulse-factor) ((id (-> this attack-id))
-                                                              (damage f30-0)
+                                                              (damage (target-darkjak-gun-damage f30-0))
                                                               (vehicle-damage-factor 1.0)
                                                               (vehicle-impulse-factor 1.0)
                                                               (mode 'eco-red)
@@ -2325,6 +2384,10 @@
   (logclear! (-> self mask) (process-mask enemy))
   (setup-probes self)
   (cpad-set-buzz! (-> *cpad-list* cpads 0) 1 204 (seconds 0.1))
+  (if (and *target* (focus-test? *target* dark))
+      (begin
+        (launch-particles *darkjak-scatter-glow-1* (-> self start-pos))
+        (launch-particles *darkjak-scatter-glow-2* (-> self start-pos)))
   (let ((v1-39 (cond
                  ((logtest? (-> group-gun-red-shot-fired flags) (sp-group-flag sp13))
                   (vector-copy! (-> *launch-matrix* trans) (-> self start-pos))
@@ -2339,7 +2402,11 @@
         )
     (send-event (ppointer->process v1-39) 'clock self)
     )
-  (draw-beam (-> *part-id-table* 213) (-> self start-pos) (-> self start-dir) #f)
+    )
+  (draw-beam (if (and *target* (focus-test? *target* dark))
+                *darkjak-scatter-flash*
+                (-> *part-id-table* 213))
+             (-> self start-pos) (-> self start-dir) #f)
   (sound-play "red-shot-fire")
   ;; og:preserve-this trigger effects
   (when (and (pc-get-trigger-effects-enabled?) (-> *pc-settings* controller-swap-r1-r2?))

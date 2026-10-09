@@ -869,6 +869,49 @@
   (none)
   )
 
+(defun draw-hero-artifact-inventory-page ((menu progress) (font font-context) (x-offset float) (alpha float))
+  ;; All coordinates follow the native page offset/scissor, including slide transitions.
+  (let* ((box (get-scissor-stack-top menu))
+         (left-ps2 (+ (-> box x) x-offset 20.0))
+         (right-ps2 (+ (-> box z) x-offset -20.0))
+         (left (if (-> *pc-settings* use-vis?) left-ps2
+                   (the float (adjust-game-x left-ps2))))
+         (right (if (-> *pc-settings* use-vis?) right-ps2
+                    (the float (adjust-game-x right-ps2))))
+         (top (-> box y)))
+    (set! (-> font alpha) alpha)
+    (set! (-> font flags) (font-flags shadow kerning large))
+    (set! (-> font color) (font-color white))
+    (set-scale! font 0.6)
+    (set! (-> font origin x) left)
+    (set! (-> font origin y) (+ top 10.0))
+    (print-game-text "Artifacts" font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set-scale! font 0.5)
+    (dotimes (tier 3)
+      (let ((tint (new 'static 'rgba :a 128))
+            (y (+ top 52.0 (* (the float tier) 40.0))))
+        (set! (-> tint a) (the int (* 128.0 alpha)))
+        (case tier
+          ((0) (set! (-> tint r) 32) (set! (-> tint g) 144) (set! (-> tint b) 255))
+          ((1) (set! (-> tint r) 176) (set! (-> tint g) 64) (set! (-> tint b) 240))
+          ((2) (set! (-> tint r) 255) (set! (-> tint g) 192) (set! (-> tint b) 32)))
+        (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                     (bucket-id hud-draw-hud-alpha))
+          (draw-sprite2d-xy buf (the int left) (the int (+ y 2.0)) 10 10 tint #x3fffff))
+        (set! (-> font flags) (font-flags shadow kerning large))
+        (set! (-> font origin x) (+ left 24.0))
+        (set! (-> font origin y) y)
+        (format (clear *temp-string*) "Tier ~D (~A)" (+ tier 1)
+                (case tier ((0) "Blue") ((1) "Purple") (else "Gold")))
+        (print-game-text *temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+        (set! (-> font flags) (font-flags shadow kerning right large))
+        (set! (-> font origin x) right)
+        (set! (-> font origin y) y)
+        (format (clear *temp-string*) "~D" (-> *game-info* hero-artifacts tier))
+        (print-game-text *temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))))
+  (none)
+  )
+
 (defmethod draw-option ((this menu-bigmap-option) (arg0 progress) (arg1 font-context) (arg2 int) (arg3 symbol))
   0
   (none)
@@ -1430,27 +1473,24 @@
   )
 
 (defmethod inventory-screen-method-9 ((this inventory-screen) (arg0 progress) (arg1 font-context) (arg2 float) (arg3 float))
-  (set-scale! arg1 0.45)
-  (let ((a0-2 arg1))
-    (set! (-> a0-2 color) (font-color font-color-32))
-    )
-  (adjust-font-origin-y arg0 arg1 0.01)
-  (let ((s1-0 print-game-text))
-    (format (clear *temp-string*) "~S" (lookup-text! *common-text* (-> this name) #f))
-    (s1-0 *temp-string* arg1 #f 44 (bucket-id hud-draw-hud-alpha))
-    )
-  (dotimes (s1-1 (-> this groups length))
-    (inventory-item-group-method-10
-      (-> this groups s1-1)
-      arg0
-      arg1
-      arg2
-      arg3
-      (the-as int (= s1-1 (-> this current-index)))
-      )
-    )
-  0
-  (none)
+  (if (and (= this *hero-artifact-inventory-screen*)
+           (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (draw-hero-artifact-inventory-page arg0 arg1 arg2 arg3)
+      (begin
+        ;; Original pages retain their layout after an Artifacts page slides out.
+        (set! (-> arg1 flags) (font-flags kerning middle large))
+        (set-scale! arg1 0.45)
+        (let ((a0-2 arg1))
+          (set! (-> a0-2 color) (font-color font-color-32)))
+        (adjust-font-origin-y arg0 arg1 0.01)
+        (let ((s1-0 print-game-text))
+          (format (clear *temp-string*) "~S" (lookup-text! *common-text* (-> this name) #f))
+          (s1-0 *temp-string* arg1 #f 44 (bucket-id hud-draw-hud-alpha)))
+        (dotimes (s1-1 (-> this groups length))
+          (inventory-item-group-method-10
+            (-> this groups s1-1) arg0 arg1 arg2 arg3
+            (the-as int (= s1-1 (-> this current-index)))))
+        (none)))
   )
 
 (defmethod draw-option ((this menu-inventory) (arg0 progress) (arg1 font-context) (arg2 int) (arg3 symbol))
@@ -2416,7 +2456,9 @@
        (set! (-> arg1 scale) 0.6)
        )
       (else
-        (print-game-text (lookup-text! *common-text* (-> this name) #f) arg1 #f 44 (bucket-id hud-draw-hud-alpha))
+        (print-game-text
+          (lookup-text! *common-text* (-> this name) #f)
+          arg1 #f 44 (bucket-id hud-draw-hud-alpha))
         )
       )
     )
@@ -3965,6 +4007,12 @@
 
 (defmethod secret-item-option-method-12 ((this secret-item-option))
   (cond
+    ;; Hero Mode moves Vehicle Toughness into per-car loadouts.  Returning the
+    ;; hidden state also prevents buying or toggling its old global secret.
+    ((and (= (-> this secret) (game-secrets vehicle-hit-points))
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     5
+     )
     ((= (-> this secret) (game-secrets endless-ammo))
      (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
               (!= (hero-mode-current-main-task) (game-task unknown))
@@ -4212,6 +4260,10 @@
                          (v1-105 (secret-item-option-method-12 a0-61))
                          )
                     (set! sv-192 (cond
+                                   ((and (= s0-4 (text-id progress-secrets-vehicle-hit-points))
+                                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                                    ""
+                                    )
                                    ((= v1-105 4)
                                     (set! sv-192 "?????????")
                                     sv-192
@@ -4243,6 +4295,10 @@
                                )
                           (let ((v1-120 sv-288))
                             (set! sv-240 (cond
+                                           ((and (= sv-208 (text-id progress-secrets-vehicle-hit-points))
+                                                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                                            ""
+                                            )
                                            ((= v1-120 4)
                                             (set! sv-240 "?????????")
                                             sv-240

@@ -336,7 +336,6 @@
    )
   )
 
-
 (deftype menu-sound-slider-option (menu-slider-option)
   ()
   )

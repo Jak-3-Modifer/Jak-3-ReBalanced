@@ -6821,7 +6821,7 @@
                     :want-sound (new 'static 'array symbol 3 'mine10 'mine5 'mine6)
                     )
                   )
-                :callback-list '((35 . mineb-activate) (23 . init-mood-mineb))
+                :callback-list '((35 . mineb-activate) (36 . mineb-screen-hint-deactivate) (23 . init-mood-mineb))
                 :borrow #f
                 :bottom-height (meters -150)
                 :fog-height (meters 80)
@@ -17104,7 +17104,9 @@
                       :want-sound (new 'static 'array symbol 3 'wasall1 'temple1 'temple6)
                       )
                     )
-                  :callback-list '((6 . *templex-water-texture-anim-array*))
+                  :callback-list '((36 . templex-wide-camera-trigger-deactivate)
+                    (35 . templex-wide-camera-trigger-activate)
+                    (6 . *templex-water-texture-anim-array*))
                   :borrow #f
                   :bottom-height (meters -150)
                   :fog-height (meters 80)

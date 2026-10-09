@@ -2043,7 +2043,8 @@
   )
 
 (defmethod initialize-allocations ((this ammo-collectable))
-  (stack-size-set! (-> this main-thread) 128)
+  ;; Leave room for the Arc Wielder attraction checks and native suck event.
+  (stack-size-set! (-> this main-thread) 256)
   (logclear! (-> this mask) (process-mask actor-pause))
   (set! (-> this actor-pause) #f)
   (set! (-> this notify) (the-as handle #f))
@@ -2219,7 +2220,53 @@
   (none)
   )
 
+(defun arc-wielder-ammo-suction-active? ()
+  ;; Validate the existing beam process rather than storing another global
+  ;; active flag that could survive a death, weapon switch, or level reload.
+  (and *target*
+       (not (focus-test? *target* dead teleporting))
+       (not (movie?))
+       (-> *setting-control* user-current pickups)
+       (= (-> *target* gun using-gun-type) (pickup-type gun-blue-2))
+       (-> *target* gun active?)
+       (cpad-hold? (-> *target* control cpad number) r1)
+       (let ((held-gun (ppointer->process (-> *target* gun gun))))
+         (and held-gun
+              (let ((beam (handle->process (-> (the-as gun held-gun) extra))))
+                (and beam
+                     (= (-> beam type) gun-blue-2-lightning-tracker)
+                     (-> beam state)
+                     (= (-> beam state name) 'active)
+                     ;; enter-state retains next-state after making it current.
+                     ;; Only a DIFFERENT destination means firing is ending.
+                     (or (not (-> beam next-state))
+                         (= (-> beam next-state) (-> beam state)))))))))
+
 (defmethod common-post ((this ammo-collectable))
+  ;; Only attract settled, collectable ammo. Leave weapon upgrades, blocked
+  ;; pickups, and pickups already being collected or fading out untouched.
+  (when (and (case (-> this pickup-type)
+               (((pickup-type ammo-red) (pickup-type ammo-yellow)
+                 (pickup-type ammo-blue) (pickup-type ammo-dark)) #t)
+               (else #f))
+             (-> this state)
+             (= (-> this state name) 'wait)
+             ;; A settled pickup normally has state = next-state = wait.
+             ;; Reject only a transition to another state (pickup/fade/etc.).
+             (or (not (-> this next-state))
+                 (= (-> this next-state) (-> this state)))
+             (logtest? (-> this flags) (collectable-flag pickup))
+             (not (logtest? (-> this flags) (collectable-flag do-fadeout)))
+             (time-elapsed? (-> this birth-time) (-> this collect-timeout))
+             (arc-wielder-ammo-suction-active?)
+             (<= (vector-vector-distance-squared (-> this root trans) (target-pos 0))
+                 (square (meters 30)))
+             (< (get-remaining-player-ammo (-> this pickup-type))
+                (get-max-ammo-for-gun *game-info* (-> this pickup-type))))
+    ;; Native movement, collision collection, capacity limits, and pickup
+    ;; amounts remain in charge. Once pulled, the pickup finishes its trip.
+    (format #t "Arc Wielder works like blue eco liike jak1~%" (-> this pickup-type))
+    (send-event this 'suck *target*))
   (quaternion-rotate-y! (-> this root quat) (-> this root quat) (* 40049.777 (seconds-per-frame)))
   ((method-of-type collectable common-post) this)
   0

@@ -29,6 +29,15 @@
 ;; retries, so it cannot affect vehicle entry outside this mission.
 (define *desert-hover-vehicle-locked-out* (the-as object #f))
 
+(define *desert-hover-protected-car* (the-as handle #f))
+
+(defun desert-hover-clear-car-protection! ()
+  (let ((car (as-type (handle->process *desert-hover-protected-car*) vehicle)))
+    (when car
+      (send-event car 'ignore-damage #f)))
+  (set! *desert-hover-protected-car* (the-as handle #f))
+  (none))
+
 ;; DECOMP BEGINS
 
 (when (or (zero? *curve-beast-linear-up-red*) (!= loading-level global))
@@ -134,6 +143,23 @@
     (sp-item 1667 :falloff-to (meters 400) :period (seconds 30) :length (seconds 0.035))
     )
   )
+
+;; Local volley effect: retain the flash/dust without collision-tested debris.
+(define *des-beast-volley-explosion-group*
+  (new 'static 'sparticle-launch-group
+    :duration (seconds 5)
+    :linger-duration (seconds 1.5)
+    :flags (sp-group-flag sp0)
+    :bounds (static-bspherem 0 0 0 30)
+    :name "des-beast-volley-explosion"
+    :length 4
+    :launcher (new 'static 'inline-array sparticle-group-item 4
+      (sp-item 1664 :flags (sp3) :period (seconds 30) :length (seconds 0.017))
+      (sp-item 1665 :period (seconds 30) :length (seconds 0.167))
+      (sp-item 1666 :period (seconds 30) :length (seconds 0.5))
+      (sp-item 1667 :falloff-to (meters 400) :period (seconds 30) :length (seconds 0.035)))
+    :rotate-x 0.0 :rotate-y 0.0 :rotate-z 0.0
+    :scale-x 1.0 :scale-y 1.0 :scale-z 1.0))
 
 (defpartgroup group-grenade-shot-explode-in-air
   :id 412
@@ -928,6 +954,24 @@
   (none)
   )
 
+(defun des-beast-grenade-homing-update ((shot projectile))
+  ;; Retain gravity and ordinary collision handling; gently steer toward Jak.
+  (projectile-bounce-update-velocity (the-as projectile-bounce shot))
+  (when (and *target*
+             (= (handle->process (-> shot desired-target)) *target*)
+             (not (focus-test? *target* dead)))
+    (let ((aim (vector-! (new 'stack 'vector) (target-pos 0) (-> shot root trans)))
+          (speed (fmin (-> shot max-speed) (vector-length (-> shot root transv)))))
+      (when (> (vector-length aim) 1.0)
+        (vector-normalize! aim speed)
+        (vector-lerp! (-> shot root transv) (-> shot root transv) aim
+                      (fmin 1.0 (* 1.5 (seconds-per-frame))))
+        )
+      )
+    )
+  (none)
+  )
+
 (defmethod init-proj-settings! ((this beast-grenade))
   (set! (-> this attack-mode) 'eco-dark)
   (initialize-skeleton
@@ -935,13 +979,25 @@
     (the-as skeleton-group (art-group-get-by-name *level* "skel-des-beast-grenade" (the-as (pointer level) #f)))
     (the-as pair 0)
     )
-  (let ((t9-2 (method-of-type projectile-bounce init-proj-settings!)))
-    (t9-2 this)
+  (let ((volley? (= (-> this timeout) (seconds 6))))
+    (let ((t9-2 (method-of-type projectile-bounce init-proj-settings!)))
+      (t9-2 this)
+      )
+    (set! (-> this part) (create-launch-control group-beast-grenade-glow this))
+    (set! (-> this blast-radius) 40960.0)
+    (set! (-> this max-speed) 90112.0)
+    ;; Only two-Beast-stage Normal Mode shots receive a target handle.
+    (when (-> this desired-target)
+      (set! (-> this update-velocity) des-beast-grenade-homing-update)
+      )
+    ;; Preserve the volley marker before the parent initializes its lifetime.
+    ;; Ordinary Beast grenades retain their original settings.
+    (if volley?
+        (begin
+          (set! (-> this max-speed) 409600.0)
+          (set! (-> this timeout) (seconds 6)))
+        (set! (-> this timeout) (seconds 4)))
     )
-  (set! (-> this part) (create-launch-control group-beast-grenade-glow this))
-  (set! (-> this blast-radius) 40960.0)
-  (set! (-> this max-speed) 90112.0)
-  (set! (-> this timeout) (seconds 4))
   (light-trail-tracker-spawn
     light-trail-tracker-projectile
     :to this
@@ -1027,7 +1083,11 @@
       (quaternion-identity! (-> gp-0 spawn-quat))
       (set! (-> gp-0 radius) (-> self blast-radius))
       (set! (-> gp-0 scale) 1.0)
-      (set! (-> gp-0 group) group-grenade-shot-explode)
+      (set! (-> gp-0 group)
+            (if (and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                     (= (-> self timeout) (seconds 6)))
+                *des-beast-volley-explosion-group*
+                group-grenade-shot-explode))
       (set! (-> gp-0 collide-with)
             (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher)
             )
@@ -1389,11 +1449,19 @@
     )
   )
 
+;; Only one final Beast exists; store its sampled delay outside actor heaps.
+(define *des-beast-final-turn-delay* (seconds 2))
+(define *des-beast-volley-rounds-left* 0)
+(define *des-beast-volley-shot-time* (seconds 0))
+(define *des-beast-volley-landing-pos* (new 'static 'vector))
+
 (defun des-beast-turn-speed-factor ((arg0 des-beast))
   "Preserve each Metal Head Hunt stage's movement setting after a turn."
   (if (< (-> arg0 hit-points2) 0.0)
-      ;; The final phase is intentionally 10% slower than the first Beast.
-      0.9
+      ;; Normal Mode's final phase stays at 0.7x speed, including after turns.
+      (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+          0.9
+          0.7)
       (cond
         ((zero? (+ (-> arg0 shoot-delay) (seconds -5))) 0.9)
         ((zero? (+ (-> arg0 shoot-delay) (seconds -4))) 1.125)
@@ -1450,8 +1518,15 @@
     (set-time! (-> self state-time))
     ;; Start a fresh behind-target timer whenever this beast resumes its run.
     (set-time! (-> self behind-time))
+    (when (and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+               (or (= (-> self shoot-delay) (seconds 2))
+                   (< (-> self hit-points2) 0.0)))
+      (set! *des-beast-final-turn-delay* (rand-vu-int-range (seconds 1) (seconds 4)))
+      )
     )
   :exit (behavior ()
+    (when (< (-> self hit-points2) 0.0)
+      (set! *des-beast-volley-rounds-left* 0))
     '()
     )
   :trans (behavior ()
@@ -1506,12 +1581,28 @@
         )
       )
     (when (nonzero? (-> self shoot-delay))
-      (when (time-elapsed? (-> self next-shoot) (-> self shoot-delay))
+      ;; Keep shoot-delay's existing stage marker for death/phase transitions.
+      ;; Normal Mode: one normal shot per second before the final phase;
+      ;; three-second high-arc volleys only in the final phase.
+      (when (time-elapsed? (-> self next-shoot)
+                          (cond
+                            ((logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                             (-> self shoot-delay))
+                            ((< (-> self hit-points2) 0.0) (seconds 3))
+                            ((= (-> self shoot-delay) (seconds 2)) (seconds 1))
+                            (else (-> self shoot-delay))))
         (set-time! (-> self next-shoot))
         (if (< (vector-vector-distance (-> self root trans) (target-pos 0)) 614400.0)
             (des-beast-method-164 self)
             )
         )
+      )
+    ;; Schedule follow-up rounds without suspending the movement/state thread.
+    (when (and (< (-> self hit-points2) 0.0)
+               (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+               (> *des-beast-volley-rounds-left* 0)
+               (time-elapsed? *des-beast-volley-shot-time* (seconds 0.4)))
+      (des-beast-method-164 self)
       )
     )
   :code (behavior ()
@@ -1556,8 +1647,16 @@
             (set! (-> a1-6 w) 409600.0)
             (if (or (des-beast-method-167 self a1-6)
                     (and (-> self can-turn?)
-                         ;; Turn only after Jak has stayed behind this beast for two seconds.
-                         (time-elapsed? (-> self behind-time) (seconds 2))
+                         ;; Sample the final Beast's delay once per run, not per frame.
+                         (time-elapsed? (-> self behind-time)
+                                        (cond
+                                          ((logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                           (seconds 2))
+                                          ((or (= (-> self shoot-delay) (seconds 2))
+                                               (< (-> self hit-points2) 0.0))
+                                           *des-beast-final-turn-delay*)
+                                          ((= (-> self shoot-delay) (seconds 3)) (seconds 4))
+                                          (else (seconds 2))))
                          (< 15.0 (-> self hit-points))
                          )
                 )
@@ -1610,10 +1709,21 @@
                (zero? (+ (-> self shoot-delay) (seconds -2)))
                (focus-test? *target* pilot-riding))
       (set! *desert-hover-vehicle-locked-out* #t)
+      ;; Use the oasis/rescue scripted stop, not a brake loop in Beast code.
+      (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (set-setting! 'stop-vehicle? #t 0.0 0)
+        (set! (-> self s-clock) 1.0)
+        (update-rates! (-> *display* entity-clock) 1.0)
+        (update-rates! (-> *display* target-clock) 1.0))
       (send-event *target* 'change-mode 'normal)
       )
     )
+  :exit (behavior ()
+    (when (and *desert-hover-vehicle-locked-out*
+               (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+      (remove-setting! 'stop-vehicle?)))
   :code (behavior ()
+    ;; Restore the previous build's uninterrupted fall animation loop.
     (ja-channel-push! 1 0)
     (ja :group! des-beast-fall-forward-ja)
     (set! (-> self main-speed-factor-dest) 0.7)
@@ -1668,6 +1778,17 @@
     ;; This transition is only reached by the final Beast's second phase. below is second phase hp
     (set! (-> self hit-points) 100.0)
     (set! (-> self hit-points2) -1.0)
+    (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      ;; Protect only the mission Sand Shark, preserving existing immunity.
+      (when *desert-hover-vehicle-locked-out*
+        (let* ((car-h (-> *vehicle-info* handle-by-vehicle-type 13))
+               (car (as-type (handle->process car-h) vehicle)))
+          (when (and car (not (logtest? (-> car v-flags) (vehicle-flag ignore-damage))))
+            (set! *desert-hover-protected-car* car-h)
+            (send-event car 'ignore-damage #t))))
+      (set! (-> self s-clock) 1.0)
+      (update-rates! (-> *display* entity-clock) 1.0)
+      (update-rates! (-> *display* target-clock) 1.0))
     )
   :code (behavior ()
     (local-vars (v1-25 symbol))
@@ -1708,9 +1829,11 @@
       )
     (set! (-> self path-pos) (- (-> self path-pos) (-> self path-pos-speed)))
     (des-beast-method-163 self)
-    ;; The final Beast's phase two runs 10% slower than the first Beast. to make the fight easier, hello?
-    (set! (-> self main-speed-factor) 0.9)
-    (set! (-> self main-speed-factor-dest) 0.9)
+    ;; Use the same final-phase speed on entry and after every turnaround.
+    (let ((phase-speed (des-beast-turn-speed-factor self)))
+      (set! (-> self main-speed-factor) phase-speed)
+      (set! (-> self main-speed-factor-dest) phase-speed)
+      )
     (set! (-> self path-pos-speed) (- (-> self path-pos-speed)))
     (set! (-> self run-start-frame) 18.0)
     (go-virtual idle)
@@ -1722,7 +1845,8 @@
   :virtual #t
   :event enemy-event-handler
   :enter (behavior ()
-    '()
+    (when (< (-> self hit-points2) 0.0)
+      (desert-hover-clear-car-protection!))
     )
   :exit (behavior ()
     '()
@@ -1782,6 +1906,14 @@
      )
     (('shoot-delay)
      (let ((v0-0 (the-as object (-> arg3 param 0))))
+       ;; Also sample when the mission first enters the one-Beast stage.
+       (when (and (= (the-as time-frame v0-0) (seconds 2))
+                  (!= (-> this shoot-delay) (seconds 2))
+                  (< 0.0 (-> this hit-points2))
+                  (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+         (set! *des-beast-final-turn-delay* (rand-vu-int-range (seconds 1) (seconds 4)))
+         (set-time! (-> this behind-time))
+         )
        ;; Once the final Beast enters phase two, halve its two-second delay.
        (set! (-> this shoot-delay)
              (if (and (< (-> this hit-points2) 0.0)
@@ -1950,7 +2082,9 @@
                                                )
                            )
                      (cpad-set-buzz! (-> *cpad-list* cpads 0) 1 255 (seconds 0.5))
-                     (when (< 204800.0 f30-2)
+                     (when (and (< 204800.0 f30-2)
+                                (or (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                    (>= (-> this hit-points2) 0.0)))
                        (add-process *gui-control* this (gui-channel beast) (gui-action play) "bstpitch" -99.0 0)
                        (persist-with-delay *setting-control* 'mode-name (seconds 3) 'mode-name 'cam-no-trans 0.0 0)
                        (persist-with-delay *setting-control* 'interp-time (seconds 4) 'interp-time 'abs 300.0 0)
@@ -2083,12 +2217,45 @@
 (defmethod des-beast-method-164 ((this des-beast))
   (let ((s4-0 (vector<-cspace! (new 'stack-no-clear 'vector) (-> this node-list data 21)))
         (s5-0 (new 'stack-no-clear 'vector))
+        (landing-pos (new 'stack 'vector))
+        (spread-step (new 'stack 'vector))
+        (volley? (and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                      (< (-> this hit-points2) 0.0)))
         )
+    (vector-copy! landing-pos (target-pos 0))
+    (when volley?
+      (when (zero? *des-beast-volley-rounds-left*)
+        (set! *des-beast-volley-rounds-left* 5)
+        (vector-copy! *des-beast-volley-landing-pos* landing-pos)
+        )
+      (vector-copy! landing-pos *des-beast-volley-landing-pos*)
+      ;; Five landing points across Jak's position, twelve meters apart.
+      ;; The spread is perpendicular to the Beast-to-Jak firing direction.
+      (set-vector! spread-step
+                   (- (-> landing-pos z) (-> s4-0 z))
+                   0.0
+                   (- (-> s4-0 x) (-> landing-pos x))
+                   0.0)
+      (if (> (vector-length spread-step) 1.0)
+          (vector-normalize! spread-step 49152.0)
+          (set-vector! spread-step 49152.0 0.0 0.0 0.0))
+      )
     (vector-copy! s5-0 (-> this node-list data 21 bone transform fvec))
     (new 'stack-no-clear 'vector)
     (new 'stack-no-clear 'vector)
     (vector-normalize! s5-0 81920.0)
-    (let ((a1-2 (new 'stack-no-clear 'projectile-init-by-other-params)))
+    (let ((round-index (if volley? (- 5 *des-beast-volley-rounds-left*) 0)))
+     (let ((a1-2 (new 'stack-no-clear 'projectile-init-by-other-params)))
+      (when volley?
+        ;; Solve a three-second ballistic arc using the grenade's 45 m/s^2
+        ;; gravity. The center round targets Jak; two rounds spread to each side.
+        (set! (-> s5-0 x) (/ (+ (- (-> landing-pos x) (-> s4-0 x))
+                               (* (-> spread-step x) (the float (- round-index 2)))) 3.0))
+        (set! (-> s5-0 z) (/ (+ (- (-> landing-pos z) (-> s4-0 z))
+                               (* (-> spread-step z) (the float (- round-index 2)))) 3.0))
+        (set! (-> s5-0 y) (+ (/ (- (-> landing-pos y) (-> s4-0 y)) 3.0) 276480.0))
+        (set! (-> s5-0 w) 0.0)
+        )
       (set! (-> a1-2 ent) (-> this entity))
       (set! (-> a1-2 charge) 1.0)
       (set! (-> a1-2 options) (projectile-options))
@@ -2098,6 +2265,11 @@
       (set! (-> a1-2 notify-handle) (the-as handle #f))
       (set! (-> a1-2 owner-handle) (process->handle this))
       (set! (-> a1-2 target-handle) (the-as handle #f))
+      (when (and *target*
+                 (= (-> this shoot-delay) (seconds 3))
+                 (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+        (set! (-> a1-2 target-handle) (process->handle *target*))
+        )
       (set! (-> a1-2 target-pos quad) (the-as uint128 0))
       (set! (-> a1-2 ignore-handle) (process->handle this))
       (let* ((v1-20 *game-info*)
@@ -2106,9 +2278,14 @@
         (set! (-> v1-20 attack-id) a0-15)
         (set! (-> a1-2 attack-id) a0-15)
         )
-      (set! (-> a1-2 timeout) (seconds 4))
+      (set! (-> a1-2 timeout) (if volley? (seconds 6) (seconds 4)))
       (spawn-projectile beast-grenade a1-2 this *default-dead-pool*)
+      (when volley?
+        (-! *des-beast-volley-rounds-left* 1)
+        (set-time! *des-beast-volley-shot-time*)
+        )
       )
+     )
     )
   0
   (none)

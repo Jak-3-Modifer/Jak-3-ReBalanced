@@ -516,8 +516,11 @@
   :virtual #t
   :enter (behavior ()
     (+! (-> *game-info* marauders-killed) 1.0)
-    (if (and *target* (focus-test? *target* pilot-riding))
-        (turbo-pickup-spawn (-> self root trans))
+    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (hero-marauder-reward-spawn self)
+        (when (and *target* (focus-test? *target* pilot-riding))
+          (turbo-pickup-spawn (-> self root trans))
+          )
         )
     ;; cars use the same reliable radial explosion setup as the robots, car go boOM!!
     (when (-> self oasis-explosion?)

@@ -2144,6 +2144,12 @@
   :virtual #t
   :event task-manager-event-handler
   :enter (behavior ()
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (set-time! (-> self taxi-timer))
+      (set! (-> *game-info* timer) (seconds 102))
+      (set! (-> self hud-timer)
+            (ppointer->handle (process-spawn hud-timer :init hud-init-by-other :name "hud-timer" :to self)))
+      )
     (set-setting! 'music 'desres3 0.0 0)
     (let ((gp-0 (new 'stack-no-clear 'task-arrow-params)))
       (vector-copy!
@@ -2202,6 +2208,12 @@
       )
     )
   :enter (behavior ()
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (let ((timer-hud (handle->process (-> self hud-timer))))
+        (when timer-hud (deactivate timer-hud))
+        )
+      (set! (-> self hud-timer) (the-as handle #f))
+      )
     (set-setting! 'pilot #f 0.0 0)
     (when #f
       (remove-setting! 'music)
@@ -2239,11 +2251,11 @@
   :trans (behavior ()
     ((-> (method-of-type task-manager active) trans))
     (task-manager-desert-rescue-method-44 self)
-    (set! (-> *game-info* timer)
-          (- (task-manager-desert-rescue-method-47 self) (- (current-time) (-> self taxi-timer)))
-          )
-    (if (< (-> *game-info* timer) 0)
-        (send-event self 'fail)
+    (when (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (set! (-> *game-info* timer)
+            (- (task-manager-desert-rescue-method-47 self) (- (current-time) (-> self taxi-timer))))
+      (when (< (-> *game-info* timer) 0)
+        (send-event self 'fail))
         )
     (if (or (not (handle->process (-> self jak-vehicle)))
             (focus-test?
@@ -2270,6 +2282,13 @@
 
 ;; WARN: Return type mismatch int vs time-frame.
 (defmethod task-manager-desert-rescue-method-47 ((this task-manager-desert-rescue))
+  ;; The post-boss countdown includes returning to the car and driving home.
+  ;; Keep it exactly 1:42, independent of retry-based time assistance.
+  (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (or (= (-> this next-state name) 'wait-for-vehicle-return)
+                 (= (-> this next-state name) 'race-home)))
+    (return (the time-frame (seconds 102)))
+    )
   (let ((gp-0 (-> this passenger-pos (-> this current-passenger-index) total-time))
         (f0-0 (task-manager-desert-rescue-method-48 this))
         )

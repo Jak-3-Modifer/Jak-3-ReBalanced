@@ -10531,7 +10531,8 @@
 
 (define *ocean-map-desert* (new 'static 'ocean-map
                              :start-corner (new 'static 'vector :x -1048576.0 :y 36864.0 :z -1048576.0 :w 1.0)
-                             :far-color (new 'static 'vector :x 20.078432 :y 47.184315 :z 52.705883 :w 112.94118)
+                             ;; Deep RGB 51,56,83 in the ocean's 128/255 color scale.
+                             :far-color (new 'static 'vector :x 25.6 :y 28.109804 :z 41.662746 :w 112.94118)
                              )
         )
 
@@ -10547,13 +10548,15 @@
 
 ;; Retint the existing Desert/Spargus ocean gradient without flattening the
 ;; small per-vertex variations used by the water mesh.  This maps the former
-;; 121,169,209 near / 52,73,102 far range to 129,173,200 near / 40,75,99 far.
+;; 121,169,209 near / 52,73,102 far range to 53,77,96 shallow / 51,56,83 deep.
 (dotimes (color-index 2548)
   (let ((color (-> *ocean-colors-desert* colors color-index)))
     (when (nonzero? (-> color a))
-      (set! (-> color r) (the int (+ 40.5 (* (- (the float (-> color r)) 52.0) 1.2898551))))
-      (set! (-> color g) (the int (+ 75.5 (* (- (the float (-> color g)) 73.0) 1.0208334))))
-      (set! (-> color b) (the int (+ 99.5 (* (- (the float (-> color b)) 102.0) 0.94392526))))
+      (set! (-> color r) (the int (+ 51.5 (* (- (the float (-> color r)) 52.0) 0.028985508))))
+      (set! (-> color g) (the int (+ 56.5 (* (- (the float (-> color g)) 73.0) 0.21875))))
+      (set! (-> color b) (the int (+ 83.5 (* (- (the float (-> color b)) 102.0) 0.12149533))))
+      ;; rgba is a packed value; field edits above only update the local copy.
+      (set! (-> *ocean-colors-desert* colors color-index) color)
       )
     )
   )

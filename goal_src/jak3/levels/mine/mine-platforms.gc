@@ -178,6 +178,7 @@
    (last-frame         float)
    (spooler            handle)
    (sync-offset        float)
+   (hero-pulse-until   time-frame)
    )
   (:state-methods
     idle
@@ -291,6 +292,7 @@
   (set! (-> this sound-bit) (the-as uint (new-sound-id)))
   (set! (-> this sound-gear) (the-as uint (new-sound-id)))
   (set! (-> this spooler) (the-as handle #f))
+  (set! (-> this hero-pulse-until) (the-as time-frame 0))
   (when (string= (-> this name) "min-moving-plat-2")
     (let ((s5-2 (get-process *default-dead-pool* min-moving-plat-spooler #x4000 1)))
       (set! (-> this spooler)
@@ -341,6 +343,12 @@
        (sync-now! (-> self sync) 0.6)
        (go-virtual active)
        )
+      (('hero-pulse)
+       ;; A Hero Mode Arc Wielder hit can run a linked platform briefly.
+       (set! (-> self hero-pulse-until) (+ (current-time) (seconds 2)))
+       (sync-now! (-> self sync) 0.6)
+       (go-virtual active)
+       )
       )
     (plat-event proc argc message block)
     )
@@ -368,7 +376,18 @@
 
 (defstate active (min-moving-plat)
   :virtual #t
-  :event plat-event
+  :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
+    (case message
+      (('hero-pulse)
+       ;; A second Arc Wielder hit refreshes the two-second pulse instead of
+       ;; being ignored while this platform is already moving.
+       (set! (-> self hero-pulse-until) (+ (current-time) (seconds 2)))
+       )
+      (else
+        (plat-event proc argc message block)
+        )
+      )
+    )
   :trans (behavior ()
     (sound-play "mine-drill-bit" :id (the-as sound-id (-> self sound-bit)))
     (let ((f30-0 (ja-frame-num 0)))
@@ -445,11 +464,21 @@
           )
       (set! (-> self last-frame) f30-0)
       )
+    (when (and (nonzero? (-> self hero-pulse-until))
+               (>= (current-time) (-> self hero-pulse-until))
+               )
+      (set! (-> self hero-pulse-until) (the-as time-frame 0))
+      (go-virtual idle)
+      )
     (plat-trans)
     )
   :code (behavior ()
     (process-entity-status! self (entity-perm-status subtask-complete) #t)
-    (suspend-for (seconds 2)
+    ;; Normal level scripting keeps its original start delay.  The Hero Mode
+    ;; pulse starts immediately and is stopped by the timer in :trans.
+    (when (zero? (-> self hero-pulse-until))
+      (suspend-for (seconds 2)
+        )
       )
     (let ((gp-1 (vector-z-quaternion! (new 'stack-no-clear 'vector) (-> self root quat)))
           (s5-0 (vector-x-quaternion! (new 'stack-no-clear 'vector) (-> self root quat)))

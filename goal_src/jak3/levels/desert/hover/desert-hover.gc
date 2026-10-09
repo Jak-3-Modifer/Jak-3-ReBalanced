@@ -98,6 +98,7 @@
 (defstate active (task-manager-desert-hover)
   :virtual #t
   :enter (behavior ()
+    (desert-hover-clear-car-protection!)
     (set! *desert-hover-vehicle-locked-out* #f)
     (set-setting! 'extra-bank '((desert2 desbst1)) 0.0 0)
     ;; Hero Mode adds the standard Wasteland Marauder encounter.  Keep the
@@ -127,6 +128,7 @@
     (spawn-dust-storm-randomizer self)
     )
   :exit (behavior ()
+    (desert-hover-clear-car-protection!)
     (set! *desert-hover-vehicle-locked-out* #f)
     (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
       (set! (-> *was-squad-control* target-count) 0)
@@ -144,6 +146,7 @@
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod set-time-limit ((this task-manager-desert-hover))
+  (desert-hover-clear-car-protection!)
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
     (t9-0 this)
     )

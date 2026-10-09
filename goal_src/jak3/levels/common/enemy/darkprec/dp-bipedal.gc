@@ -1052,6 +1052,8 @@
 
 (defmethod get-damage-from-attack ((this dp-bipedal) (arg0 object) (arg1 event-message-block))
   "Compute hit point damage for an attack message."
+  (when (darkjak-player-gun-attack? (the-as attack-info (-> arg1 param 1)))
+    (return 0.0))
   (let ((damage (if (type? arg0 guard-shot)
                     0.5
                     ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1))))

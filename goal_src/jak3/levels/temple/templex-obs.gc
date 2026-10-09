@@ -7,6 +7,259 @@
 
 ;; DECOMP BEGINS
 
+;; Temple Climb-style wide follow-camera trigger.  It is a horizontal radius
+;; check, so it remains active regardless of Jak's height.
+(define *templex-wide-camera-trigger-center*
+  (new 'static 'vector :x 17157120.0 :y 488488.96 :z 17131397.12 :w 1.0)
+  )
+
+(define *templex-wide-camera-trigger-radius* (meters 6))
+
+(define *templex-wide-camera-trigger-debug-color*
+  (new 'static 'vector4w :y #xff :z #xff :w #x80)
+  )
+
+(define *templex-wide-camera-trigger-debug-circle-color*
+  (new 'static 'rgba :g #xff :b #xff :a #x80)
+  )
+
+;; Captured from the desired Temple camera view.  This is the inverse of the
+;; saved camera's forward axis: the direction from Jak to the camera in
+;; cam-string's follow-space.
+(define *templex-wide-camera-trigger-entry-vector*
+  (new 'static 'vector :x -0.7086 :y 0.0211 :z -0.7052 :w 0.0)
+  )
+
+(defun templex-wide-camera-trigger-inside? ((point vector))
+  (<= (vector-vector-xz-distance-squared point *templex-wide-camera-trigger-center*)
+      (square *templex-wide-camera-trigger-radius*)
+      )
+  )
+
+(deftype templex-wide-camera-trigger (process)
+  ((camera-active? symbol))
+  (:state-methods active)
+  )
+
+(defstate active (templex-wide-camera-trigger)
+  :virtual #t
+  :exit (behavior ()
+    ;; A level transition can remove this process while Jak is in the zone.
+    ;; Clear the override so the next level starts with its normal camera.
+    (when (-> self camera-active?)
+      (remove-setting! 'string-min-length)
+      (remove-setting! 'string-max-length)
+      (remove-setting! 'string-min-height)
+      (remove-setting! 'string-max-height)
+      (remove-setting! 'immediate-string-min-max)
+      (remove-setting! 'string-startup-vector)
+      (remove-setting! 'mode-name)
+      (remove-setting! 'interp-time)
+      (remove-setting! 'allow-look-around)
+      (set! (-> self camera-active?) #f)
+      )
+    )
+  :trans (behavior ()
+    ;; Visible only for debugging: one cyan ground circle, matching the
+    ;; height-independent horizontal radius used by the trigger.
+    (add-debug-circle #t
+                      (bucket-id debug)
+                      *templex-wide-camera-trigger-center*
+                      *templex-wide-camera-trigger-radius*
+                      *templex-wide-camera-trigger-debug-circle-color*
+                      *identity-matrix*)
+    (let ((inside?
+            (and *target*
+                 (templex-wide-camera-trigger-inside? (target-pos 0))
+                 )
+            ))
+      (cond
+        ((and inside? (not (-> self camera-active?)))
+         ;; Push the camera back to one fixed distance.  Horizontal orbit stays
+         ;; available, but the player cannot zoom or tilt the camera vertically.
+         (set-setting! 'string-min-length 'abs (meters 20) 0)
+         (set-setting! 'string-max-length 'abs (meters 20) 0)
+         (set-setting! 'string-min-height 'abs (meters 2) 0)
+         (set-setting! 'string-max-height 'abs (meters 2) 0)
+         ;; Apply the fixed pullback immediately instead of waiting for the
+         ;; player's manual camera input to update the current string length.
+         (set-setting! 'immediate-string-min-max #t 0.0 0)
+         (set-setting! 'string-startup-vector 'abs *templex-wide-camera-trigger-entry-vector* 0)
+         ;; Re-enter cam-string through its normal interpolator.  This keeps
+         ;; the saved direction but eases to it instead of teleporting/snapping.
+         (set-setting! 'mode-name 'cam-string 0.0 0)
+         (set-setting! 'interp-time 'abs (seconds 0.75) 0)
+         (set-setting! 'allow-look-around #t 0.0 0)
+         (set! (-> self camera-active?) #t)
+         )
+        ((and (not inside?) (-> self camera-active?))
+         (remove-setting! 'string-min-length)
+         (remove-setting! 'string-max-length)
+         (remove-setting! 'string-min-height)
+         (remove-setting! 'string-max-height)
+         (remove-setting! 'immediate-string-min-max)
+         (remove-setting! 'string-startup-vector)
+         (remove-setting! 'mode-name)
+         (remove-setting! 'interp-time)
+         (remove-setting! 'allow-look-around)
+         (set! (-> self camera-active?) #f)
+         )
+        )
+      )
+    )
+  :code sleep-code
+  )
+
+(defbehavior templex-wide-camera-trigger-init-by-other templex-wide-camera-trigger ()
+  (go-virtual active)
+  )
+
+;; Hero Mode-only fixed view near the upper Temple X route.  This remains a
+;; separate trigger from the wide follow-camera above, so it cannot change the
+;; camera behavior at the lower route.
+(define *templex-fixed-camera-trigger-center*
+  (new 'static 'vector :x 17277542.4 :y 598548.48 :z 17026703.36 :w 1.0)
+  )
+
+(define *templex-fixed-camera-trigger-radius* (meters 2))
+(define *templex-fixed-camera-trigger-height* (meters 3))
+
+(define *templex-fixed-camera-pos*
+  (new 'static 'vector :x 17219330.0 :y 648814.9375 :z 17050086.0 :w 1.0)
+  )
+
+(define *templex-fixed-camera-rot*
+  (new 'static 'matrix
+    :rvec (new 'static 'vector :x -0.7942 :z -0.6075)
+    :uvec (new 'static 'vector :x 0.3013 :y 0.8683 :z -0.3939)
+    :fvec (new 'static 'vector :x 0.5275 :y -0.4959 :z -0.6897)
+    :trans (new 'static 'vector :w 1.0)
+    )
+  )
+
+(defun templex-fixed-camera-trigger-inside? ((point vector))
+  ;; A three-meter-tall cylinder centered on the upper platform: the lower
+  ;; route no longer activates this camera just by sharing its X/Z position.
+  (and (<= (vector-vector-xz-distance-squared point *templex-fixed-camera-trigger-center*)
+           (square *templex-fixed-camera-trigger-radius*))
+       (<= (fabs (- (-> point y) (-> *templex-fixed-camera-trigger-center* y)))
+           (* 0.5 *templex-fixed-camera-trigger-height*)))
+  )
+
+(defun templex-fixed-camera-trigger-enter! ()
+  ;; Create a proper fixed camera slave so the camera combiner can blend from
+  ;; the current player camera to this saved view.  The debug camera setter
+  ;; skips that interpolation and would visibly snap.
+  (when (and *camera* *camera-combiner*)
+    (set-setting! 'interp-time 'abs (seconds 0.8) 0)
+    (let ((new-slave-pp
+            (process-spawn
+              camera-slave
+              :init cam-slave-init
+              cam-fixed
+              #f
+              :name "templex-fixed-camera"
+              :from *camera-dead-pool*
+              :to *camera*
+              )
+            ))
+      (when new-slave-pp
+        (let ((new-slave (the-as camera-slave (-> new-slave-pp 0))))
+          (vector-copy! (-> new-slave trans) *templex-fixed-camera-pos*)
+          (vector-copy! (-> new-slave saved-pt) *templex-fixed-camera-pos*)
+          (matrix-copy! (-> new-slave tracking inv-mat) *templex-fixed-camera-rot*)
+          (set! (-> new-slave fov) (degrees 64.0))
+          (when (-> *camera* slave)
+            (deactivate (-> *camera* slave 0))
+            )
+          (send-event *camera* 'set-slave (ppointer->process new-slave-pp))
+          )
+        )
+      )
+    )
+  (none)
+  )
+
+(defun templex-fixed-camera-trigger-exit! ()
+  ;; Keep the outgoing slave pointer until set-slave has captured it for the
+  ;; blend.  cam-master-activate-slave with #t clears it and forces a snap.
+  (when *camera*
+    (remove-setting! 'interp-time)
+    (let* ((settings (-> *camera* settings))
+           (old-interp-time (-> settings interp-time))
+           (mode (if (-> settings cam-mode)
+                     (the-as object (-> settings cam-mode))
+                     (the-as object cam-free-floating)))
+           (new-slave-pp
+             (process-spawn camera-slave :init cam-slave-init
+               mode (entity-by-name (-> settings real-entity-name))
+               :name "camera-slave" :from *camera-dead-pool* :to *camera*)))
+      (when new-slave-pp
+        (set! (-> settings interp-time) (the-as uint (seconds 1.5)))
+        (when (-> *camera* slave)
+          (deactivate (-> *camera* slave 0))
+          )
+        (send-event *camera* 'set-slave (ppointer->process new-slave-pp))
+        (set! (-> settings interp-time) old-interp-time)
+        )
+      )
+    )
+  (none)
+  )
+
+(deftype templex-fixed-camera-trigger (process)
+  ((camera-active? symbol))
+  (:state-methods active)
+  )
+
+(defstate active (templex-fixed-camera-trigger)
+  :virtual #t
+  :exit (behavior ()
+    (when (-> self camera-active?)
+      (templex-fixed-camera-trigger-exit!)
+      (set! (-> self camera-active?) #f)
+      )
+    )
+  :trans (behavior ()
+    (let ((inside?
+            (and *target*
+                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                 (templex-fixed-camera-trigger-inside? (target-pos 0))
+                 )
+            ))
+      (cond
+        ((and inside? (not (-> self camera-active?)))
+         (templex-fixed-camera-trigger-enter!)
+         (set! (-> self camera-active?) #t)
+         )
+        ((and (not inside?) (-> self camera-active?))
+         (templex-fixed-camera-trigger-exit!)
+         (set! (-> self camera-active?) #f)
+         )
+        )
+      )
+    )
+  :code sleep-code
+  )
+
+(defbehavior templex-fixed-camera-trigger-init-by-other templex-fixed-camera-trigger ()
+  (go-virtual active)
+  )
+
+(defun templex-wide-camera-trigger-activate ((arg0 level))
+  (process-spawn templex-wide-camera-trigger :name "templex-wide-camera-trigger" :to *entity-pool*)
+  (process-spawn templex-fixed-camera-trigger :name "templex-fixed-camera-trigger" :to *entity-pool*)
+  0
+  (none)
+  )
+
+(defun templex-wide-camera-trigger-deactivate ((arg0 level))
+  (kill-by-type templex-wide-camera-trigger *active-pool*)
+  (kill-by-type templex-fixed-camera-trigger *active-pool*)
+  0
+  (none)
+  )
+
 ;; WARN: Return type mismatch float vs none.
 (defun spt-birth-func-brightness-part-temple-break-dust ((arg0 sparticle-system) (arg1 sparticle-cpuinfo) (arg2 sparticle-launchinfo))
   (let ((s5-0 (+ (mod (the-as int (rand-uint31-gen *random-generator*)) 31) 128))

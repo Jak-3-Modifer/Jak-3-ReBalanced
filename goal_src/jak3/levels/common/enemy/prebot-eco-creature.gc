@@ -712,7 +712,8 @@
 (defun eco-creature-blocked-attack? ((arg0 event-message-block))
   "True for Jak's Morph-Gun shots and Dark Jak attacks."
   (let ((attack (the-as attack-info (-> arg0 param 1))))
-    (or (and (= (-> attack mode) 'gravity-end)
+    (or (darkjak-player-gun-attack? attack)
+        (and (= (-> attack mode) 'gravity-end)
              (not (lightjak-player-gun-attack? attack)))
         (eco-creature-blocked-penetrate? (-> attack penetrate-using))
         )

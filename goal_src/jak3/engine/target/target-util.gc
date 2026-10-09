@@ -7,6 +7,9 @@
 
 ;; DECOMP BEGINS
 
+;; Set only while Hero Mode's Leaper Race is active.
+(define *wascity-leaper-hero-zap-safe?* #f)
+
 (defskelgroup skel-jchar jakb jakb-lod0-jg -1
               ((jakb-lod0-mg (meters 999999)))
               :bounds (static-spherem 0 0 0 3.2)
@@ -553,6 +556,12 @@
        (set! (-> s4-0 prim-core collide-with) (-> self control default-collide-with-fgnd))
        (sphere<-vector+r! (the-as sphere (-> s4-0 local-sphere)) (-> *TARGET-bank* spin-offset) 12288.0)
        (set! (-> self control penetrate-using) (penetrate touch spin board))
+       ;; Hero Mode's Leaper Race keeps the other racers out of the zap's
+       ;; contact set. This preserves the zap against normal valid targets
+       ;; while preventing a race rival from being hit, shoved, or stopped.
+       (when *wascity-leaper-hero-zap-safe?*
+         (logclear! (-> self control root-prim prim-core collide-with) (collide-spec enemy))
+         (logclear! (-> s4-0 prim-core collide-with) (collide-spec enemy)))
        )
       (('duck-spin)
        (sphere<-vector+r!

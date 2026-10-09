@@ -1934,15 +1934,16 @@
       (set! (-> self control dynam gravity-length) 245760.0)
       )
     )
-  ;; Leaper Race only: a little more gravity reduces hang time and makes the
-  ;; Jetboard settle onto the course sooner.
-  (when *wascity-leaper-tight-board-active?*
-    (set! (-> self control dynam gravity-length) (* (-> self control dynam gravity-length) 1.15))
-    )
+  ;; Scale only the applied gravity, never the persistent gravity-length.
+  ;; Trick states seek from that stored value each frame; scaling it in place
+  ;; compounds the race multiplier and causes runaway acceleration.
   (vector-float*!
     (-> self control dynam gravity)
     (-> self control dynam gravity-normal)
-    (the-as float (-> self control dynam gravity-length))
+    (if (and *wascity-leaper-tight-board-active?*
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+        (* (-> self control dynam gravity-length) 1.15)
+        (the-as float (-> self control dynam gravity-length)))
     )
   (if (< (-> self control force-turn-to-strength) 0.0)
       (set! (-> self control force-turn-to-strength) (- 1.0 (-> self control cpad stick0-speed)))

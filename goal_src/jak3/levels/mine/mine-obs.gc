@@ -7,7 +7,65 @@
 
 ;; DECOMP BEGINS
 
+(define-extern *mineb-light-freeze-deaths* int)
+(define-extern *mineb-light-freeze-hint-pending?* symbol)
+(define-extern *mineb-light-freeze-hint-remaining* float)
+
+;; Draw after respawn, not during the death animation or blackout. (AI-assisted)
+(defun draw-mineb-light-freeze-hint ()
+  (when (and *target*
+             (-> *target* current-level)
+             (not (focus-test? *target* dead teleporting))
+             (not (movie?))
+             (= (-> *target* current-level name) 'mineb))
+    (when *mineb-light-freeze-hint-pending?*
+      (set! *mineb-light-freeze-hint-pending?* #f)
+      (set! *mineb-light-freeze-hint-remaining* 8.0)
+      )
+    (when (> *mineb-light-freeze-hint-remaining* 0.0)
+      ;; Alignment is relative to the text box, whose center is (256, 368).
+      ;; Keep its left edge at 36, not at the screen midpoint. (AI-assisted)
+      (let ((font (new 'stack 'font-context *font-default-matrix* 36 338 0.0
+                       (font-color default) (font-flags shadow kerning middle middle-vert large))))
+        (set-width! font 440)
+        (set-height! font 60)
+        (set-scale! font 0.7)
+        (format (clear *temp-string*) "Light Freeze: <PAD_L2> + <PAD_SQUARE>")
+        (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+        (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+        )
+      (set! *mineb-light-freeze-hint-remaining*
+            (fmax 0.0 (- *mineb-light-freeze-hint-remaining* (seconds-per-frame))))
+      )
+    )
+  (none)
+  )
+
+(deftype mineb-screen-hint (process)
+  ()
+  (:state-methods active)
+  )
+
+(defstate active (mineb-screen-hint)
+  :virtual #t
+  :trans (behavior ()
+    (draw-mineb-light-freeze-hint)
+    )
+  :code sleep-code
+  )
+
+(defbehavior mineb-screen-hint-init-by-other mineb-screen-hint ()
+  (go-virtual active)
+  )
+
+(defun mineb-screen-hint-deactivate ((lev level))
+  (kill-by-type mineb-screen-hint *active-pool*)
+  (none)
+  )
+
 (defun mineb-activate ()
+  (kill-by-type mineb-screen-hint *active-pool*)
+  (process-spawn mineb-screen-hint :name "mineb-screen-hint" :to *entity-pool*)
   (let ((a0-1 (entity-by-name "minb-part-1")))
     (when a0-1
       (let ((gp-0 (the-as (pointer actor-group) #f))
@@ -162,7 +220,7 @@
   (go (method-of-object this idle))
   )
 
-(deftype min-rat-engine (process-drawable)
+(deftype min-rat-engine (process-focusable)
   ((root                collide-shape-moving :override)
    (init-quat           quaternion            :inline)
    (force-pos           vector                :inline)
@@ -250,6 +308,22 @@
 
 (defbehavior min-rat-engine-handler min-rat-engine ((arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
   (case arg2
+    (('attack)
+     ;; Hero Mode only: Arc Wielder fire on engine 7 powers each linked moving
+     ;; platform for two seconds.  The engine remains an ordinary prop in
+     ;; normal mode and ignores all other weapons.
+     (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                (string= (-> self name) "min-rat-engine-7")
+                (type? arg0 gun-blue-shot-2)
+                )
+       ;; Engine 7 owns the three Mine B moving platforms.  They are not
+       ;; represented in its authored actor group, so address those level
+       ;; entities directly instead of broadcasting to every moving platform.
+       (send-event (process-by-name "min-moving-plat-1" *active-pool*) 'hero-pulse)
+       (send-event (process-by-name "min-moving-plat-2" *active-pool*) 'hero-pulse)
+       (send-event (process-by-name "min-moving-plat-3" *active-pool*) 'hero-pulse)
+       )
+     )
     (('ridden)
      (min-rat-engine-method-27 self arg0 (the-as focus (-> arg3 param 0)))
      )
@@ -723,6 +797,17 @@
   (set! (-> this rat-count) (the-as uint 0))
   (set! (-> this ang-momentum) 0.0)
   (quaternion-copy! (-> this init-quat) (-> this root quat))
+  ;; Make only Hero Mode's seventh rat engine a valid Arc Wielder target.
+  ;; The enemy mask exposes it to Gun Blue 2's target search, while retaining
+  ;; the obstacle/camera collision behavior it already has.
+  (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (string= (-> this name) "min-rat-engine-7")
+             )
+    (logior! (-> this mask) (process-mask enemy))
+    (logior! (-> (the-as collide-shape-prim-group (-> this root root-prim)) prim-core collide-as)
+             (collide-spec enemy)
+             )
+    )
   (go (method-of-object this inactive))
   )
 

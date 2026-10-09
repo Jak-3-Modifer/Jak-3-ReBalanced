@@ -661,7 +661,7 @@
 
 (let ((v1-56 (copy *walk-mods* 'global)))
   (set! (-> v1-56 name) 'darkjak)
-  (set! (-> v1-56 flags) (surface-flag gun-off))
+  (set! (-> v1-56 flags) (surface-flag))
   (set! *darkjak-trans-mods* v1-56)
   )
 
@@ -1080,6 +1080,8 @@
     )
   :enter (behavior ()
     (logior! (-> self target-flags) (target-flags lleg-still rleg-still))
+    (set-setting! 'gun #f 0.0 0)
+    (apply-settings *setting-control*)
     (set! (-> self neck flex-blend) 0.0)
     (set! (-> self control mod-surface) *darkjak-trans-mods*)
     (kill-persister *setting-control* (the-as engine-pers 'bg-a-speed) 'bg-a-speed)
@@ -1087,6 +1089,7 @@
   :exit (behavior ()
     (logclear! (-> self target-flags) (target-flags lleg-still rleg-still))
     (target-darkjak-end-mode #t)
+    (remove-setting! 'gun)
     )
   :trans (-> target-darkjak-get-on trans)
   :code (behavior ()

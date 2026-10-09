@@ -130,7 +130,11 @@
     )
   :enter (behavior ()
     (set! (-> self draw force-lod) 0)
-    (if (task-node-closed? (game-task-node volcano-darkeco-resolution))
+    ;; Hero Mode starts with broken Temple bounce pads, regardless of mission
+    ;; progress. Normal Mode keeps the original post-Volcano condition.
+    (if (or (task-node-closed? (game-task-node volcano-darkeco-resolution))
+            (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+            )
         (go-virtual broken)
         )
     )

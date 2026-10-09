@@ -715,7 +715,7 @@
       'attack
       #f
       (static-attack-info :mask (vehicle-impulse-factor) ((id (-> this attack-id))
-                                                          (damage 32.0)
+                                                          (damage (target-darkjak-gun-damage 32.0))
                                                           (vehicle-damage-factor 1.0)
                                                           (vehicle-impulse-factor 1.0)
                                                           (mode 'eco-dark)
@@ -1439,7 +1439,7 @@
         )
   (sound-params-set! *gui-control* (-> this explode-sound) #t 50 150 11 -1.0)
   (set! (-> this start-pilot?) (the-as symbol (and *target* (focus-test? *target* pilot))))
-  (set! (-> this damage) 16.0)
+  (set! (-> this damage) (target-darkjak-gun-damage 16.0))
   (set! (-> this vehicle-damage-factor) 1.0)
   (set! (-> this vehicle-impulse-factor) 2.0)
   (when (logtest? (game-secrets gun-upgrade-dark-1) (-> *game-info* secrets))
@@ -2080,7 +2080,7 @@
                           #f
                           (static-attack-info
                             :mask (vehicle-impulse-factor)
-                            ((id (new-attack-id)) (damage 16.0) (vehicle-damage-factor arg1) (vehicle-impulse-factor 1.0) (mode 'explode))
+                            ((id (new-attack-id)) (damage (target-darkjak-gun-damage 16.0)) (vehicle-damage-factor arg1) (vehicle-impulse-factor 1.0) (mode 'explode))
                             )
                           )
                         )
@@ -2094,7 +2094,7 @@
                         #f
                         (static-attack-info
                           :mask (vehicle-impulse-factor)
-                          ((id (new-attack-id)) (damage 16.0) (vehicle-damage-factor arg1) (vehicle-impulse-factor 1.0) (mode 'explode))
+                          ((id (new-attack-id)) (damage (target-darkjak-gun-damage 16.0)) (vehicle-damage-factor arg1) (vehicle-impulse-factor 1.0) (mode 'explode))
                           )
                         )
                       )
@@ -2946,7 +2946,7 @@
           (static-attack-info
             :mask (vehicle-impulse-factor)
             ((id (new-attack-id))
-             (damage 0.2)
+             (damage (target-darkjak-gun-damage 0.2))
              (vehicle-damage-factor 1.0)
              (vehicle-impulse-factor 1.0)
              (penetrate-using (penetrate vehicle))
@@ -2987,7 +2987,7 @@
       'attack
       #f
       (static-attack-info :mask (vehicle-impulse-factor) ((id (new-attack-id))
-                                                          (damage (-> self cached-damage))
+                                                          (damage (target-darkjak-gun-damage (-> self cached-damage)))
                                                           (vehicle-damage-factor 1.0)
                                                           (vehicle-impulse-factor 1.0)
                                                           (penetrate-using (penetrate vehicle))

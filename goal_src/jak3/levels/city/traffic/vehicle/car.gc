@@ -602,8 +602,8 @@
     :particles (new 'static 'vehicle-particle-info
       :headlight-count 2
       :taillight-count 2
-      :thruster-flame-width (meters 0.6)
-      :thruster-flame-length (meters 2)
+      :thruster-flame-width (meters 0.0)
+      :thruster-flame-length (meters 0.0)
       :thruster-local-pos (new 'static 'inline-array vector 2
         (new 'static 'vector :x 4096.0 :y 1638.4 :z -13107.2 :w 1.0)
         (new 'static 'vector :x -4096.0 :y 1638.4 :z -13107.2 :w 1.0)
@@ -981,8 +981,8 @@
     :particles (new 'static 'vehicle-particle-info
       :headlight-count 1
       :taillight-count 2
-      :thruster-flame-width (meters 0.6)
-      :thruster-flame-length (meters 2)
+      :thruster-flame-width (meters 0.0)
+      :thruster-flame-length (meters 0.0)
       :thruster-local-pos (new 'static 'inline-array vector 2
         (new 'static 'vector :x 3891.2 :z -15155.2 :w 1.0)
         (new 'static 'vector :x -3891.2 :z -15155.2 :w 1.0)

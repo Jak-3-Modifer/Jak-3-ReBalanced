@@ -858,22 +858,30 @@
   )
 
 (defmethod inventory-screen-method-9 ((this inventory-screen) (arg0 progress) (arg1 font-context) (arg2 float) (arg3 float))
-  (set-scale! arg1 0.45)
-  (set-color! arg1 (font-color font-color-32))
-  (adjust-font-origin-y arg0 arg1 0.01)
-  (string-format "~S" (lookup-text! *common-text* (-> this name) #f))
-  (print-game-text *temp-string* arg1 #f 44 (bucket-id hud-draw-hud-alpha))
-  (dotimes (s1-1 (-> this groups length))
-    (inventory-item-group-method-10
-      (-> this groups s1-1)
-      arg0
-      arg1
-      arg2
-      arg3
-      (the-as int (= s1-1 (-> this current-index)))
-      )
-    )
-  (none)
+  ;; progress-draw-pc replaces the original screen renderer at runtime too.
+  (if (and (= this *hero-artifact-inventory-screen*)
+           (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (draw-hero-artifact-inventory-page arg0 arg1 arg2 arg3)
+      (begin
+        ;; Each frame draws two adjacent pages; restore native alignment after
+        ;; rendering the artifact page so the other page is not right-aligned.
+        (set-flags! arg1 (font-flags kerning middle large))
+        (set-scale! arg1 0.45)
+        (set-color! arg1 (font-color font-color-32))
+        (adjust-font-origin-y arg0 arg1 0.01)
+        (string-format "~S" (lookup-text! *common-text* (-> this name) #f))
+        (print-game-text *temp-string* arg1 #f 44 (bucket-id hud-draw-hud-alpha))
+        (dotimes (s1-1 (-> this groups length))
+          (inventory-item-group-method-10
+            (-> this groups s1-1)
+            arg0
+            arg1
+            arg2
+            arg3
+            (the-as int (= s1-1 (-> this current-index)))
+            )
+          )
+        (none)))
   )
 
 (defmethod inventory-item-group-method-10 ((this inventory-item-group) (arg0 progress) (arg1 font-context) (arg2 float) (arg3 float) (arg4 int))

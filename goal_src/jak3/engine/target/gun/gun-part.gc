@@ -45,6 +45,17 @@
 
 gun
 
+;; Only Wave Concussor particles use this birth callback. Tint the newborn
+;; particle, not the shared launcher, so normal Jak retains the original RGB.
+(defun birth-func-darkjak-wave-color ((system sparticle-system)
+                                    (particle sparticle-cpuinfo)
+                                    (sprite sprite-vec-data-3d))
+  (when (and *target* (focus-test? *target* dark))
+    (set! (-> sprite r-g-b-a x) 151.0)
+    (set! (-> sprite r-g-b-a y) 30.0)
+    (set! (-> sprite r-g-b-a z) 88.0))
+  (none))
+
 (defpart 207
   :init-specs ((:texture (lasersmoke-00 level-default-sprite))
     (:birth-func 'birth-func-laser-pointer)
@@ -799,6 +810,7 @@ gun
 
 (defpart 229
   :init-specs ((:texture (shockwave level-default-sprite))
+    (:birth-func 'birth-func-darkjak-wave-color)
     (:num 1.0)
     (:scale-x (meters 1))
     (:scale-y :copy scale-x)
@@ -3277,6 +3289,7 @@ gun
 
 (defpart 353
   :init-specs ((:texture (redpuff level-default-sprite))
+    (:birth-func 'birth-func-darkjak-wave-color)
     (:num 1.0)
     (:scale-x (meters 0.5) (meters 0.5))
     (:rot-z (degrees 0) (degrees 360))
@@ -3713,6 +3726,7 @@ gun
 
 (defpart 372
   :init-specs ((:texture (starflash level-default-sprite))
+    (:birth-func 'birth-func-darkjak-wave-color)
     (:num 0.5)
     (:scale-x (meters 1))
     (:rot-x (degrees 2.25))
@@ -3732,6 +3746,7 @@ gun
 
 (defpart 373
   :init-specs ((:texture (ring level-default-sprite))
+    (:birth-func 'birth-func-darkjak-wave-color)
     (:num 1.0)
     (:scale-x (meters 2.5))
     (:rot-x (degrees 22.5))

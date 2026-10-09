@@ -352,17 +352,20 @@
     )
   )
 
+;; Sand Shark handling prototype for both modes. Target 0-28 m/s in 5.5 s
+;; and approximately 53 m/s unboosted; verify on flat ground in-game.
+;; These are game-scaled coefficients, not SI mass, torque, or a literal Cd.
 (define *v-snake-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      :mass 8.0
-      :inv-mass 0.125
+      :mass 10.0
+      :inv-mass 0.1
       :linear-damping 1.0
       :angular-damping 1.0
-      :bounce-factor 0.4
+      :bounce-factor 0.3
       :friction-factor 0.5
-      :cm-offset-joint (new 'static 'vector :y 409.6 :z -2048.0 :w 1.0)
-      :inertial-tensor-box (new 'static 'array meters 3 (meters 5) (meters 2.5) (meters 6.5))
+      :cm-offset-joint (new 'static 'vector :y 0.0 :z -2867.2 :w 1.0)
+      :inertial-tensor-box (new 'static 'array meters 3 (meters 5.25) (meters 2.5) (meters 6.8))
       )
     :extra (new 'static 'rigid-body-object-extra-info
       :max-time-step 0.033333335
@@ -376,34 +379,34 @@
     :guard-type #xb
     :vehicle-type (vehicle-type-u8 v-snake)
     :engine (new 'static 'vehicle-engine-info
-      :max-torque 167772160.0
+      :max-torque 204800000.0
       :inertia 16384.0
       :drag 0.2
       :idle-rpm 900.0
       :clutch-min-rpm 2000.0
       :clutch-max-rpm 5500.0
       :min-rpm 600.0
-      :max-rpm 7500.0
+      :max-rpm 6500.0
       :peak-torque-rpm 3800.0
-      :powerband-width-rpm 4100.0
+      :powerband-width-rpm 4000.0
       )
     :transmission (new 'static 'vehicle-transmission-info
       :inertia 8192.0
       :upshift-rpm 5500.0
       :downshift-rpm 3200.0
-      :final-drive-ratio 14.0
-      :gear-ratio-array (new 'static 'array float 8 -2.25 3.375 2.25 1.5 1.0 0.0 0.0 0.0)
+      :final-drive-ratio 16.0
+      :gear-ratio-array (new 'static 'array float 8 -2.25 2.8 1.9 1.35 1.0 0.0 0.0 0.0)
       :gear-count 5
       )
     :handling (new 'static 'vehicle-handling-info
       :max-engine-thrust (meters 50)
       :inv-max-engine-thrust 0.0000048828124
-      :engine-response-rate 10.0
+      :engine-response-rate 7.0
       :engine-intake-factor 1.0
       :brake-factor 3355443200.0
       :turbo-boost-factor 0.75
       :turbo-boost-duration (seconds 2)
-      :max-xz-speed (meters 30)
+      :max-xz-speed (meters 53)
       :player-turn-anim-bias 0.5
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
@@ -418,18 +421,18 @@
       :steering-thruster-max-gain 1.0
       :steering-thruster-half-gain-speed (meters 30)
       :tire-steering-angle 4369.067
-      :tire-steering-speed-factor 38912.0
-      :tire-steering-speed-bias 36864.0
+      :tire-steering-speed-factor 32768.0
+      :tire-steering-speed-bias 28672.0
       :ackermann-factor 0.45
       :tire-friction-factor 1.0
-      :tire-static-friction 2.178
+      :tire-static-friction 1.55
       :tire-static-friction-speed (meters 2)
-      :tire-dynamic-friction 1.4157
+      :tire-dynamic-friction 1.15
       :tire-dynamic-friction-speed (meters 4)
       :tire-inv-max-friction-speed 0.000024414063
       :airfoil-factor 1.0
-      :drag-force-factor 0.35
-      :rolling-resistance 0.08
+      :drag-force-factor 0.4
+      :rolling-resistance 0.06
       :speed-scrubbing-drag 10.0
       :speed-limiting-drag 1.0
       :pitch-control-factor 1.0
@@ -438,10 +441,10 @@
       :buoyancy-factor 0.03
       :water-drag-factor 0.25
       :player-weight 122880.0
-      :air-roll-torque 81920.0
-      :air-pitch-torque 163840.0
+      :air-roll-torque 8192.0
+      :air-pitch-torque 16384.0
       :air-angular-damping 0.98
-      :hop-turn-torque 737280.0
+      :hop-turn-torque 147456.0
       :ground-torque-scale 0.55
       :ai-steering-factor 1.0
       :ai-throttle-factor 1.0
@@ -612,8 +615,8 @@
         :width 3276.8
         :suspension-spring 0.6
         :suspension-damping 0.3
-        :forward-grip 0.9
-        :side-grip 1.0
+        :forward-grip 1.0
+        :side-grip 0.98
         :max-brake-torque 1.0
         :camber 546.13336
         :settle-pos 0.78
@@ -633,8 +636,8 @@
         :width 3276.8
         :suspension-spring 0.5
         :suspension-damping 0.3
-        :forward-grip 1.5
-        :side-grip 1.0
+        :forward-grip 1.1
+        :side-grip 1.06
         :max-brake-torque 1.0
         :camber 1820.4445
         :settle-pos 0.76

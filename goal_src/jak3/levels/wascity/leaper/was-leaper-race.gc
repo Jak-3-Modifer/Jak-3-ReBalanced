@@ -9,6 +9,7 @@
 (define-extern *wascity-leaper-ring-speed-boost-time* time-frame)
 (define-extern *wascity-leaper-ring-speed-boost-speed* float)
 (define-extern *wascity-leaper-tight-board-active?* symbol)
+(define-extern *wascity-leaper-hero-zap-safe?* symbol)
 
 ;; DECOMP BEGINS
 
@@ -852,13 +853,13 @@
               )
             )
            (else
-             ;; Ring eleven ends the opening Flut section.  Use the same eject
+             ;; Ring fourteen ends the opening Flut section. Use the same eject
              ;; path as a regular Wascity Flut being defeated so Flut dies but
              ;; Jak survives.  The active state mounts the Jetboard afterward.
              ;; Mark the phase complete immediately so this scripted loss of
              ;; Flut cannot fail the race.
              (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-                        (= (-> this current-ring) 10)
+                        (= (-> this current-ring) 13)
                         *target*)
                (send-event *target* 'eject)
                )
@@ -1057,6 +1058,12 @@
     (set! *wascity-leaper-ring-speed-boost-speed* 143360.0)
     (set! *wascity-leaper-tight-board-active?*
           (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+    (set! *wascity-leaper-hero-zap-safe?*
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+    ;; Hero Race grants the board's Circle zap once Jak switches from Flut to
+    ;; Jetboard. Triangle turnaround is part of the base board controls.
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (logior! (-> *game-info* features) (game-feature board-zap)))
     )
   :code (behavior ()
     (local-vars (v1-38 symbol))
@@ -1159,9 +1166,9 @@
       (let ((s5-2 #f))
         (until (and (-> self ring-manager-entity) (= (-> *game-info* counter) 0.0))
           ;; Normal Mode remains the vanilla Flut race. Hero Mode starts on
-          ;; Flut, then changes to Jetboard after ring eleven.
+          ;; Flut, then changes to Jetboard after ring fourteen.
           (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-              (if (<= (-> self current-ring) 10)
+              (if (<= (-> self current-ring) 13)
                   (when (and *target* (not (focus-test? *target* flut)))
                     (send-event self 'fail)
                     )
@@ -1228,6 +1235,7 @@
         )
       )
     (set! *wascity-leaper-tight-board-active?* #f)
+    (set! *wascity-leaper-hero-zap-safe?* #f)
     (send-event self 'complete)
     (if *target*
         (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
@@ -1245,6 +1253,7 @@
   :virtual #t
   :enter (behavior ((arg0 resetter-params))
     (set! *wascity-leaper-tight-board-active?* #f)
+    (set! *wascity-leaper-hero-zap-safe?* #f)
     (let ((a1-0 (new 'stack-no-clear 'array 'symbol 10)))
       (set! (-> a1-0 9) #f)
       (set! (-> a1-0 8) #f)
@@ -1329,10 +1338,14 @@
   (set! (-> this actor-group-count) 0)
   (set! (-> this current-ring) (the-as uint 0))
   (dotimes (v1-1 3)
-    (set! (-> this challenger-current-ring v1-1) (the-as uint 0))
+  (set! (-> this challenger-current-ring v1-1) (the-as uint 0))
     )
   (set-setting! 'pilot-exit #f 0.0 0)
-  (set-setting! 'attack #f 0.0 0)
+  ;; The normal Flut race suppresses attacks. Hero Mode transitions to the
+  ;; Jetboard, whose Circle zap and Triangle turnaround both require attack.
+  (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (set-setting! 'attack #t 0.0 0)
+      (set-setting! 'attack #f 0.0 0))
   (set-setting! 'fov 'abs (degrees 84.0) 0)
   (set-setting! 'music 'waschase 0.0 0)
   (set-setting! 'airlock #f 0.0 0)

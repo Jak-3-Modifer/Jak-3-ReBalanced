@@ -7,6 +7,46 @@
 
 ;; DECOMP BEGINS
 
+(define *v-snake-loadout-menu-open?* #f)
+(define *v-snake-loadout-menu-selection* 0)
+
+(defun set-v-snake-regenerative-armor-equipped! ((equipped? symbol))
+  (set! *v-snake-regenerative-armor-equipped?* equipped?)
+  (unless equipped?
+    (set! *sand-shark-repair-active?* #f)
+    (set! *sand-shark-repair-update-seen?* #f)
+    )
+  (none)
+  )
+
+(defun set-v-snake-emergency-repair-equipped! ((equipped? symbol))
+  (set! *v-snake-emergency-repair-equipped?* equipped?)
+  (unless equipped?
+    (set! *v-snake-emergency-repair-armed?* #f)
+    )
+  (none)
+  )
+
+(defun close-v-snake-loadout-menu ()
+  (set-master-mode 'game)
+  (set! *v-snake-loadout-menu-open?* #f)
+  (set! *popup-menu-open* #f)
+  (none)
+  )
+
+(defun open-v-snake-loadout-menu ()
+  (set! *v-snake-loadout-menu-selection*
+        (cond
+          (*v-snake-emergency-repair-equipped?* 3)
+          (*v-snake-regenerative-armor-equipped?* 2)
+          (else 0)))
+  (set! *v-snake-loadout-menu-open?* #t)
+  (set! *popup-menu-open* #t)
+  (set-master-mode 'menu)
+  (sound-play "menu-pick")
+  (none)
+  )
+
 (deftype v-snake (wcar-snake-base)
   ()
   )
@@ -15,7 +55,8 @@
   ;; Record only damage that actually lowered the driven Sand Shark's HP.
   (let ((old-health (-> this hit-points)))
     ((method-of-type wcar-base apply-damage) this amount impact)
-    (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+    (when (and *v-snake-regenerative-armor-equipped?*
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
                (logtest? (vehicle-flag player-driving) (-> this v-flags))
                (< (-> this hit-points) old-health))
       (unless *sand-shark-repair-active?*

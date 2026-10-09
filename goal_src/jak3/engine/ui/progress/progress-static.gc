@@ -3460,3 +3460,20 @@
                         )
                       )
         )
+
+;; Use the existing Inventory pager, not an extra pause-ring option or input hook.
+;; A valid empty group keeps native D-pad handling safe on this read-only page.
+(define *hero-artifact-inventory-screen*
+  (new 'static 'inventory-screen
+    :name (text-id progress-inventory)
+    :groups (new 'static 'boxed-array :type inventory-item-group
+      (new 'static 'inventory-item-group
+        :items (new 'static 'boxed-array :type inventory-item)))))
+
+(define *normal-inventory-screens*
+  (-> (the-as menu-inventory (-> *inventory* options 0)) screens))
+(define *hero-inventory-screens*
+  (new 'global 'boxed-array inventory-screen (+ (-> *normal-inventory-screens* length) 1)))
+(set! (-> *hero-inventory-screens* 0) *hero-artifact-inventory-screen*)
+(dotimes (index (-> *normal-inventory-screens* length))
+  (set! (-> *hero-inventory-screens* (+ index 1)) (-> *normal-inventory-screens* index)))

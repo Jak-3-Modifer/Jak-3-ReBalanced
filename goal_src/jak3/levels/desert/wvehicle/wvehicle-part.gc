@@ -800,14 +800,14 @@
   )
 
 (defpart 978
-  :init-specs ((:texture (gun-blue-beam level-default-sprite))
+  :init-specs ((:texture (gun-yellow-muzzleflash level-default-sprite))
     (:birth-func 'birth-func-set-quat)
     (:num 1.0)
     (:scale-x (meters 2) (meters 5))
     (:scale-y (meters 10) (meters 0.6))
-    (:r 128.0)
-    (:g 110.0)
-    (:b 64.0)
+    (:r 17.0)
+    (:g 17.0)
+    (:b 132.0)
     (:a 128.0)
     (:scalevel-x (meters 0.08))
     (:fade-r -3.2)

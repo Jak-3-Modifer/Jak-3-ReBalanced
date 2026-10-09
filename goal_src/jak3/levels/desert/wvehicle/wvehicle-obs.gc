@@ -460,3 +460,162 @@
     (the-as turbo-pickup gp-0)
     )
   )
+
+;; Hero Mode loot uses its own pickups, never the Artifact Race mission counter.
+;; The three art groups and their texture page travel with the wvehicle package.
+(defskelgroup skel-hero-artifact-1 pre-artifact-a pre-artifact-a-lod0-jg pre-artifact-a-idle-ja
+              ((pre-artifact-a-lod0-mg (meters 999999)))
+              :bounds (static-spherem 0 0 0 4))
+(defskelgroup skel-hero-artifact-2 pre-artifact-b pre-artifact-b-lod0-jg pre-artifact-b-idle-ja
+              ((pre-artifact-b-lod0-mg (meters 999999)))
+              :bounds (static-spherem 0 0 0 4))
+(defskelgroup skel-hero-artifact-3 pre-artifact-c pre-artifact-c-lod0-jg pre-artifact-c-idle-ja
+              ((pre-artifact-c-lod0-mg (meters 999999)))
+              :bounds (static-spherem 0 0 0 4))
+
+(deftype hero-artifact-pickup (turbo-pickup)
+  ((tier uint32)
+   (base-pos vector :inline)
+   (bob-angle float))
+  )
+
+(defstate idle (hero-artifact-pickup)
+  :virtual #t
+  :trans (behavior ()
+    (when (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+              (time-elapsed? (-> self birth-time) (seconds 30)))
+      (go-virtual die)
+      )
+    (when (and (-> self available) *target* (not (focus-test? *target* dead)))
+      (let ((player-pos (new 'stack 'vector)))
+        (vector-copy! player-pos (-> *target* control trans))
+        (set! (-> player-pos w) (meters 1))
+        (when (focus-test? *target* pilot-riding)
+          (let ((car (as-type (handle->process (-> *target* pilot vehicle)) process-drawable)))
+            (when car
+              (vector-copy! player-pos
+                            (-> (the-as collide-shape (-> car root)) root-prim prim-core world-sphere))
+              )
+            )
+          )
+        (when (and (< (vector-vector-xz-distance-squared (-> self root trans) player-pos)
+                      (square (+ (meters 2) (-> player-pos w))))
+                   (< (fabs (- (-> self root trans y) (-> player-pos y)))
+                      (fmax (meters 3) (-> player-pos w))))
+          ;; Disarm before awarding, so no second touch can duplicate the reward.
+          (set! (-> self available) #f)
+          (+! (-> *game-info* hero-artifacts (-> self tier)) 1)
+          (sound-play "money-pickup")
+          (format #t "Hero artifact collected: tier ~D, inventory ~D~%"
+                  (+ (-> self tier) 1) (-> *game-info* hero-artifacts (-> self tier)))
+          (go-virtual die)
+          )
+        )
+      )
+    )
+  :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
+    ;; Collision is intentionally disabled: loot never acts as a road obstacle.
+    (none)
+    )
+  :code sleep-code
+  :post (behavior ()
+    (+! (-> self bob-angle) (* 16384.0 (seconds-per-frame)))
+    (when (> (-> self bob-angle) 65536.0) (+! (-> self bob-angle) -65536.0))
+    (vector-copy! (-> self root trans) (-> self base-pos))
+    (+! (-> self root trans y) (* (meters 0.25) (sin (-> self bob-angle))))
+    (quaternion-axis-angle! (-> self root quat) 0.0 1.0 0.0 (-> self bob-angle))
+    (ja-no-eval :group! (ja-group) :num! (seek!) :frame-num 0.0)
+    (ja-post)
+    )
+  )
+
+(defstate die (hero-artifact-pickup)
+  :virtual #t
+  :code (behavior ()
+    (cleanup-for-death self)
+    (deactivate self)
+    )
+  )
+
+(defbehavior hero-artifact-pickup-init-by-other hero-artifact-pickup
+  ((pos vector) (tier uint32) (owner-level level))
+  (stack-size-set! (-> self main-thread) 1024)
+  (set! (-> self level) owner-level)
+  (set! (-> self tier) tier)
+  (set! (-> self available) #t)
+  (set! (-> self persistent) #f)
+  (set! (-> self collector) (the-as handle #f))
+  (set! (-> self part) (the-as sparticle-launch-control 0))
+  (set! (-> self bob-angle) 0.0)
+  (set-time! (-> self birth-time))
+  (let ((root (new 'process 'collide-shape self (collide-list-enum usually-hit-by-player))))
+    (let ((sphere (new 'process 'collide-shape-prim-sphere root (the-as uint 0))))
+      (set! (-> sphere prim-core collide-as) (collide-spec))
+      (set! (-> sphere prim-core collide-with) (collide-spec))
+      (set-vector! (-> sphere local-sphere) 0.0 0.0 0.0 (meters 1))
+      (set! (-> root total-prims) (the-as uint 1))
+      (set! (-> root root-prim) sphere)
+      )
+    (set! (-> self root) root)
+    )
+  (vector-copy! (-> self root trans) pos)
+  (quaternion-identity! (-> self root quat))
+  (set-vector! (-> self root scale) 3.0 3.0 3.0 1.0)
+  ;; Reuse the turbo pickup's ground probe, not a mission-specific artifact actor.
+  (find-ground self)
+  (vector-copy! (-> self base-pos) (-> self root trans))
+  (initialize-skeleton self
+    (the-as skeleton-group
+      (art-group-get-by-name *level*
+        (cond ((= tier 0) "skel-hero-artifact-1")
+              ((= tier 1) "skel-hero-artifact-2")
+              (else "skel-hero-artifact-3"))
+        (the-as (pointer level) #f)))
+    (the-as pair 0))
+  (cond
+    ((= tier 0)
+     (set-vector! (-> self draw color-mult) 0.15 0.55 1.0 1.0)
+     (set-vector! (-> self draw color-emissive) 0.05 0.25 0.8 1.0))
+    ((= tier 1)
+     (set-vector! (-> self draw color-mult) 0.7 0.2 1.0 1.0)
+     (set-vector! (-> self draw color-emissive) 0.45 0.05 0.65 1.0))
+    (else
+     (set-vector! (-> self draw color-mult) 1.0 0.75 0.15 1.0)
+     (set-vector! (-> self draw color-emissive) 0.65 0.4 0.05 1.0))
+    )
+  (go-virtual idle)
+  )
+
+;; One roll in [0, 100): turbo 55%, one orb 25%, artifacts 12% / 6% / 2%.
+;; Separate pure selection from spawning so the bucket boundaries can be tested.
+(defun hero-marauder-reward-for-roll ((roll int))
+  (cond ((< roll 55) 0)
+        ((< roll 80) 1)
+        ((< roll 92) 2)
+        ((< roll 98) 3)
+        (else 4))
+  )
+
+(defbehavior hero-marauder-reward-spawn process-drawable ((source process-drawable))
+  (let ((reward (hero-marauder-reward-for-roll (rand-vu-int-count 100))))
+    (case reward
+      ((0) (turbo-pickup-spawn (-> source root trans)))
+      ((1)
+       (let ((fact (new 'stack 'fact-info (the-as process source) (pickup-type skill) 1.0)))
+         (set! (-> fact pickup-type) (pickup-type skill))
+         (set! (-> fact pickup-amount) 1.0)
+         (set! (-> fact pickup-spawn-amount) 1.0)
+         (set! (-> fact options) (actor-option fade-out))
+         (set! (-> fact fade-time) (seconds 30))
+         (birth-pickup-at-point (-> source root trans) (pickup-type skill) 1.0 #t *entity-pool* fact)
+         )
+       )
+      (else
+        ;; Entity pool, not the dying car's subtree: loot survives the explosion.
+        (process-spawn hero-artifact-pickup (-> source root trans) (the-as uint32 (- reward 2)) (-> source level)
+                       :name "hero-artifact-pickup" :to *entity-pool*)
+        )
+      )
+    )
+  (none)
+  )

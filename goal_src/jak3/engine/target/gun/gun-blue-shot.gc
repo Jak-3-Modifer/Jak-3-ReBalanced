@@ -17,6 +17,87 @@
 (define-extern *blue-light-test-big-intense* lightning-appearance)
 (define-extern *blue-light-test-small-fade* lightning-appearance)
 
+;; Private Vulcan particles: keep shared blue beams and normal Jak unchanged.
+(defmacro define-darkjak-vulcan-particle (name specs)
+  (set! *last-field-id* -1)
+  `(define ,name
+     (new 'static 'sparticle-launcher
+       :init-specs (new 'static 'inline-array sp-field-init-spec ,(1+ (length specs))
+         ,@(apply process-init-spec specs)
+         (new 'static 'sp-field-init-spec :field (sp-field-id spt-end))))))
+
+(defun spt-func-darkjak-vulcan-color ((system sparticle-system)
+                                   (particle sparticle-cpuinfo)
+                                   (sprite vector))
+  (sparticle-texture-animate system particle sprite)
+  (let ((data (the-as sprite-vec-data-3d sprite)))
+    (set! (-> data r-g-b-a x) 132.0)
+    (set! (-> data r-g-b-a y) 50.0)
+    (set! (-> data r-g-b-a z) 223.0))
+  (none))
+
+(define-darkjak-vulcan-particle *darkjak-vulcan-beam*
+  ((:texture (gun-blue-beam level-default-sprite))
+   (:birth-func 'birth-func-setup-beam)
+   (:num 1.0)
+   (:scale-x (meters 0.3) (meters 0.1))
+   (:scale-y (meters 100) (meters 20))
+   (:r 132.0) (:g 50.0) (:b 223.0) (:a 32.0)
+   (:fade-a 3.2) (:timer (seconds 2.167))
+   (:flags (sp-cpuinfo-flag-0 sp-cpuinfo-flag-2 sp-cpuinfo-flag-14 left-multiply-quat))
+   (:userdata :data (new 'static 'boxed-array :type int32 30 0 0 #x401000 #x401200))
+   (:func 'spt-func-darkjak-vulcan-color)
+   (:next-time (seconds 0.05)) (:next-launcher 232)))
+
+(define-darkjak-vulcan-particle *darkjak-vulcan-flash*
+  ((:texture (gun-enemy-muzzleflash level-default-sprite))
+   (:birth-func 'birth-func-set-quat)
+   (:num 1.0)
+   (:scale-x (meters 1) (meters 1.5))
+   (:scale-y (meters 10) (meters 0.6))
+   (:r 132.0) (:g 50.0) (:b 223.0) (:a 128.0)
+   (:scalevel-x (meters 0.08))
+   (:fade-a -6.4) (:timer (seconds 0.067))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3 sp-cpuinfo-flag-14 left-multiply-quat))))
+
+;; Small, private version of the Dark Jak hotdot sparks (no pickups or damage).
+(define-darkjak-vulcan-particle *darkjak-arc-sparks*
+  ((:texture (hotdot level-default-sprite))
+   (:num 2.0)
+   (:scale-x (meters 0.1) (meters 0.15))
+   (:rot-x 4) (:scale-y :copy scale-x)
+   (:r 255.0) (:g 0.0 64.0) (:b 255.0) (:a 8.0 12.0)
+   (:omega (degrees 0.225))
+   (:vel-y (meters 0.053333335) (meters 0.026666667))
+   (:scalevel-x (meters -0.00033333333)) (:scalevel-y :copy scalevel-x)
+   (:fade-a -0.26666668) (:friction 0.99 0.005)
+   (:timer (seconds 0.25))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3))
+   (:func 'sparticle-motion-blur)
+   (:conerot-x (degrees 0) (degrees 3600))
+   (:conerot-y (degrees 0) (degrees 3600))))
+
+(define-darkjak-vulcan-particle *darkjak-peacemaker-flash*
+  ((:texture (gun-enemy-muzzleflash level-default-sprite))
+   (:birth-func 'birth-func-set-quat)
+   (:num 1.0)
+   (:scale-x (meters 1) (meters 1))
+   (:scale-y (meters 3) (meters 0.6))
+   (:r 132.0) (:g 50.0) (:b 223.0) (:a 128.0)
+   (:scalevel-x (meters 0.08))
+   (:fade-a -6.4) (:timer (seconds 0.067))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3 sp-cpuinfo-flag-14 left-multiply-quat))))
+
+(defun draw-vulcan-colored-beams ((pos vector) (dir vector) (start-dir vector) (impact? symbol))
+  (if (and *target* (focus-test? *target* dark))
+      (begin
+        (draw-beam *darkjak-vulcan-beam* pos dir impact?)
+        (draw-beam *darkjak-vulcan-flash* pos start-dir #f))
+      (begin
+        (draw-beam (-> *part-id-table* 231) pos dir impact?)
+        (draw-beam (-> *part-id-table* 234) pos start-dir #f)))
+  (none))
+
 ;; +++gun-blue-lightning-cmd-msg
 (defenum gun-blue-lightning-cmd-msg
   :type uint64
@@ -365,6 +446,22 @@
 
 (set! (-> *blue-shot-trail* frame-stagger) (the-as uint 1))
 
+;; Snapshot a private purple trail at firing; never tint the shared appearance.
+(define *darkjak-peacemaker-trail* (new 'static 'light-trail-composition))
+(mem-copy! (the-as pointer *darkjak-peacemaker-trail*)
+           (the-as pointer *blue-shot-trail*) (size-of light-trail-composition))
+(define *darkjak-peacemaker-trail-color*
+  (new 'static 'curve-color-fast
+    :xs (new 'static 'vector :y -1.0 :z -2.0 :w -3.0)
+    :ys (new 'static 'inline-array vector 4
+      (new 'static 'vector :x 1.03125 :y 0.390625 :z 1.7421875 :w 128.0)
+      (new 'static 'vector :x 1.03125 :y 0.390625 :z 1.7421875 :w 128.0)
+      (new 'static 'vector :x 1.03125 :y 0.390625 :z 1.7421875 :w 128.0)
+      (new 'static 'vector :x 1.03125 :y 0.390625 :z 1.7421875 :w 128.0))
+    :one-over-x-deltas (new 'static 'vector :x 1.0 :y 1.0 :z 1.0 :w 1.0)))
+(set! (-> *darkjak-peacemaker-trail* color-curve)
+      (the-as curve-color-piecewise *darkjak-peacemaker-trail-color*))
+
 (defmethod init-proj-settings! ((this gun-blue-shot-3))
   (+! (-> *game-info* shots-fired 2) 1.0)
   (set! (-> this attack-mode) 'eco-blue)
@@ -391,7 +488,8 @@
     light-trail-tracker-blue-3
     :to this
     :param-list ((tracked-obj (process->handle this))
-     (appearance *blue-shot-trail*)
+     (appearance (if (and *target* (focus-test? *target* dark))
+                     *darkjak-peacemaker-trail* *blue-shot-trail*))
      (max-num-crumbs (the int (* 0.2 (the float (-> *blue-shot-trail* max-age)))))
      (track-immediately? #t)
      )
@@ -436,7 +534,9 @@
   (let ((sv-144 (-> self gun))
         (sv-148 (new 'stack-no-clear 'projectile-init-by-other-params))
         )
-    (draw-beam (-> *part-id-table* 364) (-> sv-144 fire-point) (-> sv-144 fire-dir-out) #f)
+    (draw-beam (if (focus-test? self dark)
+                  *darkjak-peacemaker-flash* (-> *part-id-table* 364))
+               (-> sv-144 fire-point) (-> sv-144 fire-dir-out) #f)
     (let ((sv-1280 (new 'stack-no-clear 'vector))
           (sv-1284 (new 'stack-no-clear 'inline-array 'target-quality-info 384))
           (sv-1288 0)
@@ -1209,6 +1309,9 @@
 
 (set! (-> *blue-light-test-small-fade* use-accurate-interp?) #t)
 
+(define *darkjak-arc-thin-appearance* (new 'static 'lightning-appearance))
+(define *darkjak-arc-wide-appearance* (new 'static 'lightning-appearance))
+
 (defmethod setup-draw! ((this gun-blue-2-lightning-tracker) (arg0 gun-blue-2-lightning-info))
   (cond
     ((-> arg0 should-draw-extension?)
@@ -1224,11 +1327,23 @@
        )
      )
     )
+  ;; Preserve the original bolt geometry/fading, with private dark-eco textures.
+  (mem-copy! (the-as pointer *darkjak-arc-thin-appearance*)
+             (the-as pointer *blue-light-test*) (size-of lightning-appearance))
+  (mem-copy! (the-as pointer *darkjak-arc-wide-appearance*)
+             (the-as pointer *blue-light-test-big*) (size-of lightning-appearance))
+  (set! (-> *darkjak-arc-thin-appearance* tex-id) (the-as uint #x403a00))
+  (set! (-> *darkjak-arc-wide-appearance* tex-id) (the-as uint #x403a00))
   (dotimes (s4-0 4)
     (let ((s3-0 (-> this lt-array s4-0)))
       (set! (-> s3-0 inner-point-travel-time) (seconds 0.5))
       (set! (-> s3-0 snap-inner-points?) #t)
-      (set! (-> s3-0 appearance) *blue-light-test*)
+      (set! (-> s3-0 appearance)
+            (if (and *target* (focus-test? *target* dark))
+                *darkjak-arc-thin-appearance* *blue-light-test*))
+      (set! (-> s3-0 base-color)
+            (if (and *target* (focus-test? *target* dark))
+                (new 'static 'rgba :r 132 :g 50 :b 223 :a 128) *color-gray*))
       (set! (-> s3-0 fractal-reduction) (/ (* 0.4 (logf 9.0)) (logf 12.0)))
       (set! (-> s3-0 generate-mode) (the-as uint 1))
       (when (< 1 (-> arg0 num-pts))
@@ -1262,7 +1377,12 @@
     (let ((s3-1 (-> this lt-array (+ s4-1 4))))
       (set! (-> s3-1 inner-point-travel-time) (seconds 0.085))
       (set! (-> s3-1 snap-inner-points?) #t)
-      (set! (-> s3-1 appearance) *blue-light-test-big*)
+      (set! (-> s3-1 appearance)
+            (if (and *target* (focus-test? *target* dark))
+                *darkjak-arc-wide-appearance* *blue-light-test-big*))
+      (set! (-> s3-1 base-color)
+            (if (and *target* (focus-test? *target* dark))
+                (new 'static 'rgba :r 132 :g 50 :b 223 :a 128) *color-gray*))
       (set! (-> s3-1 fractal-reduction) (/ (* 0.4 (logf 9.0)) (logf 12.0)))
       (set! (-> s3-1 generate-mode) (the-as uint 1))
       (when (< 1 (-> arg0 num-pts))
@@ -1293,7 +1413,14 @@
       )
     )
   (vector-copy! (-> this root trans) (-> arg0 pts (+ (-> arg0 num-pts) -1)))
-  (when (-> arg0 should-draw-terminal-sparks?)
+  (when (and *target* (focus-test? *target* dark)
+             (> (-> arg0 num-pts) 0)
+             (time-elapsed? (-> this last-spark-time) (seconds 0.25)))
+    (set-time! (-> this last-spark-time))
+    (launch-particles *darkjak-arc-sparks* (-> arg0 pts 0))
+    (launch-particles *darkjak-arc-sparks* (-> this root trans)))
+  (when (and (not (and *target* (focus-test? *target* dark)))
+             (-> arg0 should-draw-terminal-sparks?))
     (when (time-elapsed? (-> this last-spark-time) (-> this spark-time-interval))
       (set-time! (-> this last-spark-time))
       (set! (-> this spark-time-interval)
@@ -1369,6 +1496,7 @@
         )
       )
     (adjust-player-ammo -1.0 (pickup-type ammo-blue))
+    (target-darkjak-drain-gun-eco!)
     (dotimes (v1-20 12)
       (set! (-> *gun-blue-2-targets* v1-20 target) (the-as handle #f))
       (set! (-> *gun-blue-2-targets* v1-20 start-time) 0)
@@ -1432,9 +1560,10 @@
     (+! (-> self sway-angle) (* 65536.0 (seconds-per-frame)))
     (gun-blue-2-lightning-tracker-method-25 self)
     (when (time-elapsed? (-> self last-deduct-ammo-time) (seconds 0.1))
+      (target-darkjak-drain-gun-eco!)
       (adjust-player-ammo-over-time
         (the-as int (- (current-time) (-> self last-deduct-ammo-time)))
-        30.0
+        15.0 ;; About 20 seconds of continuous fire from 300 blue ammo.
         (pickup-type ammo-blue)
         10000.0
         )
@@ -1628,12 +1757,13 @@
 
 (defun find-gun-blue-2-target-old ((arg0 vector) (arg1 int) (arg2 vector))
   (let ((sv-32 (the-as process-drawable #f)))
-    (let ((sv-36 16384.0)
+    (let ((sv-36 (meters 8))
           (v1-1 (new 'stack-no-clear 'vector))
           )
       (vector-copy! v1-1 arg0)
       (let ((sv-40 v1-1))
-        (set! (-> arg0 w) 16384.0)
+        ;; Broad phase covers flying guards; other targets keep the 4m limit.
+        (set! (-> arg0 w) (meters 8))
         (set! (-> sv-40 w) 1.0)
         (let ((s3-0 (new 'stack-no-clear 'array 'collide-shape 384)))
           (countdown (s2-0 (fill-actor-list-for-box *actor-hash* arg0 s3-0 384))
@@ -1645,9 +1775,13 @@
                       (let* ((s0-2 (vector-! (new 'stack-no-clear 'vector) (get-trans (the-as process-focusable s1-1) 3) sv-40))
                              (f0-3 (vector-normalize-ret-len! s0-2 1.0))
                              (f1-1 (vector-dot s0-2 arg2))
+                             ;; Compare the type name without requiring the
+                             ;; level-local robo-hover type to be loaded here.
+                             (robo-hover? (= (-> s1-1 type symbol) 'robo-hover))
                              )
-                        (when (< f0-3 (the-as float sv-36))
-                          (when (< 0.6 f1-1)
+                        (when (and (< f0-3 (the-as float sv-36))
+                                   (< f0-3 (if robo-hover? (meters 8) (meters 4))))
+                          (when (< (if robo-hover? 0.4 0.6) f1-1)
                             (set! sv-32 s1-1)
                             (set! sv-36 f0-3)
                             )
@@ -2327,8 +2461,7 @@
          )
     (init-vf0-vector)
     (let ((s3-1 (vector-! (new 'stack-no-clear 'vector) (-> this root trans) (-> this init-pos))))
-      (draw-beam (-> *part-id-table* 231) (-> this init-pos) s3-1 #t)
-      (draw-beam (-> *part-id-table* 234) (-> this init-pos) (-> this starting-dir) #f)
+      (draw-vulcan-colored-beams (-> this init-pos) s3-1 (-> this starting-dir) #t)
       (let ((s5-0 (-> *part-id-table* 246))
             (s4-0 (-> *part-id-table* 245))
             )
@@ -2390,12 +2523,15 @@
       (set! (-> this damage) 0.0)
       )
   (+! (-> *game-info* shots-hit 2) 1.0)
-  (call-parent-method this arg0 arg1)
+  (let ((base-damage (-> this damage)))
+    (set! (-> this damage) (target-darkjak-gun-damage base-damage))
+    (let ((result (call-parent-method this arg0 arg1)))
+      (set! (-> this damage) base-damage)
+      result))
   )
 
 (defmethod projectile-method-27 ((this gun-blue-shot))
-  (draw-beam (-> *part-id-table* 231) (-> this init-pos) (-> this init-dir) #f)
-  (draw-beam (-> *part-id-table* 234) (-> this init-pos) (-> this starting-dir) #f)
+  (draw-vulcan-colored-beams (-> this init-pos) (-> this init-dir) (-> this starting-dir) #f)
   0
   (none)
   )
@@ -2624,7 +2760,11 @@
            )
       (set! (-> this damage) 0.0)
       )
-  (call-parent-method this arg0 arg1)
+  (let ((base-damage (-> this damage)))
+    (set! (-> this damage) (target-darkjak-gun-damage base-damage))
+    (let ((result (call-parent-method this arg0 arg1)))
+      (set! (-> this damage) base-damage)
+      result))
   )
 
 (defmethod projectile-method-26 ((this gun-blue-shot-2))

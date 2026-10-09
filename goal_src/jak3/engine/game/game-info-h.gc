@@ -419,6 +419,8 @@
    (current-vehicle         vehicle-type-u8)
    (vehicle-turbo-ready     float)
    (percent-complete        float)
+   ;; Hero Mode loot inventory; appended to preserve all existing field offsets.
+   (hero-artifacts          uint32 3)
    )
   (:methods
     (initialize! (_type_ symbol game-save string resetter-spec) _type_)

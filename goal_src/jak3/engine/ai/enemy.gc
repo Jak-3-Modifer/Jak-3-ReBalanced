@@ -2147,18 +2147,35 @@
        (nonzero? (-> *target* lightjak))
        (focus-test? *target* light)
        (not (logtest? (-> *target* lightjak stage) (lightjak-stage ls1)))
-       (logtest? (penetrate
-                   jak-yellow-shot
-                   jak-red-shot
-                   jak-blue-shot
-                   jak-dark-shot
-                   jak-red-shockwave
-                   jak-dark-nuke
-                   jak-dark-blackhole
-                   penetrate40
-                   )
-                 (-> arg0 penetrate-using))
+       (or (logtest? (penetrate
+                       jak-yellow-shot
+                       jak-red-shot
+                       jak-blue-shot
+                       jak-dark-shot
+                       jak-red-shockwave
+                       jak-dark-nuke
+                       jak-dark-blackhole
+                       penetrate40
+                       )
+                     (-> arg0 penetrate-using))
+           ;; Scatter Gun damage is sent directly as an eco-red attack,
+           ;; without a projectile penetrate flag.
+           (and (= (-> arg0 mode) 'eco-red)
+                (= (handle->process (-> arg0 attacker)) *target*)))
        )
+  )
+
+(defun darkjak-player-gun-attack? ((attack attack-info))
+  "Recognize Morph-Gun damage while Jak is in Dark form, excluding melee."
+  (and *target*
+       (focus-test? *target* dark)
+       (or (logtest? (penetrate jak-yellow-shot jak-red-shot jak-blue-shot
+                               jak-dark-shot jak-red-shockwave jak-dark-nuke
+                               jak-dark-blackhole penetrate40)
+                     (-> attack penetrate-using))
+           (= (-> attack mode) 'gravity-end)
+           (and (= (-> attack mode) 'eco-red)
+                (= (handle->process (-> attack attacker)) *target*))))
   )
 
 (defmethod get-damage-from-attack ((this enemy) (arg0 object) (arg1 event-message-block))

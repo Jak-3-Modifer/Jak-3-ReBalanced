@@ -26,6 +26,7 @@
 (define *v-turtle-weapon-loadout* 0)
 (define *v-turtle-ability-loadout* 0)
 (define *v-turtle-defense-loadout* 0)
+(define *v-turtle-vehicle-toughness-equipped?* #f)
 (define *v-turtle-loadout-menu-open?* #f)
 (define *v-turtle-loadout-menu-page* 0)
 (define *v-turtle-loadout-menu-selection* 0)
@@ -35,8 +36,6 @@
   )
 
 (defun set-v-turtle-active-loadout! ((loadout int))
-  ;; Vehicle Toughness uses the same live secret bit as the Shop entry.  This
-  ;; keeps both menus synchronized and avoids applying two toughness bonuses.
   (cond
     ((= loadout 0)
      (set! *v-turtle-weapon-loadout* loadout))
@@ -45,9 +44,7 @@
            (if (v-turtle-mass-inverter-unlocked?) 1 0)))
     ((or (= loadout 2) (= loadout 3) (= loadout 6) (= loadout 7))
      (set! *v-turtle-ability-loadout* loadout)
-     (if (= loadout 2)
-         (logior! (-> *game-info* secrets) (game-secrets vehicle-hit-points))
-         (logclear! (-> *game-info* secrets) (game-secrets vehicle-hit-points))))
+     (set! *v-turtle-vehicle-toughness-equipped?* (= loadout 2)))
     (else
       (set! *v-turtle-defense-loadout* loadout)))
   (none)
@@ -55,9 +52,7 @@
 
 (defun set-v-turtle-ability-loadout! ((loadout int))
   (set! *v-turtle-ability-loadout* loadout)
-  (if (= loadout 2)
-      (logior! (-> *game-info* secrets) (game-secrets vehicle-hit-points))
-      (logclear! (-> *game-info* secrets) (game-secrets vehicle-hit-points)))
+  (set! *v-turtle-vehicle-toughness-equipped?* (= loadout 2))
   (none)
   )
 
@@ -659,6 +654,10 @@
   )
 
 (defmethod apply-damage ((this v-turtle) (arg0 float) (arg1 rigid-body-impact))
+  (when (and *v-turtle-vehicle-toughness-equipped?*
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+    (set! arg0 (/ arg0 2)))
   (when *v-turtle-damage-immunity-active?*
     (set! arg0 0.0)
     )

@@ -7,6 +7,20 @@
 
 ;; DECOMP BEGINS
 
+;; Match melee's forced/endless Dark Jak exemptions; ammo is still spent normally.
+(defun target-darkjak-drain-gun-eco! ()
+  (when (and *target* (focus-test? *target* dark) (-> *target* darkjak)
+             (not (logtest? (-> *target* darkjak stage)
+                           (darkjak-stage force-on endless-dark))))
+    (send-event *target* 'get-pickup (pickup-type eco-pill-dark) -4.0))
+  (none))
+
+(defun target-darkjak-gun-damage ((damage float))
+  ;; Add to real weapon damage, never turn a non-damaging effect into an attack.
+  (if (and (> damage 0.0) *target* (focus-test? *target* dark))
+      (+ damage 1.0)
+      damage))
+
 (define *gun-walk-mods*
   (new 'static 'surface
     :name 'run
@@ -102,11 +116,28 @@
     )
   )
 
+(defun target-darkjak-gun-blocked? ((player target))
+  ;; Keep gun overlays out of Dark Jak's full-body attacks and transformations.
+  (and (focus-test? player dark)
+       (or (focus-test? player dangerous)
+           (logtest? (-> player control current-surface flags) (surface-flag attack spin))
+           (not (-> *setting-control* user-current gun))
+           (and (cpad-hold? (-> player control cpad number) l1)
+                (cpad-hold? (-> player control cpad number) r1))
+           (and (-> player state)
+                (or (= (-> player state name) 'target-darkjak-get-on)
+                    (= (-> player state name) 'target-darkjak-get-off)
+                    (= (-> player state name) 'target-darkjak-smack-charge)
+                    (= (-> player state name) 'target-darkjak-smack)
+                    (= (-> player state name) 'target-darkjak-bomb0)
+                    (= (-> player state name) 'target-darkjak-bomb1))))))
+
 (defbehavior want-to-gun? process ((arg0 target) (arg1 symbol))
   (local-vars (v1-43 symbol))
   (and (logtest? (-> arg0 game features) (game-feature gun))
        (time-elapsed? (-> arg0 gun gun-time) (seconds 0.1))
-       (not (focus-test? arg0 dead hit board mech dark teleporting))
+       (not (focus-test? arg0 dead hit board mech teleporting))
+       (not (target-darkjak-gun-blocked? arg0))
        (not (logtest? (surface-flag gun-inactive gun-hide gun-off) (-> arg0 control current-surface flags)))
        (not (logtest? (target-flags prevent-gun invisible) (-> arg0 target-flags)))
        (logtest? (logand (game-feature
@@ -239,7 +270,7 @@
   )
 
 (defbehavior target-gun-init target ((arg0 pickup-type))
-  (target-darkjak-end-mode #f)
+  ;; Gun mode is an overlay: leave Dark Jak's morph and eco drain active.
   (let ((gp-0 (-> self gun)))
     (if (zero? (-> gp-0 hips))
         (set! (-> gp-0 hips) (new 'process 'joint-mod (joint-mod-mode rotate) self 38))
@@ -856,15 +887,9 @@
          (set! (-> self gun track-turn-range) 409600.0)
          (set! (-> self gun track-angle-mult) 1.75)
          (set! (-> self gun track-require) (the-as uint 26))
-         (set! (-> self gun fire-delay)
-               ;; Hero Mode Yellow 1 uses a 0.45-second cooldown after its
-               ;; three-shot burst. Normal Mode retains the vanilla delay.
-               (the-as uint
-                 (if (= (the-as int arg0) 29)
-                     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode)) 135 171)
-                     96
-                     ))
-               )
+         ;; Blaster: nearest whole tick to 0.445s at 300 ticks/sec (134).
+         ;; Beam Reflexor retains its 96-tick delay.
+         (set! (-> self gun fire-delay) (the-as uint (if (= (the-as int arg0) 29) 134 96)))
          (set! (-> self gun combo-fire-delay) (the-as uint 30))
          (set! (-> self gun track-beam-size) 819.2)
          (remove-setting! 'gun-min-height)
@@ -1363,7 +1388,7 @@
   (local-vars (v1-64 int) (v1-102 int) (v1-140 int))
   (update (-> arg0 ext-anim-control))
   (when (and (not (paused?))
-             (not (and (focus-test? arg0 dark) (nonzero? (-> arg0 darkjak))))
+             (not (target-darkjak-gun-blocked? arg0))
              (or (not (logtest? (surface-flag sf29) (-> arg0 control current-surface flags)))
                  (-> *setting-control* user-current change-gun)
                  )
@@ -1619,7 +1644,7 @@
         (vector-copy! s4-0 (if (and (or (= (-> *cpad-list* cpads (-> self control cpad number) stick0-speed) 0.0)
                                         (logtest? (surface-flag gun-strafe) (-> self control current-surface flags))
                                         )
-                                    (not (and (focus-test? self dark) (nonzero? (-> self darkjak))))
+                                    (not (target-darkjak-gun-blocked? self))
                                     )
                                (-> self gun fire-dir)
                                (-> self control to-target-pt-xz)
@@ -2004,6 +2029,12 @@
   )
 
 (defbehavior target-gun-joint-pre0 target ()
+  (when (and (using-gun? self) (target-darkjak-gun-blocked? self))
+    ;; #f remembers the selected weapon, allowing the normal gun code to resume.
+    (target-gun-end-mode #f)
+    (set! (-> self skel top-anim interp) 0.0)
+    (set! (-> self gun fire-pending) 0)
+    (set! (-> self gun gun-delay-fire) 0.0))
   (if (!= (not (logtest? (-> self game features) (game-feature gun))) (not (-> self gun gun)))
       (target-gun-setup (logtest? (-> self game features) (game-feature gun)))
       )
@@ -2013,7 +2044,8 @@
   (cond
     ((and (cpad-pressed? (-> self control cpad number) r1)
           (not (time-elapsed? (-> self gun combo-window-start) (seconds 0.7)))
-          (not (focus-test? self mech dark))
+          (not (focus-test? self mech))
+          (not (target-darkjak-gun-blocked? self))
           (not (logtest? (surface-flag gun-off) (-> self control current-surface flags)))
           (not (logtest? (target-flags prevent-gun invisible) (-> self target-flags)))
           (zero? (-> self gun track-target-hold-time))
@@ -2066,7 +2098,8 @@
        )
      )
     ((and (cpad-pressed? (-> self control cpad number) r1)
-          (not (focus-test? self mech dark))
+          (not (focus-test? self mech))
+          (not (target-darkjak-gun-blocked? self))
           (using-gun? self)
           (logtest? (surface-flag gun-turn-fast) (-> self control current-surface flags))
           (not (logtest? (target-flags prevent-gun invisible) (-> self target-flags)))
@@ -2888,7 +2921,7 @@
                                        )
                              )
                         (not (-> *setting-control* user-current gun))
-                        (focus-test? self dead dark)
+                        (focus-test? self dead)
                         (-> self board latch?)
                         )
                     )
@@ -2952,6 +2985,12 @@
                          )
                 )
            (send-event (handle->process (-> self gun track-target 0 handle)) 'tracked-fire (-> gp-0 gun-type))
+           ;; Charge once per shot, not per pellet, bounce, or enemy hit.
+           ;; Beam ticks, drone bullets, and charged red blasts handle their own cost.
+           (unless (or (= (-> gp-0 gun-type) (pickup-type gun-blue-2))
+                       (= (-> gp-0 gun-type) (pickup-type gun-yellow-3))
+                       (= (-> gp-0 gun-type) (pickup-type gun-red-2)))
+             (target-darkjak-drain-gun-eco!))
            (case (-> gp-0 gun-type)
              (((pickup-type gun-blue-1)
                (pickup-type gun-yellow-1)
@@ -3330,78 +3369,36 @@
           )
       (case (-> gp-0 gun-control)
         ((1)
-         (cond
-           ;; Yellow 1 prototype: one press queues three rounds.  The first
-           ;; fires immediately, the next two are spaced 0.10 seconds apart,
-           ;; and another burst cannot begin until 0.45 seconds after round 3.
-           ((and (= (-> gp-0 gun-type) (pickup-type gun-yellow-1))
-                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-            (when (and (cpad-pressed? (-> self control cpad number) r1)
-                       (time-elapsed? (-> gp-0 fire-time) (seconds 0.45))
-                       (or (>= (the-as float
-                                      (send-event *target* 'query 'pickup (pickup-type ammo-yellow)))
-                               3.0)
-                           (logtest? (target-flags tf16) (-> self target-flags))
-                           (logtest? (game-secrets endless-ammo) (-> self game secrets))
-                           )
-                       )
-              (set-time! (-> gp-0 fire-pending-time))
-              (set! (-> gp-0 fire-pending) 3)
-              (set! (-> gp-0 fire-charge) 0.5)
-              )
-            (when (and (> (-> gp-0 fire-pending) 0)
-                       (or (= (-> gp-0 fire-pending) 3)
-                           (time-elapsed? (-> gp-0 fire-time) (seconds 0.1))
-                           )
-                       (-> gp-0 active?)
-                       )
-              (seekl! (-> gp-0 fire-pending) 0 1)
-              (cond
-                ((send-event self 'gun (-> gp-0 gun-type))
-                 (set-time! (-> gp-0 fire-time))
-                 )
-                (else
-                  (set! (-> gp-0 fire-pending) 0)
-                  (set! (-> gp-0 fire-time) 0)
-                  0
-                  )
-                )
-              #t
-              )
-            )
-           (else
-             (when (and (cpad-pressed? (-> self control cpad number) r1)
-                        (< (the-as time-frame (+ (-> gp-0 fire-delay) -30)) (- (current-time) (-> gp-0 fire-time)))
-                        )
-               (set-time! (-> gp-0 fire-pending-time))
-               (if (zero? (-> self gun fire-pending))
-                   (+! (-> self gun fire-pending) 1)
-                   )
-               (set! (-> gp-0 fire-charge) 0.5)
+         (when (and (cpad-pressed? (-> self control cpad number) r1)
+                    (< (the-as time-frame (+ (-> gp-0 fire-delay) -30)) (- (current-time) (-> gp-0 fire-time)))
+                    )
+           (set-time! (-> gp-0 fire-pending-time))
+           (if (zero? (-> self gun fire-pending))
+               (+! (-> self gun fire-pending) 1)
                )
-             (when (and (or (time-elapsed? (-> gp-0 fire-time) (the-as time-frame (-> gp-0 fire-delay)))
-                            (case (-> gp-0 combo-window-state)
-                              (('target-attack-air 'target-attack 'target-running-attack)
-                               (time-elapsed? (-> gp-0 fire-time) (the-as time-frame (-> gp-0 combo-fire-delay)))
-                               )
-                              )
-                            )
-                        (> (-> gp-0 fire-pending) 0)
-                        (-> self gun active?)
+           (set! (-> gp-0 fire-charge) 0.5)
+           )
+         (when (and (or (time-elapsed? (-> gp-0 fire-time) (the-as time-frame (-> gp-0 fire-delay)))
+                        (case (-> gp-0 combo-window-state)
+                          (('target-attack-air 'target-attack 'target-running-attack)
+                           (time-elapsed? (-> gp-0 fire-time) (the-as time-frame (-> gp-0 combo-fire-delay)))
+                           )
+                          )
                         )
-               (seekl! (-> self gun fire-pending) 0 1)
-               (cond
-                 ((send-event self 'gun (-> gp-0 gun-type))
-                  (set-time! (-> self gun fire-time))
-                  )
-                 (else
-                   (set! (-> self gun fire-time) 0)
-                   0
-                   )
-                 )
-               #t
+                    (> (-> gp-0 fire-pending) 0)
+                    (-> self gun active?)
+                    )
+           (seekl! (-> self gun fire-pending) 0 1)
+           (cond
+             ((send-event self 'gun (-> gp-0 gun-type))
+              (set-time! (-> self gun fire-time))
+              )
+             (else
+               (set! (-> self gun fire-time) 0)
+               0
                )
              )
+           #t
            )
          )
         ((2)

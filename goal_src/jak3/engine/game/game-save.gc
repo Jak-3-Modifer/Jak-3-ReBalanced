@@ -53,6 +53,9 @@
   (custom-orbs-mask-1 231)
   (custom-orbs-mask-2 232)
   (custom-orbs-mask-3 233)
+  (hero-artifact-tier-1 234)
+  (hero-artifact-tier-2 235)
+  (hero-artifact-tier-3 236)
 
   (task-list 300)
   (perm-list 301)
@@ -412,6 +415,9 @@
     (((game-save-elt custom-orbs-mask-3))
      "custom-orbs-mask-3"
      )
+    (((game-save-elt hero-artifact-tier-1)) "hero-artifact-tier-1")
+    (((game-save-elt hero-artifact-tier-2)) "hero-artifact-tier-2")
+    (((game-save-elt hero-artifact-tier-3)) "hero-artifact-tier-3")
     (else
       "*unknown*"
       )
@@ -1701,6 +1707,17 @@
           )
         )
       )
+    ;; Append scalar tags without changing the existing save layout/version.
+    ;; Old saves have none of these tags and therefore start with zero artifacts.
+    (dotimes (tier 3)
+      (let ((tag (the-as game-save-tag (&+ (the-as pointer (-> save tag)) (-> save length)))))
+        (set! (-> tag elt-type) (the-as game-save-elt (+ (game-save-elt hero-artifact-tier-1) tier)))
+        (set! (-> tag elt-count) 0)
+        (set! (-> tag elt-size) 0)
+        (set! (-> tag user-uint64) (the-as uint64 (-> this hero-artifacts tier)))
+        (+! (-> save length) 16)
+        )
+      )
     (if (< (-> save allocated-length) (-> save length))
         (format
           0
@@ -1714,6 +1731,10 @@
   )
 
 (defmethod load-game ((this game-info) (arg0 game-save))
+  ;; Also prevents inventory leaking from a previously loaded save into an old save.
+  (dotimes (tier 3)
+    (set! (-> this hero-artifacts tier) 0)
+    )
   (let ((v1-0 (the-as object (-> arg0 tag))))
     (while (< (the-as int v1-0) (the-as int (&-> arg0 tag 0 user-int8 (-> arg0 length))))
       (case (-> (the-as (inline-array game-save-tag) v1-0) 0 elt-type)
@@ -1918,6 +1939,11 @@
          )
         (((game-save-elt custom-orbs-mask-3))
          (set! (-> this custom-orbs-mask-3) (-> (the-as game-save-tag s4-0) user-uint64))
+         )
+        (((game-save-elt hero-artifact-tier-1) (game-save-elt hero-artifact-tier-2) (game-save-elt hero-artifact-tier-3))
+         (let ((tier (- (-> (the-as game-save-tag s4-0) elt-type) (game-save-elt hero-artifact-tier-1))))
+           (set! (-> this hero-artifacts tier) (-> (the-as game-save-tag s4-0) user-uint64))
+           )
          )
         (((game-save-elt gem))
          (set! (-> this gem) (-> (the-as game-save-tag s4-0) user-float0))
@@ -2226,9 +2252,9 @@
   ;; Mode never permits those cheats, including on already-created saves.
   (when (logtest? (-> this secrets) (game-secrets hero-mode))
     (logclear! (-> this secrets)
-               (game-secrets endless-ammo invulnerable endless-dark endless-light))
+               (game-secrets endless-ammo invulnerable endless-dark endless-light vehicle-hit-points))
     (logclear! (-> this purchase-secrets)
-               (game-secrets endless-ammo invulnerable endless-dark endless-light))
+               (game-secrets endless-ammo invulnerable endless-dark endless-light vehicle-hit-points))
     )
   arg0
   )

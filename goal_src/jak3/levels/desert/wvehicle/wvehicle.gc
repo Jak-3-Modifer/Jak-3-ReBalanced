@@ -10,6 +10,9 @@
 (define *sand-shark-repair-active?* #f)
 (define *sand-shark-repair-update-seen?* #f)
 (define *sand-shark-repair-time* (the-as time-frame 0))
+(define *v-snake-regenerative-armor-equipped?* #f)
+(define *v-snake-emergency-repair-equipped?* #f)
+(define *v-snake-emergency-repair-armed?* #f)
 
 ;; Dust Demon drivetrain selection: RWD by default, with player D-pad control.
 (define *dust-demon-4wd?* #f)
@@ -377,10 +380,12 @@
     ;; The damage callback owns the timer; polling HP here restarted it on
     ;; every small health change and could keep repair from ever firing.
     (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
-               (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+               (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                   (not *v-snake-regenerative-armor-equipped?*)))
       (set! *sand-shark-repair-active?* #f)
       (set! *sand-shark-repair-update-seen?* #f))
     (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+               *v-snake-regenerative-armor-equipped?*
                (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
       (when (and *sand-shark-repair-active?*
                  (not *sand-shark-repair-update-seen?*))
@@ -391,7 +396,7 @@
                  (> (-> this hit-points) 0.0)
                  (< (-> this hit-points) 1.0)
                  (not (logtest? (vehicle-flag dead) (-> this v-flags)))
-                 (time-elapsed? *sand-shark-repair-time* (seconds 1.5)))
+                 (time-elapsed? *sand-shark-repair-time* (seconds 3)))
         (set! (-> this hit-points)
               (fmin 1.0 (+ (-> this hit-points) (-> this info damage inv-hit-points))))
         (set-time! *sand-shark-repair-time*)
@@ -401,6 +406,23 @@
                (or (>= (-> this hit-points) 1.0)
                    (<= (-> this hit-points) 0.0)))
       (set! *sand-shark-repair-active?* #f))
+    ;; Emergency Repair is intentionally a player-triggered, one-shot defense.
+    ;; D-pad right arms or disarms it; it restores 25% maximum health only after
+    ;; the driven Sand Shark reaches 10% health or less.
+    (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+               *v-snake-emergency-repair-equipped?*
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (cpad-pressed? 0 right))
+      (set! *v-snake-emergency-repair-armed?*
+            (not *v-snake-emergency-repair-armed?*)))
+    (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+               *v-snake-emergency-repair-equipped?*
+               *v-snake-emergency-repair-armed?*
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (< 0.0 (-> this hit-points))
+               (<= (-> this hit-points) 0.1))
+      (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
+      (set! *v-snake-emergency-repair-armed?* #f))
     (let ((v1-39 *game-info*))
       (set! (-> v1-39 health-bar-vehicle) (-> this hit-points))
       (set! (-> v1-39 race-number-turbos) (the int (-> this turbo-supply)))
@@ -654,7 +676,10 @@
   )
 
 (defmethod vehicle-method-92 ((this wvehicle) (arg0 vehicle-controls))
-  (seek! (-> this controls steering) (-> arg0 steering) (* 8.0 (seconds-per-frame)))
+  ;; Sand Shark: 0.2 seconds from neutral to full steering, not an instant snap.
+  (seek! (-> this controls steering) (-> arg0 steering)
+         (* (if (= (-> this info vehicle-type) (vehicle-type-u8 v-snake)) 5.0 8.0)
+            (seconds-per-frame)))
   (seek! (-> this controls lean-z) (-> arg0 lean-z) (* 8.0 (seconds-per-frame)))
   (set! (-> this controls handbrake) (-> arg0 handbrake))
   (let ((f0-11 (-> arg0 throttle))

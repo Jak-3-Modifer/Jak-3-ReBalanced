@@ -753,6 +753,21 @@
      (set! (-> this current-options) *select-scene-options*)
      )
     (('inventory)
+     ;; This PC override is the live pause-menu entry point. The original
+     ;; progress method is replaced when progress-pc is loaded.
+     (let* ((inventory (the-as menu-inventory (-> *inventory* options 0)))
+            (hero? (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+            (screens (if hero? *hero-inventory-screens* *normal-inventory-screens*)))
+       (when (or hero? (!= (-> inventory screens) screens))
+         (set! (-> inventory current-index) 0.0)
+         (set! (-> inventory target-index) 0.0))
+       (set! (-> inventory screens) screens)
+       (when hero?
+         (format #t "Hero artifact inventory opened: ~D pages, counts ~D / ~D / ~D~%"
+                 (-> screens length)
+                 (-> *game-info* hero-artifacts 0)
+                 (-> *game-info* hero-artifacts 1)
+                 (-> *game-info* hero-artifacts 2))))
      (set! (-> this current-options) *inventory*)
      )
     (('bigmap)

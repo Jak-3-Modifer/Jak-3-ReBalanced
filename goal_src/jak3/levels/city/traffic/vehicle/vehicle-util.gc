@@ -543,7 +543,10 @@
             )
         (set! arg0 0.0)
         )
-    (if (logtest? (game-secrets vehicle-hit-points) (-> *game-info* secrets))
+    ;; The shop secret remains Normal Mode-only. Hero Mode applies toughness
+    ;; inside the selected vehicle's own loadout handler.
+    (if (and (not (logtest? (game-secrets hero-mode) (-> *game-info* secrets)))
+             (logtest? (game-secrets vehicle-hit-points) (-> *game-info* secrets)))
         (set! arg0 (/ arg0 2))
         )
     )

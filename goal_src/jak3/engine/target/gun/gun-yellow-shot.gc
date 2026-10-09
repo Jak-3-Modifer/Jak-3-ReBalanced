@@ -7,6 +7,31 @@
 
 ;; DECOMP BEGINS
 
+;; One short-lived dark-eco spark per Dark Jak Gyro Burster shot.
+(defmacro define-darkjak-gyro-particle (name specs)
+  (set! *last-field-id* -1)
+  `(define ,name
+     (new 'static 'sparticle-launcher
+       :init-specs (new 'static 'inline-array sp-field-init-spec ,(1+ (length specs))
+         ,@(apply process-init-spec specs)
+         (new 'static 'sp-field-init-spec :field (sp-field-id spt-end))))))
+
+(define-darkjak-gyro-particle *darkjak-gyro-sparks*
+  ((:texture (hotdot level-default-sprite))
+   (:num 1.0)
+   (:scale-x (meters 0.1) (meters 0.15))
+   (:rot-x 4) (:scale-y :copy scale-x)
+   (:r 255.0) (:g 0.0 64.0) (:b 255.0) (:a 8.0 12.0)
+   (:omega (degrees 0.225))
+   (:vel-y (meters 0.053333335) (meters 0.026666667))
+   (:scalevel-x (meters -0.00033333333)) (:scalevel-y :copy scalevel-x)
+   (:fade-a -0.26666668) (:friction 0.99 0.005)
+   (:timer (seconds 0.25))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3))
+   (:func 'sparticle-motion-blur)
+   (:conerot-x (degrees 0) (degrees 3600))
+   (:conerot-y (degrees 0) (degrees 3600))))
+
 (deftype gun-yellow-shot (projectile)
   ((hit-actor?         symbol)
    (tail-pos           vector  :inline)
@@ -1053,6 +1078,10 @@
 
 (defmethod projectile-method-24 ((this gun-yellow-shot))
   (draw-beam (-> this muzzle-flash-part) (-> this tail-pos) (-> this starting-dir) #f)
+  (when (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+    (let ((pos (vector-normalize-copy! (new 'stack-no-clear 'vector) (-> this starting-dir) 2048.0)))
+      (vector+! pos (-> this tail-pos) pos)
+      (launch-particles (-> *part-id-table* 867) pos)))
   0
   (none)
   )
@@ -1113,27 +1142,22 @@
       (set! (-> v1-1 attacker-velocity quad) (-> this pre-move-transv quad))
       (logior! (-> v1-1 mask) (attack-mask attacker-velocity))
       )
-    ;; Hero Mode Yellow Gun 1 prototype damage falls off with distance from the
-    ;; muzzle. Normal Mode retains the standard range and upgrade damage.
+    ;; Yellow Gun 1 uses the normal range and upgrade damage in every mode.
     (if (and (not (type? this gun-yellow-shot-2))
          (not (type? this gun-yellow-shot-3)))
       (let ((distance (vector-vector-distance (-> this starting-pos) (-> this root trans))))
-        (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-            (set! (-> v1-1 damage)
-                  (cond
-                    ((<= distance (meters 10)) 2.0)
-                    ((<= distance (meters 20)) 1.0)
-                    (else 0.75)
-                    ))
-            (set! (-> v1-1 damage)
-                  (if (> distance (meters 15))
-                      (if (logtest? (game-secrets gun-upgrade-yellow-1) (-> *game-info* secrets)) 5.0 4.0)
-                      (if (logtest? (game-secrets gun-upgrade-yellow-1) (-> *game-info* secrets)) 2.0 1.0)
-                      ))
-            )
+        (set! (-> v1-1 damage)
+              (if (> distance (meters 15))
+                  (if (logtest? (game-secrets gun-upgrade-yellow-1) (-> *game-info* secrets)) 5.0 4.0)
+                  (if (logtest? (game-secrets gun-upgrade-yellow-1) (-> *game-info* secrets)) 2.0 1.0)
+                  ))
         )
       (set! (-> v1-1 damage) (-> this damage))
       )
+    ;; Reflexor bonus applies only before its first successful enemy hit.
+    (when (or (not (type? this gun-yellow-shot-2))
+              (= (-> (the-as gun-yellow-shot-2 this) enemy-hit-count) 0))
+      (set! (-> v1-1 damage) (target-darkjak-gun-damage (-> v1-1 damage))))
     (set! (-> v1-1 vehicle-damage-factor) (-> this vehicle-damage-factor))
     (set! (-> v1-1 vehicle-impulse-factor) (-> this vehicle-impulse-factor))
     (set! (-> v1-1 control) -0.5)
@@ -1171,6 +1195,12 @@
 (defmethod projectile-method-26 ((this gun-yellow-shot))
   (let ((v1-8
           (cond
+            ((eq? (-> this main-shot-part) (-> *part-id-table* 863))
+             (let ((group (-> *part-group-id-table* 214)))
+               (vector-copy! (-> *launch-matrix* trans) (-> this root trans))
+               (if (logtest? (-> group flags) (sp-group-flag sp13))
+                   (part-tracker-spawn part-tracker-subsampler :to *entity-pool* :group group)
+                   (part-tracker-spawn part-tracker :to *entity-pool* :group group))))
             ((-> this hit-actor?)
              (cond
                ((logtest? (-> group-gun-yellow-shot-hit-object flags) (sp-group-flag sp13))
@@ -1624,8 +1654,11 @@
            )
           (else
             (set-time! (-> arg0 last-collide-time))
-            (launch-particles (-> *part-id-table* 272) (-> arg0 hit-pos))
-            (launch-particles (-> *part-id-table* 273) (-> arg0 hit-pos))
+            (if (eq? (-> arg0 main-shot-part) (-> *part-id-table* 863))
+                (launch-particles (-> *part-id-table* 864) (-> arg0 hit-pos))
+                (begin
+                  (launch-particles (-> *part-id-table* 272) (-> arg0 hit-pos))
+                  (launch-particles (-> *part-id-table* 273) (-> arg0 hit-pos))))
             (let ((a0-32 (new 'stack-no-clear 'vector)))
               (vector-copy! a0-32 (-> arg0 root transv))
               (vector-normalize! a0-32 65536.0)
@@ -1651,8 +1684,7 @@
   (set! (-> this timeout) (seconds 3))
   (set! (-> this sound-id) (new-sound-id))
   (set! (-> this damage) 2.0)
-  (when (and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-             (logtest? (game-secrets gun-upgrade-yellow-1) (-> *game-info* secrets)))
+  (when (logtest? (game-secrets gun-upgrade-yellow-1) (-> *game-info* secrets))
     (set! (-> this damage) 3.0)
     )
   (logior! (-> this options) (projectile-options po13))
@@ -1660,6 +1692,14 @@
   (set! (-> this main-shot-part) (-> *part-id-table* 264))
   (set! (-> this shot-aim-part) (-> *part-id-table* 267))
   (set! (-> this shot-ring-part) (-> *part-id-table* 266))
+  ;; Gekko/metalhead-shot appearance only; retain Blaster gameplay settings.
+  ;; Subclasses call this method too, so leave the other yellow guns alone.
+  (when (and *target* (focus-test? *target* dark)
+             (not (type? this gun-yellow-shot-2))
+             (not (type? this gun-yellow-shot-3)))
+    (set! (-> this main-shot-part) (-> *part-id-table* 863))
+    (set! (-> this muzzle-flash-part) (-> *part-id-table* 866))
+    (set! (-> this shot-aim-part) (-> *part-id-table* 865)))
   0
   (none)
   )
@@ -1667,11 +1707,12 @@
 ;; WARN: Return type mismatch (pointer process) vs none.
 (defmethod init-proj-settings! ((this gun-yellow-shot-2))
   (call-parent-method this)
+  (set! (-> this enemy-hit-count) 0)
   (set! (-> this actor-deflect?) #f)
   (set! (-> this last-hit-enemy) (the-as handle #f))
-  (set! (-> this damage) 1.5)
+  (set! (-> this damage) 2.0)
   (if (logtest? (game-secrets gun-upgrade-yellow-2) (-> *game-info* secrets))
-      (set! (-> this damage) 2.0)
+      (set! (-> this damage) 3.0)
       )
   (set! (-> this snd-trail) (new-sound-id))
   (set! (-> this hit-yet?) #f)
@@ -1682,15 +1723,21 @@
   (dotimes (v1-9 6)
     (set! (-> this ignore-list v1-9 hand) (the-as handle #f))
     )
-  (set! (-> this max-actor-deflect-count) 4)
-  (set! (-> this timeout) (seconds 3))
+  (set! (-> this max-actor-deflect-count) 2)
+  (set! (-> this timeout) (seconds 2))
   (when (logtest? (game-secrets gun-upgrade-yellow-2) (-> *game-info* secrets))
-    (set! (-> this max-actor-deflect-count) 7)
-    (set! (-> this timeout) (seconds 5))
+    (set! (-> this max-actor-deflect-count) 4)
+    (set! (-> this timeout) (seconds 3))
     )
   (set! (-> this muzzle-flash-part) (-> *part-id-table* 274))
+  (when (and *target* (focus-test? *target* dark))
+    (set! (-> this main-shot-part) (-> *part-id-table* 863))
+    (set! (-> this muzzle-flash-part) (-> *part-id-table* 866))
+    (set! (-> this shot-aim-part) (-> *part-id-table* 865)))
   (sound-play "yellow2-shot" :pitch 1)
-  (light-trail-tracker-spawn
+  ;; The Gekko beam supplies its own particles instead of the yellow ribbon.
+  (unless (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+    (light-trail-tracker-spawn
     light-trail-tracker-projectile
     :to *target*
     :param-list ((tracked-obj (process->handle this))
@@ -1698,6 +1745,7 @@
      (max-num-crumbs (the int (* 0.25 (the float (-> *yellow-shot-2-trail* max-age)))))
      (track-immediately? #t)
      )
+    )
     )
   (none)
   )
@@ -1757,18 +1805,19 @@
             (send-event (handle->process v1-28) 'notify 'attack s5-0)
             )
           (if (>= (-> this enemy-hit-count) 1)
-              (set! (-> this damage) 1.0)
+              (set! (-> this damage)
+                    (if (logtest? (game-secrets gun-upgrade-yellow-2) (-> *game-info* secrets))
+                        0.5
+                        1.0
+                        ))
               )
-          (cond
-            ((logtest? (-> group-gun-yellow-shot-hit-object flags) (sp-group-flag sp13))
-             (vector-copy! (-> *launch-matrix* trans) (-> this root trans))
-             (part-tracker-spawn part-tracker-subsampler :to *entity-pool* :group group-gun-yellow-shot-hit-object)
-             )
-            (else
-              (vector-copy! (-> *launch-matrix* trans) (-> this root trans))
-              (part-tracker-spawn part-tracker :to *entity-pool* :group group-gun-yellow-shot-hit-object)
-              )
-            )
+          (let ((group (if (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+                          (-> *part-group-id-table* 214)
+                          group-gun-yellow-shot-hit-object)))
+            (vector-copy! (-> *launch-matrix* trans) (-> this root trans))
+            (if (logtest? (-> group flags) (sp-group-flag sp13))
+                (part-tracker-spawn part-tracker-subsampler :to *entity-pool* :group group)
+                (part-tracker-spawn part-tracker :to *entity-pool* :group group)))
           (let ((v0-0 (+ (-> this max-actor-deflect-count) -1)))
             (set! (-> this max-actor-deflect-count) v0-0)
             v0-0
@@ -1867,6 +1916,12 @@
   (set! (-> this main-shot-part) (-> *part-id-table* 276))
   (set! (-> this shot-aim-part) (-> *part-id-table* 278))
   (set! (-> this shot-ring-part) (-> *part-id-table* 266))
+  (when (and *target* (focus-test? *target* dark))
+    (set! (-> this main-shot-part) (-> *part-id-table* 863))
+    (set! (-> this muzzle-flash-part) (-> *part-id-table* 866))
+    (set! (-> this shot-aim-part) (-> *part-id-table* 865))
+    (launch-particles *darkjak-gyro-sparks* (-> this tail-pos)))
+  (target-darkjak-drain-gun-eco!)
   (none)
   )
 
@@ -1920,16 +1975,18 @@
   )
 
 (defmethod draw-main-shot ((this gun-yellow-shot) (arg0 vector) (arg1 vector))
-  (let ((f30-0 (-> *part-id-table* 264 init-specs 4 initial-valuef)))
-    (set! (-> *part-id-table* 264 init-specs 4 initial-valuef) (fmin f30-0 (vector-length arg1)))
+  (let ((f30-0 (-> this main-shot-part init-specs 4 initial-valuef)))
+    (set! (-> this main-shot-part init-specs 4 initial-valuef) (fmin f30-0 (vector-length arg1)))
     (draw-beam (-> this main-shot-part) arg0 arg1 #f)
-    (set! (-> *part-id-table* 264 init-specs 4 initial-valuef) f30-0)
+    (set! (-> this main-shot-part init-specs 4 initial-valuef) f30-0)
     )
   0
   (none)
   )
 
 (defmethod draw-main-shot ((this gun-yellow-shot-2) (arg0 vector) (arg1 vector))
+  (when (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+    (call-parent-method this arg0 arg1))
   0
   (none)
   )
@@ -1942,36 +1999,49 @@
   )
 
 (defmethod draw-main-shot ((this gun-yellow-shot-3) (arg0 vector) (arg1 vector))
-  (let ((f30-0 (-> *part-id-table* 276 init-specs 4 initial-valuef)))
-    (set! (-> *part-id-table* 276 init-specs 4 initial-valuef) (fmin f30-0 (vector-length arg1)))
-    (draw-beam (-> this main-shot-part) arg0 arg1 #f)
-    (set! (-> *part-id-table* 276 init-specs 4 initial-valuef) f30-0)
-    )
+  (call-parent-method this arg0 arg1)
   0
   (none)
   )
 
 (defmethod gun-yellow-shot-method-42 ((this gun-yellow-shot) (arg0 float) (arg1 float) (arg2 matrix))
-  (set! (-> *part-id-table* 267 init-specs 3 initial-valuef) (* arg0 arg1))
-  (launch-particles (-> *part-id-table* 267) arg2 :origin-is-matrix #t)
-  (set! (-> *part-id-table* 267 init-specs 3 initial-valuef) arg1)
+  (if (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+      (let ((part (-> this shot-aim-part))
+            (spread (-> this shot-aim-part init-specs 3 initial-valuef))
+            (width (-> this shot-aim-part init-specs 5 initial-valuef)))
+        (set! (-> part init-specs 3 initial-valuef) (* arg0 spread))
+        (set! (-> part init-specs 5 initial-valuef) (* arg0 width))
+        (launch-particles part arg2 :origin-is-matrix #t)
+        (set! (-> part init-specs 3 initial-valuef) spread)
+        (set! (-> part init-specs 5 initial-valuef) width))
+      (begin
+        (set! (-> *part-id-table* 267 init-specs 3 initial-valuef) (* arg0 arg1))
+        (launch-particles (-> *part-id-table* 267) arg2 :origin-is-matrix #t)
+        (set! (-> *part-id-table* 267 init-specs 3 initial-valuef) arg1)))
   0
   (none)
   )
 
 (defmethod gun-yellow-shot-method-42 ((this gun-yellow-shot-2) (arg0 float) (arg1 float) (arg2 matrix))
+  (when (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+    (call-parent-method this arg0 arg1 arg2))
   0
   (none)
   )
 
 (defmethod gun-yellow-shot-method-42 ((this gun-yellow-shot-3) (arg0 float) (arg1 float) (arg2 matrix))
-  (set! (-> *part-id-table* 278 init-specs 3 initial-valuef) (* arg0 arg1))
-  (set! (-> *part-id-table* 278 init-specs 3 initial-valuef) arg1)
+  (if (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+      (call-parent-method this arg0 arg1 arg2)
+      (begin
+        (set! (-> *part-id-table* 278 init-specs 3 initial-valuef) (* arg0 arg1))
+        (set! (-> *part-id-table* 278 init-specs 3 initial-valuef) arg1)))
   0
   (none)
   )
 
 (defmethod projectile-method-25 ((this gun-yellow-shot-2))
+  (if (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+      (call-parent-method this)
   (let* ((s5-0 (-> this root trans))
          (a1-0 (-> this tail-pos))
          (s4-1 (vector-! (new 'stack-no-clear 'vector) s5-0 a1-0))
@@ -1991,28 +2061,41 @@
       (gun-yellow-shot-method-42 this f30-1 f28-0 s3-2)
       )
     )
+    )
   0
   (none)
   )
 
 (defmethod spawn-particles ((this gun-yellow-shot) (arg0 vector))
-  (launch-particles (-> *part-id-table* 265) arg0)
+  (launch-particles
+    (if (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+        (-> *part-id-table* 864)
+        (-> *part-id-table* 265))
+    arg0)
   0
   (none)
   )
 
 (defmethod spawn-particles ((this gun-yellow-shot-2) (arg0 vector))
-  (launch-particles (-> *part-id-table* 270) arg0)
+  (launch-particles
+    (if (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+        (-> *part-id-table* 864)
+        (-> *part-id-table* 270))
+    arg0)
   0
   (none)
   )
 
 (defmethod spawn-particles ((this gun-yellow-shot-3) (arg0 vector))
+  (when (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+    (call-parent-method this arg0))
   0
   (none)
   )
 
 (defmethod projectile-method-26 ((this gun-yellow-shot-3))
+  (if (eq? (-> this main-shot-part) (-> *part-id-table* 863))
+      (call-parent-method this)
   (let ((v1-8
           (cond
             ((-> this hit-actor?)
@@ -2039,6 +2122,7 @@
           )
         )
     (send-event (ppointer->process v1-8) 'clock this)
+    )
     )
   0
   (none)
