@@ -504,10 +504,24 @@
                       (fmax (meters 3) (-> player-pos w))))
           ;; Disarm before awarding, so no second touch can duplicate the reward.
           (set! (-> self available) #f)
-          (+! (-> *game-info* hero-artifacts (-> self tier)) 1)
-          (sound-play "money-pickup")
-          (format #t "Hero artifact collected: tier ~D, inventory ~D~%"
-                  (+ (-> self tier) 1) (-> *game-info* hero-artifacts (-> self tier)))
+          (+! (-> *game-info* hero-artifacts-pending (-> self tier)) 1)
+          ;; Hero artifact cues follow the SFX slider.
+          (case (-> self tier)
+            ((0)
+             (unless (play-sound-file "sfx/artifact_2.flac"
+                        (the int (* 40.0 (-> *setting-control* user-current sfx-volume))))
+               (sound-play "money-pickup")))
+            ((1)
+             (unless (play-sound-file "sfx/artifact_1.flac"
+                        (the int (* 40.0 (-> *setting-control* user-current sfx-volume))))
+               (sound-play "money-pickup")))
+            ((2)
+             (unless (play-sound-file "sfx/artifact_3.flac"
+                        (the int (* 30.0 (-> *setting-control* user-current sfx-volume))))
+               (sound-play "money-pickup")))
+            (else (sound-play "money-pickup")))
+          (format #t "Hero artifact collected: tier ~D, pending ~D~%"
+                  (+ (-> self tier) 1) (-> *game-info* hero-artifacts-pending (-> self tier)))
           (go-virtual die)
           )
         )
@@ -586,11 +600,10 @@
   (go-virtual idle)
   )
 
-;; One roll in [0, 100): turbo 55%, one orb 25%, artifacts 12% / 6% / 2%.
+;; One roll in [0, 100): turbo 80%, artifacts 12% / 6% / 2%. No orbs.
 ;; Separate pure selection from spawning so the bucket boundaries can be tested.
 (defun hero-marauder-reward-for-roll ((roll int))
-  (cond ((< roll 55) 0)
-        ((< roll 80) 1)
+  (cond ((< roll 80) 0)
         ((< roll 92) 2)
         ((< roll 98) 3)
         (else 4))
@@ -600,16 +613,6 @@
   (let ((reward (hero-marauder-reward-for-roll (rand-vu-int-count 100))))
     (case reward
       ((0) (turbo-pickup-spawn (-> source root trans)))
-      ((1)
-       (let ((fact (new 'stack 'fact-info (the-as process source) (pickup-type skill) 1.0)))
-         (set! (-> fact pickup-type) (pickup-type skill))
-         (set! (-> fact pickup-amount) 1.0)
-         (set! (-> fact pickup-spawn-amount) 1.0)
-         (set! (-> fact options) (actor-option fade-out))
-         (set! (-> fact fade-time) (seconds 30))
-         (birth-pickup-at-point (-> source root trans) (pickup-type skill) 1.0 #t *entity-pool* fact)
-         )
-       )
       (else
         ;; Entity pool, not the dying car's subtree: loot survives the explosion.
         (process-spawn hero-artifact-pickup (-> source root trans) (the-as uint32 (- reward 2)) (-> source level)

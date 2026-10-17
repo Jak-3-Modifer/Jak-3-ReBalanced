@@ -219,22 +219,71 @@
   )
 
 (defmethod print-training-text ((this task-manager-desert-turtle-training) (arg0 text-id))
-  (let ((s5-0
+  (let ((hero-clutch-text?
+          (and (= arg0 (text-id text-0587))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+        (hero-compact-text?
+          (and (or (= arg0 (text-id text-0587)) (= arg0 (text-id text-0589)))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+        (s5-0
           (new 'stack 'font-context *font-default-matrix* 70 20 0.0 (font-color orange) (font-flags shadow kerning))
           )
         )
-    (set-scale! s5-0 0.7)
-    (set-width! s5-0 370)
-    (set-height! s5-0 70)
-    (set! (-> s5-0 origin x) (the float (- 201 (the int (/ (-> s5-0 width) 2)))))
-    (set! (-> s5-0 origin y) 290.0)
+    (set-scale! s5-0 (if hero-compact-text? 0.48 0.7))
+    (set-width! s5-0 (if hero-compact-text? 464 370))
+    (set-height! s5-0 (if hero-compact-text? 82 70))
+    (set! (-> s5-0 origin x)
+          (the float (- (if hero-compact-text? 256 201) (the int (/ (-> s5-0 width) 2)))))
+    (set! (-> s5-0 origin y) (if hero-compact-text? 276.0 290.0))
     (set! (-> s5-0 flags) (font-flags shadow kerning middle-vert large))
     (let ((s4-0 print-game-text))
-      (format (clear *temp-string*) (lookup-text! *common-text* arg0 #f) 1)
-      (s4-0 *temp-string* s5-0 #f 44 (bucket-id hud-draw-hud-alpha))
+      (if hero-clutch-text?
+          (format (clear *temp-string*)
+                  "Blue bar: engine RPM. Orange marker: target RPM.~%Hold <PAD_L2>, shift with <PAD_DPAD_UP> or <PAD_DPAD_DOWN>, then match the markers.")
+          (format (clear *temp-string*) (lookup-text! *common-text* arg0 #f) 1))
+      ;; Text from the localization database is already encoded for the game
+      ;; font.  Only encode the source-authored Hero string containing PAD tags.
+      (if hero-clutch-text?
+          (begin
+            (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+            (s4-0 *pc-encoded-temp-string* s5-0 #f
+                  (if hero-compact-text? 68 44)
+                  (bucket-id hud-draw-hud-alpha)))
+          (s4-0 *temp-string* s5-0 #f
+                (if hero-compact-text? 68 44)
+                (bucket-id hud-draw-hud-alpha)))
       )
     )
   0
+  (none)
+  )
+
+(defun print-hero-training-text ((this task-manager-desert-turtle-training) (arg0 string))
+  (let ((font
+          (new 'stack 'font-context *font-default-matrix* 70 20 0.0
+               (font-color orange) (font-flags shadow kerning))))
+    ;; Wide, compact two-line box that stays inside the 4:3 safe area.
+    (set-scale! font 0.48)
+    (set-width! font 464)
+    (set-height! font 82)
+    (set! (-> font origin x) 24.0)
+    (set! (-> font origin y) 276.0)
+    (set! (-> font flags) (font-flags shadow kerning middle-vert large))
+    (format (clear *temp-string*) arg0)
+    ;; The hero lessons are authored in source rather than the text database,
+    ;; so run their controller tags through the same PC encoding path.
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 68 (bucket-id hud-draw-hud-alpha)))
+  (none)
+  )
+
+(defun turtle-training-spawn-arrow! ((this task-manager-desert-turtle-training))
+  (let ((params (new 'stack-no-clear 'task-arrow-params)))
+    (vector-copy! (-> params pos) (-> this goal-pos))
+    (quaternion-identity! (-> params quat))
+    (set! (-> params flags) (task-arrow-flags))
+    (set! (-> params map-icon) (the-as uint 12))
+    (set! (-> this arrow) (process->handle (task-arrow-spawn params this))))
   (none)
   )
 
@@ -278,19 +327,110 @@
     (suspend)
     (send-event (handle->process (-> self player-vehicle)) 'ignore-damage #t)
     (set-time! (-> self test-time))
-    (vector-copy! (-> self goal-pos) (-> self goal-array 0 pos))
-    (let ((gp-0 (new 'stack-no-clear 'task-arrow-params)))
-      (vector-copy! (-> gp-0 pos) (-> self goal-pos))
-      (quaternion-identity! (-> gp-0 quat))
-      (set! (-> gp-0 flags) (task-arrow-flags))
-      (set! (-> gp-0 map-icon) (the-as uint 12))
-      (set! (-> self arrow) (process->handle (task-arrow-spawn gp-0 self)))
-      )
+    ;Time to get your clutch lessons in fellas
+    (when (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (vector-copy! (-> self goal-pos) (-> self goal-array 0 pos))
+      (turtle-training-spawn-arrow! self))
+    ;; Keep the original opening delay, but do not print the automatic-
+    ;; transmission "Hold X to accelerate" prompt.
     (suspend-for (seconds 4)
-      (print-training-text self (text-id text-05e6))
+      (format 0 "")
       )
     (suspend-for (seconds 0.25)
       )
+    ;; Hero Mode first teaches the manual Turtle before revealing checkpoint 1.
+    ;; Normal Mode keeps the original automatic-transmission lesson flow.
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (let ((vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+            (damaged-hp 0.0))
+        ;; Stop one, Start the stalled engine and make one smooth launch in first gear.
+        (when vehicle
+          (set! (-> vehicle gear-select) 1)
+          (set! (-> vehicle next-gear-select) 1)
+          (set! (-> vehicle v-flags)
+                (the-as vehicle-flag
+                        (logclear (-> vehicle v-flags) (vehicle-flag reverse-gear))))
+          (tough-puppy-stall-engine! vehicle))
+        (until (and vehicle
+                    (not (tough-puppy-engine-stalled? vehicle))
+                    (= (-> vehicle gear-select) 1)
+                    (= (-> vehicle shift-state) 0)
+                    (not (cpad-hold? 0 l2))
+                    (< 20480.0 (vector-length (-> self player-vel))))
+          (print-hero-training-text
+            self
+            "While holding <PAD_L2>, hold <PAD_X> to rev the engine.~%Release <PAD_L2> to accelerate.")
+          (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+          (suspend))
+        (sound-play "special-pickup")
+        (suspend-for (seconds 0.35))
+
+        ;; 2. shift that gear nice and good, like a good boy
+        (until (and vehicle
+                    (= (-> vehicle gear-select) 2)
+                    (= (-> vehicle shift-state) 0)
+                    (not (cpad-hold? 0 l2))
+                    (not (tough-puppy-engine-stalled? vehicle)))
+          (print-hero-training-text
+            self
+            "Hold <PAD_L2>, press <PAD_DPAD_UP> to shift to Gear 2,~%then release <PAD_L2>.")
+          (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+          (suspend))
+        (sound-play "special-pickup")
+        (suspend-for (seconds 0.35))
+        (until (and vehicle
+                    (= (-> vehicle gear-select) 3)
+                    (= (-> vehicle shift-state) 0)
+                    (not (cpad-hold? 0 l2))
+                    (not (tough-puppy-engine-stalled? vehicle)))
+          (print-hero-training-text
+            self
+            "Hold <PAD_L2>, press <PAD_DPAD_UP> to shift to Gear 3,~%then release <PAD_L2>.")
+          (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+          (suspend))
+        (sound-play "special-pickup")
+        (suspend-for (seconds 0.35))
+
+        ;; 3. Let the player identify to not redline the engine or they will die a fiery death HAHHAHA!!!!!!!!
+        (until (and vehicle
+                    (>= (-> vehicle engine-rpm) (* 0.75 (-> vehicle info engine max-rpm)))
+                    (< (-> vehicle engine-rpm) (* 0.9 (-> vehicle info engine max-rpm))))
+          (print-hero-training-text
+            self
+            "The number shows your current gear.~%The bar shows engine speed. Shift before entering the red section.")
+          (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+          (suspend))
+        (sound-play "special-pickup")
+        (suspend-for (seconds 5)
+          (print-hero-training-text
+            self
+            "The number shows your current gear.~%The bar shows engine speed. Shift before entering the red section."))
+
+        ;; 4. Damage the Turtle by three HP, then let the shared clean-shift
+        ;; reward prove itself by restoring at least one HP.
+        ;; Refresh the rider vehicle after the timed prompt; the previous
+        ;; process handle may no longer be valid after a level/task transition.
+        (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+        (when vehicle
+          (set! damaged-hp
+                (fmax 0.1
+                      (- (-> vehicle hit-points)
+                         (* 3.0 (-> vehicle info damage inv-hit-points)))))
+          (set! (-> vehicle hit-points) damaged-hp))
+        (until (and vehicle (> (-> vehicle hit-points) damaged-hp))
+          (print-hero-training-text
+            self
+            "Hold <PAD_L2>, select <PAD_DPAD_UP_DOWN> and match the blue bar end with the orange marker.~%Release <PAD_L2> for a clean shift.")
+          (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+          (suspend))
+        (sound-play "g-eco-pickup")
+        (set! (-> vehicle draw color-emissive y) 0.8)
+        (suspend-for (seconds 0.3)
+          (print-hero-training-text self "Clean shift! Vehicle HP restored."))
+        (set! (-> vehicle draw color-emissive y) 0.0)))
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (vector-copy! (-> self goal-pos) (-> self goal-array 0 pos))
+      (turtle-training-spawn-arrow! self))
     (set! (-> self time-limit) (seconds 30))
     (set-time! (-> self start-time))
     (until #f
@@ -352,16 +492,39 @@
     (set! (-> self time-limit) (seconds 28))
     (set-time! (-> self start-time))
     (set-time! (-> self test-time))
-    (until #f
-      (print-training-text self (text-id text-0587))
-      (if (not (cpad-hold? 0 l2))
-          (set-time! (-> self test-time))
-          )
-      (if (time-elapsed? (-> self test-time) (seconds 0.665))
-          (goto cfg-91)
-          )
-      (suspend)
-      )
+    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (let ((vehicle (the-as wvehicle (handle->process (-> self player-vehicle)))))
+          (when vehicle
+            ;; 6. The brake checkpoint becomes a controlled stall-and-restart
+            ;; lesson. Stop all residual motion so the relaunch is unambiguous.
+            (vector-reset! (-> vehicle rbody lin-velocity))
+            (vector-reset! (-> vehicle rbody ang-velocity))
+            (set! (-> vehicle gear-select) 1)
+            (set! (-> vehicle next-gear-select) 1)
+            (tough-puppy-stall-engine! vehicle))
+          (until #f
+            (print-hero-training-text
+              self
+              "Hold <PAD_L2> and press <PAD_X> to restart and rev the engine.~%Release <PAD_L2> to move.")
+            (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+            (when (and vehicle
+                       (not (tough-puppy-engine-stalled? vehicle))
+                       (= (-> vehicle gear-select) 1)
+                       (= (-> vehicle shift-state) 0)
+                       (not (cpad-hold? 0 l2))
+                       (< 20480.0 (vector-length (-> self player-vel))))
+              (goto cfg-91))
+            (suspend)))
+        (until #f
+          (print-training-text self (text-id text-0587))
+          (if (not (cpad-hold? 0 l2))
+              (set-time! (-> self test-time))
+              )
+          (if (time-elapsed? (-> self test-time) (seconds 0.665))
+              (goto cfg-91)
+              )
+          (suspend)
+          ))
     #f
     (label cfg-91)
     (sound-play "special-pickup")
@@ -390,17 +553,25 @@
            )
           (else
             (if (< f0-5 40960.0)
-                (set! (-> self show-message?) #t)
+                (begin
+                  (set! (-> self show-message?) #t)
+                  (set-time! (-> self test-time)))
                 )
             )
           )
         )
       (when (-> self show-message?)
-        (print-training-text self (text-id text-0588))
+        (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+            (print-hero-training-text
+              self
+              "If stalled, hold <PAD_L2> and <PAD_SQUARE> to rev the engine.~%Release <PAD_L2> to reverse.")
+            (print-training-text self (text-id text-0588)))
         (let ((v1-176 (handle->process (-> self player-vehicle))))
           (when v1-176
             (if (and (logtest? (vehicle-flag reverse-gear) (-> (the-as wvehicle v1-176) v-flags))
                      (< 36864.0 (vector-length (-> self player-vel)))
+                     (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                         (time-elapsed? (-> self test-time) (seconds 8.45)))
                      )
                 (goto cfg-127)
                 )
@@ -456,6 +627,33 @@
       (set! (-> gp-16 map-icon) (the-as uint 12))
       (set! (-> self arrow) (process->handle (task-arrow-spawn gp-16 self)))
       )
+    ;; 7. Use the approach to the existing skid corner for a clean 3 -> 2
+    ;; downshift lesson. Assisted Turtle shifts use a 350-RPM clean window.
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (let ((vehicle (the-as wvehicle (handle->process (-> self player-vehicle)))))
+        (until (and vehicle
+                    (= (-> vehicle gear-select) 3)
+                    (= (-> vehicle shift-state) 0)
+                    (not (cpad-hold? 0 l2))
+                    (not (tough-puppy-engine-stalled? vehicle)))
+          (print-hero-training-text
+            self
+            "Prepare for the skid corner by selecting Gear 3.")
+          (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+          (suspend))
+        (until (and vehicle
+                    (= (-> vehicle gear-select) 2)
+                    (= (-> vehicle shift-state) 0)
+                    (not (cpad-hold? 0 l2))
+                    (not (tough-puppy-engine-stalled? vehicle))
+                    (<= *tough-puppy-clutch-mismatch* 350.0))
+          (print-hero-training-text
+            self
+            "Hold <PAD_L2> and press <PAD_DPAD_DOWN> to select a lower gear.~%Tap <PAD_X> until the blue bar matches the orange marker.~%Release <PAD_L2> for a clean downshift.")
+          (set! vehicle (the-as wvehicle (handle->process (-> self player-vehicle))))
+          (suspend))
+        (sound-play "special-pickup")
+        (suspend-for (seconds 0.35))))
     (set! (-> self time-limit) (seconds 45))
     (set-time! (-> self start-time))
     (until #f
@@ -514,7 +712,10 @@
     (set! (-> self arrow) (the-as handle #f))
     (send-event (handle->process (-> self hud-timer)) 'hide-and-die)
     (set! (-> self start-time) 0)
-    (task-node-close! (game-task-node desert-course-race-restrict-to-turtle) 'event)
+    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (task-node-close! (game-task-node desert-turtle-training-resolution) 'event)
+        (task-node-close! (game-task-node desert-course-race-restrict-to-turtle) 'event)
+        )
     (let ((t9-62 (-> (the-as (state task-manager) (find-parent-state)) code)))
       (if t9-62
           ((the-as (function none) t9-62))

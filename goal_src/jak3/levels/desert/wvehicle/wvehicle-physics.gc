@@ -1,6 +1,13 @@
 ;;-*-Lisp-*-
 (in-package goal)
 
+(define-extern tough-puppy-manual-gears-active? (function wvehicle symbol))
+(define-extern tough-puppy-clutch-held? (function wvehicle symbol))
+(define-extern tough-puppy-engine-stalled? (function wvehicle object))
+(define-extern tough-puppy-stall-engine! (function wvehicle none))
+(define-extern tough-puppy-update-stall! (function wvehicle float float none))
+(define-extern tough-puppy-downshift-grip-scale (function wvehicle vehicle-wheel-info float))
+
 ;; name: wvehicle-physics.gc
 ;; name in dgo: wvehicle-physics
 ;; dgos: LPATK, LFACCAR, WASALL
@@ -361,6 +368,7 @@
                        )
                      (-> s2-1 surface friction)
                      (custom-tire-friction-scale this (-> s2-1 surface surface-type))
+                     (tough-puppy-downshift-grip-scale this s1-1)
                      )
                   )
             )
@@ -482,7 +490,12 @@
            (f0-81 (fmin f0-80 (* 0.10471976 f1-71)))
            (f1-74 (-> this info engine min-rpm))
            )
-      (set! (-> this engine-rev) (fmax f0-81 (* 0.10471976 f1-74)))
+      ;; Check raw loaded RPM before the safeguard, with a 0.35-second grace
+      ;; period and automatic clutch protection during handbrake slides.
+      (tough-puppy-update-stall! this f0-80 arg0)
+      (set! (-> this engine-rev)
+            (if (tough-puppy-engine-stalled? this) 0.0
+                (fmax f0-81 (* 0.10471976 f1-74))))
       )
     (dotimes (s3-2 (-> this info physics-model wheel-count))
       (let* ((s1-2 (-> this wheel s3-2))
@@ -598,7 +611,8 @@
         (vehicle-method-97 this arg0 (the-as vehicle-physics-work gp-0))
         )
       )
-    (when (logtest? (vehicle-flag turbo-boost) (-> this v-flags))
+    (when (and (not (tough-puppy-engine-stalled? this))
+               (logtest? (vehicle-flag turbo-boost) (-> this v-flags)))
       (let ((f0-6 (* (-> this turbo-boost-factor) (-> s4-0 info mass) (-> s4-0 extra gravity))))
         (vector-float*! (-> gp-0 force) (-> gp-0 mat fvec) f0-6)
         )

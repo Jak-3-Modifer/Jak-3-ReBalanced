@@ -2756,7 +2756,7 @@
             (set! (-> v1-24 frame-num) 9.0)
             )
            ((and (= (-> v1-24 frame-group) jakb-gun-red-fire-2-ja) (< (-> v1-24 frame-num) 9.0))
-            (when (logtest? (-> self game secrets) (game-secrets gs63))
+            (when (and (focus-test? self dark) (nonzero? (-> self darkjak)))
               (let ((a0-65 (new-stack-vector0)))
               (let ((f0-17 (vector-dot (-> self control dynam gravity-normal) (-> self control transv))))
                 0.0
@@ -2764,7 +2764,9 @@
                 )
               (let* ((f0-18 (vector-length a0-65))
                      (f1-8 f0-18)
-                     (f2-0 85991.02)
+                     ;; Keep the full Dark Wave launch while moving, but soften
+                     ;; the vertical pop when Jak is effectively stationary.
+                     (f2-0 (if (< f1-8 1024.0) 32768.0 85991.02))
                      )
                 (vector+!
                   (-> self control transv)

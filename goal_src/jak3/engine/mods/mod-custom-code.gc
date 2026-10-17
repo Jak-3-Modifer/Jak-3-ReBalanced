@@ -822,7 +822,109 @@
            )
       )
 
+    (define-extern desert-unlocked-flut-manager-activate (function level none))
+
+    (define *desert-artifact-hud-remaining* 0.0)
+
+    (defun hero-artifact-gameplay-level ()
+      ;; runs-every-frame executes between loader steps. Never search streamed
+      ;; BSP geometry or bank carried loot while a level transition is in flight.
+      (let ((inside (the-as level #f)))
+        (when (and *target* *level* *load-state*
+                   (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (not (load-in-progress? *level*))
+                   (-> *load-state* vis-nick)
+                   (not (focus-test? *target* dead teleporting)))
+          (set! inside (level-get *level* (-> *load-state* vis-nick)))
+          (when (and inside (!= (-> inside status) 'active))
+            (set! inside (the-as level #f))))
+        inside))
+
+    (defun draw-desert-artifact-stash! ()
+      ;; Screen-space coordinates stay inside the 512-wide 4:3 safe area.
+      ;; Read carried loot only; this display never modifies either inventory.
+      (let ((inside (hero-artifact-gameplay-level)))
+        (cond
+          ((not (and *target* inside
+                     (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                     (= (-> inside info taskname) 'desert)
+                     ;; The Hover resolution node is open throughout the hunt.
+                     ;; Clear any active popup and ignore L3 until it ends.
+                     (not (task-node-open? (game-task-node desert-hover-resolution)))
+                     (not (focus-test? *target* dead teleporting))))
+           (set! *desert-artifact-hud-remaining* 0.0))
+          ((and *display* (not (paused?)) (not (movie?)))
+           (when (cpad-pressed? 0 l3)
+             (set! *desert-artifact-hud-remaining* 5.0))
+           (when (> *desert-artifact-hud-remaining* 0.0)
+             (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                          (bucket-id hud-draw-hud-alpha))
+               (dotimes (tier 3)
+                 (let ((color (new 'static 'rgba :a 128)))
+                   (case tier
+                     ((0) (set! (-> color r) 64) (set! (-> color g) 144) (set! (-> color b) 255))
+                     ((1) (set! (-> color r) 170) (set! (-> color g) 64) (set! (-> color b) 240))
+                     ((2) (set! (-> color r) 255) (set! (-> color g) 200) (set! (-> color b) 48)))
+                   (draw-sprite2d-xy buf 414 (+ 198 (* tier 23)) 12 12 color #x3fffff))))
+             (let ((font (new 'stack 'font-context *font-default-matrix* 414 180 0.0
+                              (font-color default) (font-flags shadow kerning large))))
+               (set-width! font 70)
+               (set-height! font 20)
+               (set-scale! font 0.3)
+               (print-game-text "Desert Loot" font #f 44 (bucket-id hud-draw-hud-alpha)))
+             (dotimes (tier 3)
+               (let ((font (new 'stack 'font-context *font-default-matrix* 436 (+ 197 (* tier 23)) 0.0
+                                (font-color default) (font-flags shadow kerning large))))
+                 (set-width! font 48)
+                 (set-height! font 20)
+                 (set-scale! font 0.45)
+                 (format (clear *temp-string*) "~D" (-> *game-info* hero-artifacts-pending tier))
+                 (print-game-text *temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))))
+             (set! *desert-artifact-hud-remaining*
+                   (fmax 0.0 (- *desert-artifact-hud-remaining* (seconds-per-frame))))))))
+      (none))
+
+    (defun draw-hero-blueprint-notice! ()
+      ;; Mission rewards can be granted outside Wascity, so keep this notice in
+      ;; the global HUD path instead of the NPC-shop level process.
+      (when (and (> *hero-blueprint-notice* 0.0)
+                 *display*
+                 (not (paused?))
+                 (not (movie?)))
+        (let ((font (new 'stack 'font-context *font-default-matrix* 56 300 0.0
+                         (font-color default) (font-flags shadow kerning))))
+          (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+          (set-width! font 480)
+          (set-height! font 70)
+          (set-scale! font 0.68)
+          (format (clear *temp-string*) "Received Protection I Blueprint")
+          (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+          (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
+        (set! *hero-blueprint-notice*
+              (fmax 0.0 (- *hero-blueprint-notice* (seconds-per-frame)))))
+      (none))
+
     (defun runs-every-frame ()
+      (draw-hero-blueprint-notice!)
+      (draw-desert-artifact-stash!)
+      ;; Bank only after Jak actually enters a safe area, never from preloading.
+      (let ((inside (hero-artifact-gameplay-level)))
+        (when inside
+          (when (and inside
+                     (or (= (-> inside info taskname) 'wascity)
+                         (= (-> inside name) 'ctyport)
+                         (= (-> inside name) 'templex)))
+            (dotimes (tier 3)
+              (when (> (-> *game-info* hero-artifacts-pending tier) 0)
+                (+! (-> *game-info* hero-artifacts tier)
+                    (-> *game-info* hero-artifacts-pending tier))
+                (set! (-> *game-info* hero-artifacts-pending tier) 0))))))
+      ;; Wait until DST is fully active before calling its level-local code.
+      ;; The manager's handle guard prevents duplicate mounts/managers.
+      (let ((desert-level (level-get *level* 'desert)))
+        (when (and desert-level (= (-> desert-level status) 'active) *target*
+                   (not (-> *level* loading-level)))
+          (desert-unlocked-flut-manager-activate desert-level)))
       ;; (increase-power-cell-by-one) This is a call to increase-power-cell-by-one defined in mod-common-functions.gc
 
       (update-temple-climb-world-orbs!)

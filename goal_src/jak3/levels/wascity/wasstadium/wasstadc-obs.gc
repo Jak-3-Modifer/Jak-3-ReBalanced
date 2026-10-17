@@ -152,7 +152,7 @@
       ((and (task-node-open? (game-task-node arena-fight-3-fight))
             (not (task-node-closed? (game-task-node arena-fight-3-fight))))
        ;; Arena 3 uses the Vulcan challenge, so every respawning crate supplies
-       ;; Blue Ammo just like its three starting crates.
+       ;; Blue Ammo just like its three starting crates. Last time it spawned random ammo and people complained about it. Lowkey they were right lol.
        (set! (-> s4-0 pickup-type) (pickup-type ammo-blue))
        )
       (else
@@ -2585,19 +2585,21 @@
 (define *hero-arena-2-challenge* 0)
 
 (defun draw-hero-arena-2-prompt ((this task-manager-arena-fight-2))
-  (let ((font (new 'stack 'font-context *font-default-matrix* 32 290 0.0 (font-color default) (font-flags shadow kerning))))
+  (let ((font (new 'stack 'font-context *font-default-matrix* 32 18 0.0
+                   (font-color default) (font-flags shadow kerning))))
     (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
     (set-width! font 440)
-    (set-height! font 80)
-    (set-scale! font 0.8)
+    (set-height! font 62)
+    (set-scale! font 0.62)
     (case *hero-arena-2-challenge*
-      ((0) (format (clear *temp-string*) "Melee only."))
-      ((1) (format (clear *temp-string*) "Wave Concussor/Melee only."))
-      ((2) (format (clear *temp-string*) "Mass Inverter/Melee only."))
-      ((3) (format (clear *temp-string*) "Take no damage."))
+      ((0) (format (clear *temp-string*) "CHALLENGE 1/4~%JET BOARD ONLY"))
+      ((1) (format (clear *temp-string*) "CHALLENGE 2/4~%RED GUN ONLY"))
+      ((2) (format (clear *temp-string*) "CHALLENGE 3/4~%DARK GUN + MELEE"))
+      ((3) (format (clear *temp-string*) "CHALLENGE 4/4~%NO DAMAGE"))
       )
     (print-game-text *temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
     )
+  (none)
   )
 
 (defun update-hero-arena-2-platform-cycle! ((this task-manager-arena-fight-2))
@@ -2709,20 +2711,44 @@
   )
 
 (defmethod taskman-event-handler ((this task-manager-arena-fight-2) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
-  ;; Dark Jak can absorb an attack during a transition without advancing the
-  ;; shared hit-time marker.  The target's direct hit notification remains
-  ;; reliable, so fail this no-damage challenge from that event as well.
-  (if (and (= arg2 'notify)
-           (= (-> arg3 param 0) 'hit)
-           (nonzero? (-> this start-time))
-           (not (task-node-closed? (game-task-node arena-fight-2-fight)))
-           (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-               (= *hero-arena-2-challenge* 3)
-               )
-           )
-      (go-fail this)
+  (cond
+    ;; Hero Mode counts only a Marauder whose actual lethal hit came from an
+    ;; attack allowed by the current challenge. Environmental deaths carry no
+    ;; source and are ignored; prohibited lethal hits fail without incrementing.
+    ((and (= arg2 'killed)
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (let* ((source (if (> arg1 0) (the-as symbol (-> arg3 param 0)) #f))
+            (valid? (case *hero-arena-2-challenge*
+                      ((0) (= source 'arena-board-active))
+                      ((1) (= source 'arena-red-2))
+                      ((2) (or (= source 'arena-dark-2) (= source 'arena-melee)))
+                      ((3) (nonzero? source))
+                      )))
+       (cond
+         (valid?
+          ((method-of-type task-manager-arena-fight-base taskman-event-handler) this arg0 arg1 arg2 arg3)
+          )
+         (source
+          (when (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+            (go-fail this)
+            )
+          )
+         )
+       )
+     )
+    ;; Preserve Normal Mode's existing direct-hit failure behavior. Hero Mode
+    ;; uses hit-time in Challenge 4 so fully blocked hits do not cause failure.
+    ((and (= arg2 'notify)
+          (= (-> arg3 param 0) 'hit)
+          (nonzero? (-> this start-time))
+          (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+          (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+     (go-fail this)
+     )
+    (else
       ((method-of-type task-manager-arena-fight-base taskman-event-handler) this arg0 arg1 arg2 arg3)
       )
+    )
   )
 
 (defun advance-hero-arena-2-platform! ((this task-manager-arena-fight-2))
@@ -2735,7 +2761,9 @@
         (set-time! (-> this hint-time))
         (set! (-> this count) (the-as uint 30))
         (set! (-> this count-alive) (the-as uint 0))
-        (set! (-> this next-spawn) (current-time))
+        ;; Let the previous challenge's short-lived projectiles expire before
+        ;; a new Marauder can be used to validate the next challenge.
+        (set! (-> this next-spawn) (+ (current-time) (seconds 1)))
         ;; Each weapon-only round supplies the ammo required for that weapon.
         (when *target*
           (case *hero-arena-2-challenge*
@@ -3015,33 +3043,64 @@
                  ))
     (go-fail this)
     )
-  ;; Hero Mode weapon rules: platform 1 is melee/Dark Jak only, platform 2
-  ;; is Wave Concussor only, and platform 3 is Mass Inverter only.  R1 while
-  ;; in normal Jak form is always a gun shot, including a recalled gun.
+  ;; Fail from an attack being used, even when it misses. Gun use is sampled
+  ;; from R1 plus the active gun; melee and intentional board attacks use the
+  ;; target's dangerous collision state. Passive board contact is excluded.
   (when (and *target*
              (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
              (< *hero-arena-2-challenge* 3)
-             (cpad-pressed? 0 r1)
-             )
-    (let ((used-gun (if (using-gun? *target*)
-                        (-> *target* gun using-gun-type)
-                        (-> *target* game gun-type)
-                        )))
-      (when (or (focus-test? *target* dark)
-                (zero? *hero-arena-2-challenge*)
-                (and (= *hero-arena-2-challenge* 1) (!= used-gun (pickup-type gun-red-2)))
-                (and (= *hero-arena-2-challenge* 2) (!= used-gun (pickup-type gun-dark-2)))
-                )
+             (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+    (let* ((penetrate-using (-> *target* control penetrate-using))
+           (dangerous? (focus-test? *target* dangerous))
+           (board-attack? (and dangerous?
+                               (logtest? penetrate-using (penetrate board))
+                               (logtest? penetrate-using (penetrate spin))))
+           (melee-attack? (and dangerous?
+                               (not (logtest? penetrate-using (penetrate board)))
+                               (logtest? penetrate-using
+                                         (penetrate lunge flop punch spin roll uppercut bonk dark-punch dark-smack))))
+           )
+      (when (or (and melee-attack? (!= *hero-arena-2-challenge* 2))
+                (and board-attack? (!= *hero-arena-2-challenge* 0)))
         (go-fail this)
+        )
+      (when (cpad-pressed? 0 r1)
+        (if (focus-test? *target* board)
+            (when (!= *hero-arena-2-challenge* 0)
+              (go-fail this)
+              )
+            (let ((used-gun (if (using-gun? *target*)
+                                (-> *target* gun using-gun-type)
+                                (-> *target* game gun-type)
+                                )))
+              (when (or (zero? *hero-arena-2-challenge*)
+                        (and (= *hero-arena-2-challenge* 1)
+                             (!= used-gun (pickup-type gun-red-2)))
+                        (and (= *hero-arena-2-challenge* 2)
+                             (!= used-gun (pickup-type gun-dark-2))))
+                (go-fail this)
+                )
+              )
+            )
         )
       )
     )
-  ;; Refresh the Hero Mode challenge label when the current platform changes.
-  (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-             (not (time-elapsed? (-> this hint-time) (seconds 3))))
+  ;; Keep Hero Mode's current challenge title visible throughout the fight.
+  (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
     (draw-hero-arena-2-prompt this)
     )
-  (task-manager-arena-fight-base-method-33 this)
+  (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (let ((challenge-count (-> this count)))
+        ;; Reuse the original Marauder HUD and updater, but expose the total
+        ;; number remaining across this challenge and every later challenge.
+        (set! (-> this count)
+              (the-as uint (+ (the int challenge-count) (* (- 3 *hero-arena-2-challenge*) 30)))
+              )
+        (task-manager-arena-fight-base-method-33 this)
+        (set! (-> this count) challenge-count)
+        )
+      (task-manager-arena-fight-base-method-33 this)
+      )
   (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
              (not (task-node-closed? (game-task-node arena-fight-2-fight))))
     (update-hero-arena-2-platform-cycle! this)
@@ -3553,18 +3612,21 @@
           )
         (if (time-elapsed? (-> self check-timer) (seconds 4))
             (task-node-close! (game-task-node arena-fight-3-training) 'event)
-            (let ((font (new 'stack 'font-context *font-default-matrix* 56 290 0.0
+            (let* ((compact-4x3? (= (get-aspect-ratio) 'aspect4x3))
+                   (font (new 'stack 'font-context *font-default-matrix* 56 290 0.0
                               (font-color default)
                               (font-flags shadow kerning))))
               (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
-              
-              (set-width! font 400)
-              (set-height! font 100)
-              (set-scale! font 0.6)
+
+              (set-width! font (if compact-4x3? 440 400))
+              (set-height! font (if compact-4x3? 110 100))
+              (set-scale! font (if compact-4x3? 0.5 0.6))
               (format (clear *temp-string*)
-                      "<COLOR_BLUE>Vulcan<COLOR_WHITE>/Melee use only,~%No Ammo Depletion.")
+                      "<COLOR_BLUE>Vulcan<COLOR_WHITE>/Melee use only,~%No Mag Dump.")
               (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-              (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+              (print-game-text *pc-encoded-temp-string* font #f
+                               (if compact-4x3? 68 44)
+                               (bucket-id hud-draw-hud-alpha))
               )
             )
           )

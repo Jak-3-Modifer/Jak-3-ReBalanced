@@ -355,3 +355,7 @@
   )
 
 (define-extern *minimap* minimap)
+
+(define-extern *hero-desert-map-explored* (pointer uint8))
+(define-extern *hero-desert-map-fog-color* rgba)
+(define-extern hero-desert-map-exploration-active? (function symbol))

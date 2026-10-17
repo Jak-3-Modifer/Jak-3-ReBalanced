@@ -778,3 +778,15 @@
   (set! (-> *game-info* dust-storm) (the-as handle #f))
   (none)
   )
+
+;; Each level callback slot resolves only its first entry. Run both systems
+;; through one callback instead of registering duplicate activation slots.
+(defun desert-with-flut-activate ((owner level))
+  (desert-activate owner)
+  (desert-unlocked-flut-manager-activate owner)
+  (none))
+
+(defun desert-with-flut-deactivate ((owner level))
+  (desert-unlocked-flut-manager-deactivate owner)
+  (desert-deactivate)
+  (none))

@@ -37,6 +37,235 @@
     )
   )
 
+(define *hero-wascity-npc-shop-candidate* (the-as handle #f))
+(define *hero-wascity-npc-shop-candidate-distance* (the-as float #x7f800000))
+(define *hero-wascity-npc-shop-open?* #f)
+(define *hero-wascity-npc-shop-slot* 0)
+
+(defun hero-wascity-npc-shop-price ((slot int) (field int))
+  (let ((packed (-> *hero-npc-shop-info* prices slot)))
+    (case field
+      ((0) (logand packed #x3f))
+      ((1) (logand (shr packed 6) #xf))
+      ((2) (logand (shr packed 10) #xf))
+      (else (logand (shr packed 14) #x3f)))))
+
+(defun hero-wascity-npc-shop-ensure-price! ((slot int))
+  (when (not (logtest? (-> *hero-npc-shop-info* prices slot) #x100000))
+    (let ((blue (rand-vu-int-range 20 46))
+          (purple (rand-vu-int-range 6 14))
+          (gold (rand-vu-int-range 5 10))
+          (orbs (rand-vu-int-range 25 50)))
+      (set! (-> *hero-npc-shop-info* prices slot)
+            (the-as uint (logior #x100000
+                                 blue
+                                 (shl purple 6)
+                                 (shl gold 10)
+                                 (shl orbs 14))))))
+  (none))
+
+(defun hero-wascity-npc-shop-register! ((npc civilian))
+  ;; Only naturally spawned male Wastelanders are eligible for this milestone.
+  ;; Do not reject the ambient `talking` flag: ordinary wandering civilians use
+  ;; it while transitioning between their walking and idle behaviors.
+  (when (and (type? npc wlander-male)
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             *target*
+             (not *hero-wascity-npc-shop-open?*)
+             (not *popup-menu-open*)
+             (not (focus-test? *target* pilot-riding))
+             (not (logtest? (-> npc flags) (citizen-flag hostile in-mission))))
+    (let ((distance (vector-vector-distance-squared (target-pos 0) (-> npc root trans))))
+      (when (and (< distance (square (meters 4.5)))
+                 (or (zero? *hero-wascity-npc-shop-candidate*)
+                     (< distance *hero-wascity-npc-shop-candidate-distance*)))
+        (set! *hero-wascity-npc-shop-candidate* (process->handle npc))
+        (set! *hero-wascity-npc-shop-candidate-distance* distance))))
+  (none))
+
+(defun hero-wascity-npc-shop-close! ()
+  (when *hero-wascity-npc-shop-open?*
+    (set! *hero-wascity-npc-shop-open?* #f)
+    (set! *popup-menu-open* #f)
+    (set-master-mode 'game))
+  (none))
+
+(defun hero-wascity-npc-shop-draw-prompt ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 56 350 0.0
+                   (font-color default) (font-flags shadow kerning))))
+    (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+    (set-width! font 440)
+    (set-height! font 70)
+    (set-scale! font 0.58)
+    (format (clear *temp-string*) "Press <PAD_TRIANGLE> to Trade")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
+  (none))
+
+(defun hero-wascity-npc-shop-draw-menu ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 56 70 0.0
+                   (font-color default) (font-flags shadow kerning)))
+        (blue (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 0))
+        (purple (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 1))
+        (gold (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 2))
+        (orbs (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 3)))
+    (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                 (bucket-id hud-draw-hud-alpha))
+      (draw-sprite2d-xy buf 46 42 420 332 (new 'static 'rgba :r 6 :g 8 :b 12 :a 210) #x3fffff)
+      (draw-sprite2d-xy buf 50 46 412 324 (new 'static 'rgba :r 36 :g 30 :b 24 :a 220) #x3fffff))
+    (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+    (set-width! font 400)
+    (set-height! font 55)
+    (set-scale! font 0.48)
+    (set! (-> font origin x) 256.0)
+    (set! (-> font color) (font-color cyan))
+    (format (clear *temp-string*) "Wastelander Trade")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 128.0)
+    (set-scale! font 0.42)
+    (set! (-> font color) (font-color default))
+    (format (clear *temp-string*) "Protection I")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 166.0)
+    (set-scale! font 0.27)
+    (cond
+      ((logtest? (-> *hero-npc-shop-info* purchases) 1)
+       (set! (-> font color) (font-color green))
+       (format (clear *temp-string*) "Purchased"))
+      ((not (logtest? (-> *hero-npc-shop-info* blueprints) 1))
+       (set! (-> font color) (font-color progress-old-selected))
+       (format (clear *temp-string*) "Protection I Blueprint required"))
+      (else
+       (set! (-> font color) (font-color green))
+       (format (clear *temp-string*) "Blueprint owned - upgrade available")))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    ;; Always display this Wastelander's full asking price.  Without the
+    ;; blueprint the Buy action remains locked, but the player can still see
+    ;; what artifacts and service fee they will need.
+    (set! (-> font origin y) 202.0)
+    (set! (-> font color) (font-color default))
+    (format (clear *temp-string*) "Blue ~D   Purple ~D   Gold ~D" blue purple gold)
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 232.0)
+    (format (clear *temp-string*) "Service fee: ~D Orbs" orbs)
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 270.0)
+    (set-scale! font 0.25)
+    (set! (-> font color) (font-color default))
+    (format (clear *temp-string*) "Inventory  B:~D  P:~D  G:~D  Orbs:~D"
+            (-> *game-info* hero-artifacts 0)
+            (-> *game-info* hero-artifacts 1)
+            (-> *game-info* hero-artifacts 2)
+            (the int (-> *game-info* money)))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 334.0)
+    (set-scale! font 0.28)
+    (format (clear *temp-string*) "<PAD_X> Buy     <PAD_TRIANGLE> Exit")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
+  (none))
+
+(defun hero-wascity-npc-shop-buy! ()
+  (let ((blue (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 0))
+        (purple (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 1))
+        (gold (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 2))
+        (orbs (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 3)))
+    (cond
+      ((or (not (logtest? (-> *hero-npc-shop-info* blueprints) 1))
+           (logtest? (-> *hero-npc-shop-info* purchases) 1))
+       (sound-play "menu-back"))
+      ((and (>= (-> *game-info* hero-artifacts 0) blue)
+            (>= (-> *game-info* hero-artifacts 1) purple)
+            (>= (-> *game-info* hero-artifacts 2) gold)
+            (>= (-> *game-info* money) (the float orbs)))
+       (-! (-> *game-info* hero-artifacts 0) blue)
+       (-! (-> *game-info* hero-artifacts 1) purple)
+       (-! (-> *game-info* hero-artifacts 2) gold)
+       (-! (-> *game-info* money) (the float orbs))
+       (logior! (-> *hero-npc-shop-info* purchases) 1)
+       (logior! (-> *game-info* features) (game-feature armor0))
+       (sound-play "menu-pick"))
+      (else (sound-play "menu-back"))))
+  (none))
+
+(deftype hero-wascity-npc-shop-manager (process)
+  ()
+  (:state-methods idle))
+
+(defstate idle (hero-wascity-npc-shop-manager)
+  :virtual #t
+  :trans (behavior ()
+    (cond
+      ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+       (hero-wascity-npc-shop-close!)
+       (set! *hero-wascity-npc-shop-candidate* (the-as handle #f))
+       (set! *hero-wascity-npc-shop-candidate-distance* (the-as float #x7f800000)))
+      (*hero-wascity-npc-shop-open?*
+       (hero-wascity-npc-shop-draw-menu)
+       (cond
+         ((cpad-pressed? 0 x)
+          (hero-wascity-npc-shop-buy!)
+          (cpad-clear! 0 x))
+         ((cpad-pressed? 0 triangle circle select)
+          (hero-wascity-npc-shop-close!)
+          (cpad-clear! 0 triangle circle select))))
+      (else
+       (let ((npc (as-type (handle->process *hero-wascity-npc-shop-candidate*) civilian)))
+         (if (and npc
+                  (type? npc wlander-male)
+                  *target*
+                  (not (focus-test? *target* pilot-riding))
+                  (not *popup-menu-open*)
+                  (not (logtest? (-> npc flags) (citizen-flag hostile in-mission)))
+                  (< (vector-vector-distance-squared (target-pos 0) (-> npc root trans))
+                     (square (meters 4.5))))
+             (begin
+               (set! *hero-wascity-npc-shop-candidate-distance*
+                     (vector-vector-distance-squared (target-pos 0) (-> npc root trans)))
+               (hero-wascity-npc-shop-draw-prompt)
+               (when (cpad-pressed? 0 triangle)
+                 (set! *hero-wascity-npc-shop-slot*
+                       (mod (+ (the int (-> npc traffic-id)) 8) 8))
+                 (hero-wascity-npc-shop-ensure-price! *hero-wascity-npc-shop-slot*)
+                 (set! *hero-wascity-npc-shop-open?* #t)
+                 (set! *popup-menu-open* #t)
+                 (set-master-mode 'menu)
+                 (cpad-clear! 0 triangle)))
+             (begin
+               (set! *hero-wascity-npc-shop-candidate* (the-as handle #f))
+               (set! *hero-wascity-npc-shop-candidate-distance* (the-as float #x7f800000))))))))
+  :code sleep-code)
+
+(defbehavior hero-wascity-npc-shop-manager-init-by-other hero-wascity-npc-shop-manager ()
+  (process-mask-clear! (-> self mask) menu pause)
+  (go-virtual idle))
+
+(defun hero-wascity-npc-shop-start ()
+  (process-spawn hero-wascity-npc-shop-manager :name "hero-wascity-npc-shop" :to *entity-pool*)
+  (none))
+
+(defun hero-wascity-npc-shop-stop ()
+  (hero-wascity-npc-shop-close!)
+  (set! *hero-wascity-npc-shop-candidate* (the-as handle #f))
+  (set! *hero-wascity-npc-shop-candidate-distance* (the-as float #x7f800000))
+  (kill-by-type hero-wascity-npc-shop-manager *active-pool*)
+  (none))
+
+(defmethod enemy-common-post ((this wlander))
+  ;; Ambient Wastelanders pass through this shared post method regardless of
+  ;; whether they are currently walking or waiting.  Register here instead of
+  ;; depending on a particular state transition callback.
+  (let ((parent-post (method-of-type citizen enemy-common-post)))
+    (parent-post this))
+  (hero-wascity-npc-shop-register! this)
+  (none))
+
 
 ;; WARN: Return type mismatch citizen-flag vs none.
 (defmethod citizen-method-194 ((this wlander))

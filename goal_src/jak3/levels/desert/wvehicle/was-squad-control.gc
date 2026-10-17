@@ -44,6 +44,33 @@
 
 (define *was-squad-control-artifact-race-1?* #f)
 
+(define *hero-desert-squad-retire-time* (the-as time-frame 0))
+
+(defun hero-desert-artifact-target-count ()
+  ;; Highest carried tier wins; banked inventory and quantities do not add heat.
+  (cond
+    ((> (-> *game-info* hero-artifacts-pending 2) 0) 10)
+    ((> (-> *game-info* hero-artifacts-pending 1) 0) 6)
+    ((> (-> *game-info* hero-artifacts-pending 0) 0) 4)
+    (else 1)))
+
+(defun was-squad-owned-by? ((this was-squad-control) (owner process))
+  ;; The controller handle names its squad process; the task owns that process.
+  (let ((manager (if (zero? (-> this manager u64))
+                     (the-as process #f)
+                     (handle->process (-> this manager)))))
+    (and manager (= (ppointer->process (-> manager parent)) owner))))
+
+(defun hero-desert-free-roam-squad? ((this was-squad-control))
+  (let ((manager (if (zero? (-> this manager u64))
+                     (the-as process #f)
+                     (handle->process (-> this manager)))))
+    (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+         manager
+         (let ((owner (as-type (ppointer->process (-> manager parent)) task-manager)))
+           (and owner (-> owner node-info)
+                (= (-> owner node-info task) (game-task desert-interceptors)))))))
+
 
 (defmethod initialize ((this was-squad-control) (arg0 process))
   (format #t "was-squad-control::initialize~%")
@@ -51,6 +78,7 @@
     (t9-1 this arg0)
     )
   (set! (-> this manager) (process->handle arg0))
+  (set-time! *hero-desert-squad-retire-time*)
   (set! (-> this min-spawn-delay) (the-as uint 0))
   (set! (-> this max-spawn-delay) (the-as uint 300))
   (set! (-> this nav-mesh) (get-nav-mesh (the-as actor-id #xa7d6)))
@@ -304,7 +332,19 @@
       )
   (let ((s5-1 (new 'stack-no-clear 'inline-array 'matrix 2))
         (v1-8 (as-type (handle->process (-> this alert-state target-status handle)) process-focusable))
+        (excess 0)
         )
+    ;; Recount live cars before retiring any, avoiding stale active-count values.
+    (when (or (hero-desert-free-roam-squad? this)
+              ;; Hover drops its target to one only in the final Beast phase.
+              (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (task-node-open? (game-task-node desert-hover-resolution))
+                   (= (-> this target-count) 1)))
+      (dotimes (i 10)
+        (let ((unit (as-type (handle->process (-> this units i)) process-focusable)))
+          (when (and unit (not (focus-test? unit dead)))
+            (+! excess 1))))
+      (set! excess (max 0 (- excess (-> this target-count)))))
     (when v1-8
       (vector-copy! (-> s5-1 0 uvec) (-> (the-as process-focusable v1-8) root trans))
       (vector-copy! (-> s5-1 0 fvec) (-> (the-as process-focusable v1-8) root transv))
@@ -332,10 +372,15 @@
                                  )
                              )
                         (zero? (-> this target-count))
+                        (and (> excess 0)
+                             (time-elapsed? *hero-desert-squad-retire-time* (seconds 1)))
                         )
                 (when (send-event s3-0 'go-die)
                   (+! (-> this reserve-count) 1)
                   (set! (-> this units s4-1) (the-as handle #f))
+                  (when (> excess 0)
+                    (+! excess -1)
+                    (set-time! *hero-desert-squad-retire-time*))
                   )
                 )
               )
@@ -420,6 +465,8 @@
   )
 
 (define *was-squad-control* (new 'static 'was-squad-control))
+;; A raw-zero handle is not the GOAL false symbol; initialize before task updates.
+(set! (-> *was-squad-control* manager) (the-as handle #f))
 
 (define *was-squad-manager* (the-as object #f))
 

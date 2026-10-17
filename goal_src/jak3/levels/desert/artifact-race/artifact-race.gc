@@ -803,6 +803,11 @@
     (format #t "artifact-race::initialize death-count ~d, suck-factor ~f~%" a2-4 (-> this suck-factor))
     )
   (set! (-> this extra-suck-time) (* 16.0 (-> this suck-factor)))
+  ;; Hero Mode Race 1 uses fixed timers, without death-based time assistance.
+  ;; Keep the separate vehicle-health assistance and Race 2 behavior intact.
+  (when (and (= (-> this node-info task) (game-task desert-artifact-race-1))
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+    (set! (-> this extra-suck-time) 0.0))
   (vector-copy! (-> this begin-pos) (new 'static 'vector :x 9263923.0 :y 129024.0 :z 1077248.0 :w 1.0))
   (vector-copy! (-> this end-pos) (new 'static 'vector :x 9277440.0 :y 127795.2 :z 890880.0 :w 1.0))
   (vector-copy! (-> this door-plane) (new 'static 'vector :z 1.0 :w 1.0))
@@ -811,7 +816,13 @@
         )
   (cond
     ((= (-> this node-info task) (game-task desert-artifact-race-1))
-     (set! (-> this final-time) (the-as uint (the int (* 300.0 (+ 41.0 (* 1.5 (-> this extra-suck-time)))))))
+     (set! (-> this final-time)
+           (the-as uint
+             (the int
+               (* 300.0
+                  (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                      32.0
+                      (+ 41.0 (* 1.5 (-> this extra-suck-time))))))))
      (set! (-> this target-count) 1)
      (set! (-> this target-speed) 143360.0)
      (set! (-> this ent) (the-as entity-actor (entity-by-name "artifact-1")))
@@ -844,6 +855,21 @@
                        (the int
                          (* 300.0
                             (+ (if (= (-> this node-info task) (game-task desert-artifact-race-1))
+                                 (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                   (cond
+                                     ((= s4-0 0) 19.0)
+                                     ((= s4-0 1) 6.0)
+                                     ((= s4-0 2) 13.0)
+                                     ((= s4-0 3) 8.0)
+                                     ((= s4-0 4) 8.0)
+                                     ((= s4-0 5) 14.0)
+                                     ((= s4-0 6) 14.0)
+                                     ((= s4-0 7) 8.0)
+                                     ((= s4-0 8) 8.0)
+                                     ((= s4-0 9) 8.0)
+                                     ((= s4-0 10) 8.0)
+                                     ((= s4-0 11) 10.0)
+                                     (else (res-lump-float s3-0 'timeout :default 60.0)))
                                  (cond
                                    ((= s4-0 0) 22.0)
                                    ((= s4-0 1) 9.0)
@@ -858,6 +884,7 @@
                                    ((= s4-0 10) 12.0)
                                    ((= s4-0 11) 11.0)
                                    (else (res-lump-float s3-0 'timeout :default 60.0))
+                                   )
                                    )
                                  (res-lump-float s3-0 'timeout :default 60.0)
                                  )

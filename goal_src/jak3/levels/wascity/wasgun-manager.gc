@@ -2308,7 +2308,38 @@
   (local-vars (v1-21 int) (a2-0 int))
   (let ((s4-0 (-> *skeet-data* (-> this wave) (-> this event)))
         (s5-0 #t)
+        (s3-1 #f)
+        (s2-2 #f)
         )
+    ;; In Normal Mode, keep splitter encounters separate from armored and
+    ;; reversing targets.  nskeet is an otherwise-unused per-run field and
+    ;; acts as the splitter-encounter latch while a-x7 or its a-x19 fragments
+    ;; are still children of this manager.
+    (when (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (let ((s1-2 (-> this child)))
+        (while s1-2
+          (let ((s0-0 (as-type (ppointer->process s1-2) skeet)))
+            (when (and s0-0 (type? s0-0 skeet))
+              (when (or (= (-> s0-0 skeet-type) (skeet-type b))
+                        (= (-> s0-0 skeet-type) (skeet-type c))
+                        )
+                (set! s3-1 #t)
+                )
+              (when (or (= (-> s0-0 mode) (skeet-mode a-x7))
+                        (and (nonzero? (-> this nskeet)) (= (-> s0-0 mode) (skeet-mode a-x19)))
+                        )
+                (set! s2-2 #t)
+                )
+              )
+            )
+          (set! s1-2 (-> s1-2 0 brother))
+          )
+        )
+      (if s2-2
+          (set! (-> this nskeet) 1)
+          (set! (-> this nskeet) 0)
+          )
+      )
     (when (zero? (-> this event-length))
       (set! (-> this event-length)
             (rand-vu-int-range (the-as int (-> s4-0 min-time)) (the-as int (+ (-> s4-0 min-time) (-> s4-0 max-time))))
@@ -2364,9 +2395,40 @@
         (skeet-mode c-x16)
         (skeet-mode c-x17)
         )
-       (let ((a2-1 (logand (-> s4-0 mode) (skeet-mode a-x7))))
-         0
-         (spawn-skeet-enum this (-> s4-0 mode) (the-as int a2-1) (-> s4-0 angle) (-> s4-0 speed))
+       (cond
+         ;; Wait for existing blue/green targets to clear before beginning a
+         ;; splitter interval.  Existing red targets may remain active.
+         ((and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+               (= (-> s4-0 mode) (skeet-mode a-x7))
+               s3-1
+               )
+          (set! s5-0 #f)
+          )
+         ;; While the splitter or either spawned red fragment is active, hold
+         ;; upcoming blue/green events at the current schedule entry.
+         ((and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+               (nonzero? (-> this nskeet))
+               (or (and (>= (-> s4-0 mode) (skeet-mode b-x8))
+                        (<= (-> s4-0 mode) (skeet-mode b-xf))
+                        )
+                   (and (>= (-> s4-0 mode) (skeet-mode c-x10))
+                        (<= (-> s4-0 mode) (skeet-mode c-x17))
+                        )
+                   )
+               )
+          (set! s5-0 #f)
+          )
+         (else
+           (let ((a2-1 (logand (-> s4-0 mode) (skeet-mode a-x7))))
+             0
+             (spawn-skeet-enum this (-> s4-0 mode) (the-as int a2-1) (-> s4-0 angle) (-> s4-0 speed))
+             )
+           (when (and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                      (= (-> s4-0 mode) (skeet-mode a-x7))
+                      )
+             (set! (-> this nskeet) 1)
+             )
+           )
          )
        )
       )

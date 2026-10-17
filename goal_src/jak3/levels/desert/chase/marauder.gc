@@ -64,6 +64,7 @@
    (gun?                   symbol)
    (target-last-attacker?  symbol)
    (visible-last           time-frame)
+   (arena-2-lethal-source  symbol)
    (traj                   trajectory       :inline)
    (skip-jump              symbol)
    )
@@ -79,6 +80,41 @@
     (toggle-collide-spec (_type_ symbol int) none)
     (fire-shot (_type_) none)
     (set-multi-focus (_type_ symbol) none)
+    )
+  )
+
+(defun marauder-arena-2-attack-source ((arg0 attack-info))
+  "Classify a player attack narrowly enough for Hero Mode Arena Fight 2."
+  (let ((penetrate-using (-> arg0 penetrate-using)))
+    (cond
+      ((and (logtest? penetrate-using (penetrate jak-red-shot))
+            (logtest? penetrate-using (penetrate jak-red-shockwave)))
+       'arena-red-2
+       )
+      ((or (logtest? penetrate-using (penetrate jak-dark-blackhole))
+           (= (-> arg0 mode) 'gravity-end)
+           (and (= (-> arg0 mode) 'eco-dark)
+                (logtest? penetrate-using (penetrate vehicle)))
+           )
+       'arena-dark-2
+       )
+      ((and (logtest? penetrate-using (penetrate board))
+            (logtest? penetrate-using (penetrate spin)))
+       'arena-board-active
+       )
+      ((and (not (logtest? penetrate-using (penetrate board)))
+            (logtest? penetrate-using
+                      (penetrate lunge flop punch spin roll uppercut bonk dark-punch dark-smack)))
+       'arena-melee
+       )
+      ((logtest? penetrate-using
+                 (penetrate jak-yellow-shot jak-red-shot jak-blue-shot jak-dark-shot jak-dark-nuke))
+       'arena-other-gun
+       )
+      (else
+        #f
+        )
+      )
     )
   )
 
@@ -562,7 +598,7 @@
   (if (or (logtest? (penetrate jak-dark-nuke) (-> this incoming penetrate-using))
           (and (-> this target-last-attacker?) (< (+ (current-time) (seconds -5)) (-> this visible-last)))
           )
-      (send-event (ppointer->process (-> this parent)) 'killed)
+      (send-event (ppointer->process (-> this parent)) 'killed (-> this arena-2-lethal-source))
       )
   ((method-of-type nav-enemy on-dying) this)
   (none)
@@ -588,7 +624,18 @@
     (('hit 'hit-flinch 'hit-knocked)
      (let ((v1-5 (as-type (handle->process (-> this incoming attacker-handle)) process-focusable)))
        (if (and v1-5 (= (-> v1-5 type) target))
-           (set! (-> this target-last-attacker?) #t)
+           (begin
+             (set! (-> this target-last-attacker?) #t)
+             ;; The enemy base handler has already applied this attack's
+             ;; damage before dispatching the transformed hit event. Record
+             ;; only the hit that actually crossed the lethal threshold.
+             (when (and (>= 0.0 (-> this hit-points))
+                        (not (-> this arena-2-lethal-source)))
+               (set! (-> this arena-2-lethal-source)
+                     (marauder-arena-2-attack-source
+                       (the-as attack-info (-> arg3 param 1))))
+               )
+             )
            (set! (-> this target-last-attacker?) #f)
            )
        )
@@ -1867,6 +1914,7 @@
   ;; og:preserve-this added
   (stack-size-set! (-> self main-thread) 512)
   (set! (-> self skip-jump) (-> arg1 skip-jump))
+  (set! (-> self arena-2-lethal-source) #f)
   (set-multi-focus self (-> arg1 multi-focus))
   (enemy-init-by-other arg0 arg1)
   ;; Arena Fight 2 and Arena Fight 3 Marauders drop one Dark Eco pill instead

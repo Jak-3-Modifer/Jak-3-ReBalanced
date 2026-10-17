@@ -40,10 +40,12 @@
   (item27 27)
   (item28 28)
   (item29 29)
-  (item30 30)
-  (item31 31)
+  (item30 30) ;; Hero Mode: purchased Wascity Map.
+  (item31 31) ;; Hero Mode: purchased Desert Map.
   )
 ;; ---game-items
+
+(define-extern hero-area-map-owned? (function symbol object))
 
 
 ;; +++pickup-type
@@ -421,6 +423,8 @@
    (percent-complete        float)
    ;; Hero Mode loot inventory; appended to preserve all existing field offsets.
    (hero-artifacts          uint32 3)
+   ;; Desert loot carried at risk until reaching a banking area.
+   (hero-artifacts-pending  uint32 3)
    )
   (:methods
     (initialize! (_type_ symbol game-save string resetter-spec) _type_)
@@ -453,6 +457,13 @@
     (get-light-eco-capacity (_type_) float)
     )
   )
+
+;; Keep custom NPC-shop progression outside game-info. Expanding game-info
+;; causes incremental builds to import its old layout before recompiling it.
+(deftype hero-npc-shop-info (basic)
+  ((blueprints uint32)
+   (purchases  uint32)
+   (prices     uint32 8)))
 
 
 (defmethod get-next-attack-id! ((this game-info))

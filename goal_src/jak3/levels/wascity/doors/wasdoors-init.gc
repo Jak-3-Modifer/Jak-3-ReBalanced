@@ -25,6 +25,165 @@
 
 (define *wasdoors-bbush-shop-open?* #f)
 
+;; Hero Mode prototype trigger for the falling-rock collection minigame.
+;; 2264.97, 9.46, -42.28 in Wasdoors world-space meters.
+(define *wasdoors-rock-catcher-trigger-pos*
+  (new 'static 'vector :x 9277317.12 :y 38748.16 :z -173178.88 :w 1.0)
+  )
+
+(define *wasdoors-rock-catcher-open?* #f)
+(define *wasdoors-rock-catcher-cursor-x* 256.0)
+(define *wasdoors-rock-catcher-score* 0)
+(define *wasdoors-rock-catcher-rock-x*
+  (new 'static 'array float 3 132.0 256.0 380.0)
+  )
+(define *wasdoors-rock-catcher-rock-y*
+  (new 'static 'array float 3 -36.0 -154.0 -272.0)
+  )
+
+(defun wasdoors-reset-rock-catcher ()
+  (set! *wasdoors-rock-catcher-cursor-x* 256.0)
+  (set! *wasdoors-rock-catcher-score* 0)
+  (set! (-> *wasdoors-rock-catcher-rock-y* 0) -36.0)
+  (set! (-> *wasdoors-rock-catcher-rock-y* 1) -154.0)
+  (set! (-> *wasdoors-rock-catcher-rock-y* 2) -272.0)
+  (none)
+  )
+
+(defun wasdoors-close-rock-catcher ()
+  (when *wasdoors-rock-catcher-open?*
+    (set! *wasdoors-rock-catcher-open?* #f)
+    (set! *popup-menu-open* #f)
+    (set-master-mode 'game)
+    )
+  (none)
+  )
+
+(defun wasdoors-draw-rock-catcher ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 56 65 0.0
+                   (font-color default)
+                   (font-flags shadow kerning)
+                   )))
+    ;; The test field is deliberately a simple 2D overlay: it does not use
+    ;; world collision, actors, or persistent inventory yet.
+    (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                 (bucket-id hud-draw-hud-alpha))
+      (draw-sprite2d-xy buf 66 42 380 332 (new 'static 'rgba :r 8 :g 12 :b 20 :a 220) #x3fffff)
+      (draw-sprite2d-xy buf 70 46 372 324 (new 'static 'rgba :r 30 :g 42 :b 58 :a 224) #x3fffff)
+      ;; Collection line and cursor.
+      (draw-sprite2d-xy buf 86 336 340 3 (new 'static 'rgba :r 108 :g 220 :b 244 :a 240) #x3fffff)
+      (draw-sprite2d-xy buf (the int (- *wasdoors-rock-catcher-cursor-x* 10.0)) 346 20 5
+        (new 'static 'rgba :r 250 :g 220 :b 72 :a 255) #x3fffff)
+      (draw-sprite2d-xy buf (the int (- *wasdoors-rock-catcher-cursor-x* 4.0)) 340 8 6
+        (new 'static 'rgba :r 250 :g 220 :b 72 :a 255) #x3fffff)
+      ;; Draw every falling rock as a small, high-contrast stone tile.
+      (dotimes (index 3)
+        (let ((x (the int (-> *wasdoors-rock-catcher-rock-x* index)))
+              (y (the int (-> *wasdoors-rock-catcher-rock-y* index))))
+          (draw-sprite2d-xy buf (- x 11) y 22 14 (new 'static 'rgba :r 34 :g 34 :b 44 :a 255) #x3fffff)
+          (draw-sprite2d-xy buf (- x 8) (+ y 2) 16 10 (new 'static 'rgba :r 146 :g 152 :b 164 :a 255) #x3fffff)
+          )
+        )
+      )
+    (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+    (set-width! font 380)
+    (set-height! font 50)
+    (set! (-> font origin x) 256.0)
+    (set! (-> font origin y) 70.0)
+    (set-scale! font 0.46)
+    (set! (-> font color) (font-color cyan))
+    (format (clear *temp-string*) "Rock Catcher - Test")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 112.0)
+    (set-scale! font 0.30)
+    (set! (-> font color) (font-color default))
+    (format (clear *temp-string*) "Collected: ~D" *wasdoors-rock-catcher-score*)
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 395.0)
+    (set-scale! font 0.27)
+    (format (clear *temp-string*) "<PAD_LEFT><PAD_RIGHT> Move    <PAD_X> Collect    <PAD_TRIANGLE> Exit")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    )
+  (none)
+  )
+
+(defun wasdoors-update-rock-catcher ()
+  (cond
+    ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (wasdoors-close-rock-catcher)
+     )
+    (*wasdoors-rock-catcher-open?*
+     (when (cpad-hold? 0 left l-analog-left)
+       (set! *wasdoors-rock-catcher-cursor-x*
+             (fmax 92.0 (- *wasdoors-rock-catcher-cursor-x* 3.5)))
+       )
+     (when (cpad-hold? 0 right l-analog-right)
+       (set! *wasdoors-rock-catcher-cursor-x*
+             (fmin 420.0 (+ *wasdoors-rock-catcher-cursor-x* 3.5)))
+       )
+     (dotimes (index 3)
+       (+! (-> *wasdoors-rock-catcher-rock-y* index) 2.6)
+       (when (> (-> *wasdoors-rock-catcher-rock-y* index) 352.0)
+         (set! (-> *wasdoors-rock-catcher-rock-y* index) -28.0)
+         )
+       )
+     (when (cpad-pressed? 0 x)
+       (let ((caught? #f))
+         (dotimes (index 3)
+           (when (and (< (fabs (- (-> *wasdoors-rock-catcher-rock-x* index)
+                                  *wasdoors-rock-catcher-cursor-x*))
+                             22.0)
+                      (> (-> *wasdoors-rock-catcher-rock-y* index) 316.0)
+                      (< (-> *wasdoors-rock-catcher-rock-y* index) 348.0))
+             (set! (-> *wasdoors-rock-catcher-rock-y* index) -28.0)
+             (1+! *wasdoors-rock-catcher-score*)
+             (set! caught? #t)
+             )
+           )
+         (if caught?
+             (sound-play "menu-pick")
+             (sound-play "menu-back")
+             )
+         )
+       (cpad-clear! 0 x)
+       )
+     (when (cpad-pressed? 0 triangle)
+       (wasdoors-close-rock-catcher)
+       (cpad-clear! 0 triangle)
+       )
+     (wasdoors-draw-rock-catcher)
+     )
+    ((and *target*
+          (not (focus-test? *target* pilot-riding))
+          (< (vector-vector-distance-squared (target-pos 0) *wasdoors-rock-catcher-trigger-pos*)
+             (square 8192.0)))
+     (let ((font (new 'stack 'font-context *font-default-matrix* 56 330 0.0
+                      (font-color default)
+                      (font-flags shadow kerning)
+                      )))
+       (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+       (set-width! font 400)
+       (set-height! font 80)
+       (set-scale! font 0.7)
+       (format (clear *temp-string*) "Press <PAD_X> to test Rock Catcher")
+       (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+       (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+       )
+     (when (cpad-pressed? 0 x)
+       (wasdoors-reset-rock-catcher)
+       (set! *wasdoors-rock-catcher-open?* #t)
+       (set! *popup-menu-open* #t)
+       (set-master-mode 'menu)
+       (cpad-clear! 0 x)
+       )
+     )
+    )
+  (none)
+  )
+
 (defun wasdoors-v-turtle-faster-boost-unlocked? ()
   (task-node-open? (game-task-node desert-course-race-resolution))
   )
@@ -453,41 +612,85 @@
     (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
     (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
 
+    (set-scale! font 0.3)
+    (wasdoors-draw-v-turtle-loadout-option-line
+      font
+      (case (v-snake-loadout-equipped-count)
+        ((0) "Equipped: 0/2")
+        ((1) "Equipped: 1/2")
+        (else "Equipped: 2/2 (Full)"))
+      100.0 #f #f)
     (set-scale! font 0.4)
     (wasdoors-draw-v-turtle-loadout-option-line
       font
       (if (= *v-snake-loadout-menu-selection* 0) "> None" "  None")
-      145.0
+      130.0
       (= *v-snake-loadout-menu-selection* 0)
       (and (not *v-snake-regenerative-armor-equipped?*)
-           (not *v-snake-emergency-repair-equipped?*))
+           (not *v-snake-emergency-repair-equipped?*)
+           (not *v-snake-vehicle-toughness-equipped?*)
+           (not *v-snake-turret-jammer-equipped?*)
+           (not *v-snake-camouflage-equipped?*)
+           (not *v-snake-damage-shield-equipped?*))
       )
     (wasdoors-draw-v-turtle-loadout-option-line
       font
       (if (= *v-snake-loadout-menu-selection* 1) "> Regenerative Armor" "  Regenerative Armor")
-      200.0
+      160.0
       (= *v-snake-loadout-menu-selection* 1)
       *v-snake-regenerative-armor-equipped?*
       )
     (wasdoors-draw-v-turtle-loadout-option-line
       font
       (if (= *v-snake-loadout-menu-selection* 2) "> Emergency Repair" "  Emergency Repair")
-      255.0
+      190.0
       (= *v-snake-loadout-menu-selection* 2)
       *v-snake-emergency-repair-equipped?*
+      )
+    (wasdoors-draw-v-turtle-loadout-option-line
+      font
+      (if (= *v-snake-loadout-menu-selection* 3) "> Vehicle Toughness" "  Vehicle Toughness")
+      220.0
+      (= *v-snake-loadout-menu-selection* 3)
+      *v-snake-vehicle-toughness-equipped?*
+      )
+    (wasdoors-draw-v-turtle-loadout-option-line
+      font
+      (if (= *v-snake-loadout-menu-selection* 4) "> Turret Jammer" "  Turret Jammer")
+      250.0
+      (= *v-snake-loadout-menu-selection* 4)
+      *v-snake-turret-jammer-equipped?*
+      )
+    (wasdoors-draw-v-turtle-loadout-option-line
+      font
+      (if (= *v-snake-loadout-menu-selection* 5) "> Camouflage" "  Camouflage")
+      280.0
+      (= *v-snake-loadout-menu-selection* 5)
+      *v-snake-camouflage-equipped?*
+      )
+    (wasdoors-draw-v-turtle-loadout-option-line
+      font
+      (if (= *v-snake-loadout-menu-selection* 6) "> Damage Shield" "  Damage Shield")
+      310.0
+      (= *v-snake-loadout-menu-selection* 6)
+      *v-snake-damage-shield-equipped?*
       )
     (set-scale! font 0.3)
     (wasdoors-draw-v-turtle-loadout-option-line
       font
-      "<PAD_DPAD_UP><PAD_DPAD_DOWN>  Move"
-      335.0
+      (cond
+        ((or *v-snake-camouflage-equipped?* *v-snake-damage-shield-equipped?*
+             *v-snake-emergency-repair-equipped?*)
+         "<PAD_DPAD_UP><PAD_DPAD_DOWN> Move   <PAD_DPAD_RIGHT> Activate")
+        (else "<PAD_DPAD_UP><PAD_DPAD_DOWN>  Move"))
+      370.0
       #f
       #f
       )
     (wasdoors-draw-v-turtle-loadout-option-line
       font
-      "<PAD_X>  Equip     <PAD_TRIANGLE>  Exit"
-      375.0
+      "<PAD_X>  Toggle     <PAD_TRIANGLE>  Exit"
+      400.0
       #f
       #f
       )
@@ -503,23 +706,24 @@
        )
      (set-v-snake-regenerative-armor-equipped! #f)
      (set-v-snake-emergency-repair-equipped! #f)
+     (set! *v-snake-vehicle-toughness-equipped?* #f)
+     (set! *v-snake-turret-jammer-equipped?* #f)
+     (set! *v-snake-camouflage-equipped?* #f)
+     (v-snake-end-camouflage!)
+     (set! *v-snake-damage-shield-equipped?* #f)
+     (v-snake-end-damage-shield!)
      )
     (*v-snake-loadout-menu-open?*
      (wasdoors-draw-v-snake-loadout-menu)
      (cond
        ((cpad-pressed? 0 up down)
         (set! *v-snake-loadout-menu-selection*
-              (case *v-snake-loadout-menu-selection*
-                ((0) 1)
-                ((1) 2)
-                (else 0)))
+              (mod (+ *v-snake-loadout-menu-selection*
+                      (if (cpad-pressed? 0 up) 6 1)) 7))
         (sound-play "menu-pick")
         )
        ((cpad-pressed? 0 x)
-        (set-v-snake-regenerative-armor-equipped!
-          (= *v-snake-loadout-menu-selection* 1))
-        (set-v-snake-emergency-repair-equipped!
-          (= *v-snake-loadout-menu-selection* 2))
+        (v-snake-toggle-loadout! *v-snake-loadout-menu-selection*)
         (sound-play "menu-pick")
         )
        ((cpad-pressed? 0 triangle)
@@ -633,6 +837,7 @@
      (wasdoors-update-v-turtle-loadout-trigger)
      (wasdoors-update-v-snake-loadout-trigger)
      (wasdoors-update-bbush-shop)
+     (wasdoors-update-rock-catcher)
     )
   :code sleep-code
   )
@@ -657,6 +862,7 @@
   (close-v-turtle-loadout-menu)
   (close-v-snake-loadout-menu)
   (wasdoors-close-bbush-shop)
+  (wasdoors-close-rock-catcher)
   (kill-by-type wasdoors-manager *active-pool*)
   (set! *wasdoors-manager* (the-as (pointer wasdoors-manager) #f))
   (none)

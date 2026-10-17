@@ -85,7 +85,7 @@
   )
 
 (defun configure-hero-mode-desert-race-progression! ()
-  "Hero Mode bypasses Turtle Training: Artifact Race 1 unlocks Course Race.
+  "Hero Mode runs Turtle Training before Artifact Race 1, which unlocks Course Race.
 Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
   (let ((course-intro (-> *game-info* sub-task-list (game-task-node desert-course-race-introduction)))
         (artifact-intro (-> *game-info* sub-task-list (game-task-node desert-artifact-race-1-introduction)))
@@ -100,12 +100,9 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
         )
     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
         (begin
-          ;; Artifact Race 1 -> Course Race, with Turtle Training bypassed.
-          ;; Turtle Training normally closes its resolution prerequisite. Keep
-          ;; that state in Hero Mode so the Course Race can enter its regular
-          ;; track-start flow without playing the training.
+          ;; Turtle Training -> Artifact Race 1 -> Course Race.
           ;; Leaper Race becomes available after the Temple Oracle mission.
-          (set! (-> artifact-intro parent-node 0) (game-task-node wascity-pre-game-resolution))
+          (set! (-> artifact-intro parent-node 0) (game-task-node desert-turtle-training-resolution))
           (set! (-> course-intro parent-node 0) (game-task-node desert-artifact-race-1-resolution))
           (set! (-> hover-intro parent-node 0) (game-task-node desert-course-race-resolution))
           (set! (-> hover-intro manager index) -1)
@@ -125,13 +122,6 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
           (set! (-> rescue-node reset quit-info retry continue) "wasdoors-desert")
           (set! (-> rescue-node reset fail-info fail continue) "wasdoors-desert")
           (set! (-> rescue-node reset death-info fail continue) "wasdoors-desert")
-          ;; Closing a node also completes its prerequisite chain. Wait until
-          ;; Unlock Satellite is finished so bypassing Turtle Training cannot
-          ;; silently finish Arena Training, Arena 1, and Catch Kanga-Rats.
-          (when (and (task-node-closed? (game-task-node wascity-pre-game-resolution))
-                     (not (task-node-closed? (game-task-node desert-turtle-training-resolution))))
-            (task-node-close! (game-task-node desert-turtle-training-resolution) 'event)
-            )
           (set! (-> leaper-intro parent-node 0) (game-task-node temple-oracle-resolution))
           (set! (-> gun-game-intro parent-node 0) (game-task-node city-power-game-resolution))
           ;; Hero Mode makes Arena 3 available immediately after Desert Rescue.
@@ -202,7 +192,6 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
                                        lightjak-regen
                                        lightjak-freeze
                                        lightjak-shield
-                                       armor0
                                        armor1
                                        armor2
                                        armor3
@@ -1524,9 +1513,19 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
              )
        )
       (((game-task-node-command add-armor-0))
-       (set! (-> *game-info* features)
-             (the-as game-feature (logior (game-feature armor0) (-> *game-info* features)))
+       (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (begin
+             ;; Artifact Race 1 awards access to the Hero Mode NPC-shop item,
+             ;; not the armor itself.  The blueprint is permanent and is not
+             ;; consumed when Protection I is purchased.
+             (logior! (-> *hero-npc-shop-info* blueprints) 1)
+             (set! *hero-blueprint-notice* 5.0)
+             (when (not (logtest? (-> *hero-npc-shop-info* purchases) 1))
+               (logclear! (-> *game-info* features) (game-feature armor0)))
              )
+           (set! (-> *game-info* features)
+                 (the-as game-feature (logior (game-feature armor0) (-> *game-info* features))))
+           )
        )
       (((game-task-node-command add-armor-1))
        (set! (-> *game-info* features)

@@ -226,6 +226,14 @@
                 )
             )
       )
+    ;; Wait for the charged shot to be released before replacing its tutorial.
+    (until (or (not *target*)
+               (not (handle->process (-> *target* gun charge-active?))))
+      (suspend)
+      )
+    (suspend-for (seconds 6.7)
+      (draw-text self (text-id dark-wave-concussor-launch-hint))
+      )
     (send-event *target* 'end-mode 'grab)
     (task-node-close! (game-task-node arena-fight-2-gun-training) 'event)
     (until #f

@@ -2116,20 +2116,17 @@
 (define *v-mirage-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      ;; Dust Demon: medium-weight, planted chassis between the Fox and Scorpion.
-      :mass 18.0
-      :inv-mass 0.055555556
+      :mass 10.0
+      :inv-mass 0.1
       :linear-damping 1.0
       :angular-damping 1.0
       :bounce-factor 0.4
       :friction-factor 0.5
-      ;; Axles at z 7864.32 / -12083.2: z -3705.2416 gives 42% front / 58% rear.
-      :cm-offset-joint (new 'static 'vector :y -1024.0 :z -3705.2416 :w 1.0)
-      :inertial-tensor-box (new 'static 'array meters 3 (meters 6) (meters 3.25) (meters 7.25))
+      :cm-offset-joint (new 'static 'vector :y 409.6 :z -2048.0 :w 1.0)
+      :inertial-tensor-box (new 'static 'array meters 3 (meters 5.5) (meters 3) (meters 7))
       )
     :extra (new 'static 'rigid-body-object-extra-info
-      ;; Run the per-wheel adaptive damping at up to 200 physics steps per second.
-      :max-time-step 0.005
+      :max-time-step 0.033333335
       :gravity (meters 40)
       :idle-distance (meters 50)
       :attack-force-scale 1.0
@@ -2140,38 +2137,35 @@
     :guard-type #xb
     :vehicle-type (vehicle-type-u8 v-mirage)
     :engine (new 'static 'vehicle-engine-info
-      :max-torque 402653200.0
-      :inertia 32768.0
-      :drag 0.25
+      :max-torque 218103800.0
+      :inertia 16384.0
+      :drag 0.2
       :idle-rpm 900.0
-      :clutch-min-rpm 1200.0
-      :clutch-max-rpm 6200.0
+      :clutch-min-rpm 2000.0
+      :clutch-max-rpm 5500.0
       :min-rpm 600.0
-      :max-rpm 7000.0
-      :peak-torque-rpm 3500.0
-      :powerband-width-rpm 5200.0
+      :max-rpm 7500.0
+      :peak-torque-rpm 3800.0
+      :powerband-width-rpm 4100.0
       )
     :transmission (new 'static 'vehicle-transmission-info
       :inertia 8192.0
-      ;; Several usable forward ratios retain low-speed control while allowing
-      ;; the Dust Demon to build speed instead of remaining in first gear.
-      :upshift-rpm 5600.0
-      :downshift-rpm 2600.0
-      :final-drive-ratio 16.0
-      ;; Three forward ratios target approximately 36/45/52 m/s.
-      :gear-ratio-array (new 'static 'array float 8 -1.8 1.23 0.98 0.85 0.0 0.0 0.0 0.0)
-      :gear-count 4
+      :upshift-rpm 5500.0
+      :downshift-rpm 3200.0
+      :final-drive-ratio 12.5
+      :gear-ratio-array (new 'static 'array float 8 -2.25 3.375 2.25 1.5 1.0 0.0 0.0 0.0)
+      :gear-count 5
       )
     :handling (new 'static 'vehicle-handling-info
       :max-engine-thrust (meters 50)
       :inv-max-engine-thrust 0.0000048828124
-      :engine-response-rate 14.0
+      :engine-response-rate 10.0
       :engine-intake-factor 1.0
-      :brake-factor 4026532000.0
+      :brake-factor 3355443200.0
       :turbo-boost-factor 0.9
       :turbo-boost-duration (seconds 2)
-      :max-xz-speed (meters 52)
-      :player-turn-anim-bias 0.35
+      :max-xz-speed (meters 30)
+      :player-turn-anim-bias 0.5
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
       :pilot-y-accel-factor 1.0
@@ -2179,41 +2173,41 @@
       :ground-probe-distance (meters 3)
       :cos-ground-effect-angle 0.42261827
       :spring-lift-factor 1.0
-      :air-drag-factor 1.15
+      :air-drag-factor 1.0
       :steering-fin-angle 1820.4445
       :steering-thruster-factor 1.0
       :steering-thruster-max-gain 1.0
       :steering-thruster-half-gain-speed (meters 30)
-      :tire-steering-angle 4005.0
-      :tire-steering-speed-factor 45056.0
-      :tire-steering-speed-bias 32768.0
-      :ackermann-factor 0.6
+      :tire-steering-angle 4369.067
+      :tire-steering-speed-factor 38379.52
+      :tire-steering-speed-bias 20480.0
+      :ackermann-factor 0.45
       :tire-friction-factor 1.0
-      :tire-static-friction 1.65
-      :tire-static-friction-speed (meters 2.5)
-      :tire-dynamic-friction 1.15
-      :tire-dynamic-friction-speed (meters 6.5)
+      :tire-static-friction 1.3310001
+      :tire-static-friction-speed (meters 2)
+      :tire-dynamic-friction 0.86515
+      :tire-dynamic-friction-speed (meters 4)
       :tire-inv-max-friction-speed 0.000024414063
-      :airfoil-factor 0.25
-      :drag-force-factor 0.48
-      :rolling-resistance 0.09
-      :speed-scrubbing-drag 8.0
+      :airfoil-factor 1.0
+      :drag-force-factor 0.35
+      :rolling-resistance 0.08
+      :speed-scrubbing-drag 10.0
       :speed-limiting-drag 1.0
-      :pitch-control-factor 0.85
-      :roll-control-factor 2.4
-      :jump-thrust-factor 1.3
+      :pitch-control-factor 1.0
+      :roll-control-factor 2.0
+      :jump-thrust-factor 1.0
       :buoyancy-factor 0.03
       :water-drag-factor 0.25
       :player-weight 122880.0
-      :air-roll-torque 245760.0
-      :air-pitch-torque 491520.0
-      :air-angular-damping 0.985
-      :hop-turn-torque 1228800.0
-      :ground-torque-scale 0.8
+      :air-roll-torque 81920.0
+      :air-pitch-torque 163840.0
+      :air-angular-damping 0.98
+      :hop-turn-torque 1392640.0
+      :ground-torque-scale 1.0
       :ai-steering-factor 1.0
       :ai-throttle-factor 1.0
       )
-    :turning-accel (meters 22)
+    :turning-accel (meters 20)
     :camera (new 'static 'vehicle-camera-info
       :string-min-height (meters 4.5)
       :string-max-height (meters 5)
@@ -2365,25 +2359,25 @@
       :engine-thrust-local-pos (new 'static 'vector :w 1.0)
       :brake-local-pos (new 'static 'vector :w 1.0)
       :wheel-count 4
-      :drive-wheel-count 4
+      :drive-wheel-count 2
       :front-wheel (new 'static 'vehicle-wheel-info
         :local-pos (new 'static 'vector :x 1843.2 :y 901.12 :z 7864.32 :w 1.0)
-        :flags (vehicle-wheel-flag vwf0 vwf1 vwf3 vwf4)
+        :flags (vehicle-wheel-flag vwf1 vwf3 vwf4)
         :inertia 6144000.0
         :radius 3399.68
         :susp-arm-length 5939.2
         :steer-arm-length 1638.4
         :scale 1.1
-        :travel 8192.0
-        :probe-y-offset 522.24
+        :travel 4055.04
+        :probe-y-offset -2580.48
         :width 3276.8
-        :suspension-spring 0.4
-        :suspension-damping 0.5
-        :forward-grip 1.4
-        :side-grip 1.4
+        :suspension-spring 0.6
+        :suspension-damping 0.3
+        :forward-grip 0.9
+        :side-grip 1.0
         :max-brake-torque 1.0
         :camber 546.13336
-        :settle-pos 0.72
+        :settle-pos 0.78
         :probe-radius 2457.6
         :tread-texture "tread-interceptor-rhino"
         )
@@ -2395,16 +2389,16 @@
         :susp-arm-length 8069.12
         :steer-arm-length 1638.4
         :scale 1.5
-        :travel 9011.2
-        :probe-y-offset -1177.6
+        :travel 4300.8
+        :probe-y-offset -4710.4
         :width 3276.8
-        :suspension-spring 0.42
-        :suspension-damping 0.52
-        :forward-grip 1.6
-        :side-grip 1.3
+        :suspension-spring 0.5
+        :suspension-damping 0.3
+        :forward-grip 1.5
+        :side-grip 1.0
         :max-brake-torque 1.0
         :camber 1820.4445
-        :settle-pos 0.7
+        :settle-pos 0.76
         :probe-radius 2867.2
         :tread-texture "tread-interceptor-rhino"
         )
@@ -3831,6 +3825,12 @@
 
 ;; WARN: Return type mismatch float vs none.
 (defmethod wvehicle-method-169 ((this wcar-snake-base))
+  ;; Break stealth on a real gun shot, not merely a held fire button.
+  (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+             *v-snake-camouflage-active?*
+             (= (handle->process (-> *v-snake-camouflage-owner-storage* 0)) this))
+    (format #t "[Sand Shark Camouflage] gun fired; breaking camouflage~%")
+    (v-snake-end-camouflage!))
   (set! (-> this i-barrel) (logand (+ (-> this i-barrel) 1) 1))
   ;; Sand Shark alternates 7- and 8-tick gaps. Over one shot from each barrel,
   ;; the combined 15 ticks gives each barrel exactly 1200 RPM.
@@ -4040,6 +4040,11 @@
   )
 
 (defmethod vehicle-method-79 ((this wcar-snake-base))
+  ;; Match the Tough Puppy's working camouflage/input update path. This
+  ;; also reapplies the chassis/wheel fade immediately before visual updates.
+  (when (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+    (v-snake-update-camouflage! this)
+    (v-snake-update-damage-shield! this))
   (let ((s5-0 (new 'stack-no-clear 'inline-array 'quaternion 3)))
     (set-vector! (-> s5-0 2) 1092.2667 1092.2667 0.0 0.0)
     (dotimes (s4-0 (-> this info physics-model wheel-count))

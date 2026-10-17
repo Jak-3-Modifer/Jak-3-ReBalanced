@@ -448,6 +448,68 @@
   (the-as symbol (and (-> *bigmap* progress-minimap) (-> *bigmap* progress-minimap2)))
   )
 
+(defun draw-hero-desert-map-fog! ((this bigmap) (buf dma-buffer))
+  (when (and (hero-desert-map-exploration-active?)
+             (= (-> this load-index) (bigmap-id desert))
+             )
+    (let ((start-x (the int (/ (-> this scroll x) 32.0)))
+          (start-y (the int (/ (-> this scroll y) 32.0)))
+          (end-x 0)
+          (end-y 0)
+          (y-scale (-> *video-params* relative-x-scale-reciprical))
+          )
+      (when (< start-x 0)
+        (set! start-x 0)
+        )
+      (when (< start-y 0)
+        (set! start-y 0)
+        )
+      (set! end-x (+ start-x 17))
+      (set! end-y (+ start-y 15))
+      (when (> end-x 63)
+        (set! end-x 63)
+        )
+      (when (> end-y 63)
+        (set! end-y 63)
+        )
+      ;; Merge adjacent hidden cells into one rectangle per run. This keeps the
+      ;; full-map DMA cost small even when almost the entire desert is hidden.
+      (let ((grid-y start-y))
+        (while (<= grid-y end-y)
+          (let ((grid-x start-x))
+            (while (<= grid-x end-x)
+              (cond
+                ((zero? (-> *hero-desert-map-explored* (+ grid-x (* grid-y 64))))
+                 (let ((run-start grid-x))
+                   (while (and (<= grid-x end-x)
+                               (zero? (-> *hero-desert-map-explored* (+ grid-x (* grid-y 64)))))
+                     (+! grid-x 1)
+                     )
+                   (draw-sprite2d-xy
+                     buf
+                     (the int (- (the float (* run-start 32)) (-> this scroll x)))
+                     (the int (* (- (the float (* grid-y 32)) (-> this scroll y)) y-scale))
+                     (+ (* (- grid-x run-start) 32) 1)
+                     (+ (the int (* 32.0 y-scale)) 1)
+                     *hero-desert-map-fog-color*
+                     #x3fffff
+                     )
+                   )
+                 )
+                (else
+                  (+! grid-x 1)
+                  )
+                )
+              )
+            )
+          (+! grid-y 1)
+          )
+        )
+      )
+    )
+  (none)
+  )
+
 (defmethod draw! ((this bigmap) (arg0 int) (arg1 int) (arg2 int) (arg3 int))
   (local-vars
     (sv-96 (inline-array vector4w))
@@ -459,6 +521,8 @@
     )
   (when (and (= (file-status (-> this bigmap-image) "world-map" (the-as int (-> this load-index))) 'active)
              (not (-> this loading-flag))
+             (or (!= (-> this load-index) (bigmap-id wascity))
+                 (hero-area-map-owned? 'wascity))
              )
     (with-dma-buffer-add-bucket ((s2-0 (-> *display* frames (-> *display* on-screen) global-buf))
                                  ;; og:preserve-this
@@ -547,7 +611,9 @@
             (set! sv-104 (new 'stack-no-clear 'matrix))
             (set! sv-112 (the int (* 56.0 f30-0)))
             (set! sv-120 (-> *video-params* relative-x-scale-reciprical))
-            (when sv-100
+            ;; Hero Mode's explored desert map intentionally has no live Jak
+            ;; marker; navigation comes from memory and the compass.
+            (when (and sv-100 (not (hero-desert-map-exploration-active?)))
               (let ((s0-2 this))
                 (set! sv-240 (method-of-object s0-2 set-pos!))
                 (let ((a1-29 (target-pos 0)))
@@ -655,6 +721,7 @@
             )
           )
         )
+      (draw-hero-desert-map-fog! this s2-0)
       (dma-buffer-add-gs-set s2-0 (scissor-1 (new 'static 'gs-scissor :scax1 #x1ff :scay1 #x19f)))
       )
     (when (= (-> this load-index) (bigmap-id none))

@@ -3767,7 +3767,10 @@
               :resolution-scene-continue #f
               :final-node (game-task-node desert-rescue-dead-wlander-movie)
               :vehicle-type #x1b
-              :index 2
+              ;; Do not force-highlight the Turtle and Toad while choosing a
+              ;; vehicle for Desert Rescue; retain the player's current garage
+              ;; selection instead.
+              :index -1
               :on-complete #f
               :on-fail #f
               )
@@ -4794,7 +4797,7 @@
               :mask (task-manager-mask time-limit)
               :level 'lwassig
               :type-to-spawn 'task-manager-nest-cocoon-gas
-              :time-limit #xd2f0
+              :time-limit (seconds 90)
               :intro-scene #f
               :resolution-scene #f
               :resolution-scene-continue #f

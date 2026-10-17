@@ -201,6 +201,7 @@
   (growth-spurt 60)
   ;; Persistent shop toggle: restores the giant scale used by Dark Jak internals.
   (dark-giant 61)
+  ;; Persistent Hero Mode Compass purchase/toggle; retain the reserved enum name.
   (gs62 62)
   ;; Reserved shop-toggle bit for the Wave Concussor self-launch effect.
   (gs63 63)

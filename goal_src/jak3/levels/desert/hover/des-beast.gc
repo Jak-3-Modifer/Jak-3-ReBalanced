@@ -1477,6 +1477,9 @@
 
 (defun des-beast-drop-skull-gem ((arg0 des-beast))
   "Add one skull gem directly to Jak's inventory for each defeated Metal Head Hunt Beast."
+  (dotimes (i 4)
+    (when (= (handle->process (-> *hero-hover-painted-beasts* i)) arg0)
+      (set! (-> *hero-hover-painted-beasts* i) (the-as handle #f))))
   (when (and *target* (= (-> arg0 level) (level-get *level* 'deshover)))
     (send-event *target* 'get-pickup (pickup-type gem) 1.0)
     )
@@ -2081,8 +2084,18 @@
                                                                                )
                                                )
                            )
-                     (cpad-set-buzz! (-> *cpad-list* cpads 0) 1 255 (seconds 0.5))
+                     ;; Hero Hover adds AI cars; their collisions must not drive
+                     ;; the player's rumble or cinematic hit camera.
+                     (when (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                               (!= (-> this level) (level-get *level* 'deshover))
+                               (and *target* (focus-test? *target* pilot-riding)
+                                    (= (handle->process (-> *target* pilot vehicle)) arg0)))
+                       (cpad-set-buzz! (-> *cpad-list* cpads 0) 1 255 (seconds 0.5)))
                      (when (and (< 204800.0 f30-2)
+                                (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                                    (!= (-> this level) (level-get *level* 'deshover))
+                                    (and *target* (focus-test? *target* pilot-riding)
+                                         (= (handle->process (-> *target* pilot vehicle)) arg0)))
                                 (or (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
                                     (>= (-> this hit-points2) 0.0)))
                        (add-process *gui-control* this (gui-channel beast) (gui-action play) "bstpitch" -99.0 0)

@@ -704,7 +704,7 @@
 (defstate wait (waster-b)
   :virtual #t
   :trans (behavior ()
-    '()
+    (hero-wascity-npc-shop-register! self)
     )
   :code (behavior ()
     (until #f
@@ -752,6 +752,15 @@
           )
       )
     #f
+    )
+  )
+
+(defstate active (waster-b)
+  :virtual #t
+  :trans (behavior ()
+    (let ((parent-trans (-> (method-of-type civilian active) trans)))
+      (when parent-trans (parent-trans)))
+    (hero-wascity-npc-shop-register! self)
     )
   )
 

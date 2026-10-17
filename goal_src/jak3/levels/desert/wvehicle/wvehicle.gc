@@ -13,15 +13,158 @@
 (define *v-snake-regenerative-armor-equipped?* #f)
 (define *v-snake-emergency-repair-equipped?* #f)
 (define *v-snake-emergency-repair-armed?* #f)
+(define *v-snake-emergency-repair-cooldown-time* (the-as time-frame 0))
+(define *v-snake-emergency-repair-cooldown-active?* #f)
+(define *v-snake-camouflage-equipped?* #f)
+(define *v-snake-camouflage-active?* #f)
+;; Symbol values are only 32 bits; a handle includes a 32-bit pointer AND pid.
+;; Keep the complete 64-bit handle in array storage, not a symbol value.
+(define *v-snake-camouflage-owner-storage*
+  (new 'static 'array handle 1))
+(set! (-> *v-snake-camouflage-owner-storage* 0) (the-as handle #f))
+(define *v-snake-camouflage-time* (the-as time-frame 0))
+(define *v-snake-camouflage-cooldown-time* (the-as time-frame 0))
+(define *v-snake-camouflage-cooldown-active?* #f)
 
-;; Dust Demon drivetrain selection: RWD by default, with player D-pad control.
-(define *dust-demon-4wd?* #f)
-(define *gila-stomper-fwd?* #f)
-(defun dust-demon-4wd-enabled? ((this wvehicle))
-  (and (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
-       *dust-demon-4wd?*
-       )
+(define *v-snake-damage-shield-equipped?* #f)
+(define *v-snake-damage-shield-active?* #f)
+(define *v-snake-damage-shield-time* (the-as time-frame 0))
+(define *v-snake-damage-shield-cooldown-time* (the-as time-frame 0))
+(define *v-snake-damage-shield-cooldown-active?* #f)
+(define *v-snake-damage-shield-owner-storage* (new 'static 'array handle 1))
+(set! (-> *v-snake-damage-shield-owner-storage* 0) (the-as handle #f))
+
+(defun v-snake-damage-shield-protects? ((this wvehicle))
+  (if (and *v-snake-damage-shield-active?*
+           *v-snake-damage-shield-equipped?*
+           (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (logtest? (-> this v-flags) (vehicle-flag player-driving))
+           (not (logtest? (-> this v-flags) (vehicle-flag dead)))
+           (> (-> this hit-points) 0.0)
+           (= (handle->process (-> *v-snake-damage-shield-owner-storage* 0)) this)
+           (< (- (-> *display* game-clock frame-counter) *v-snake-damage-shield-time*)
+              (seconds 4)))
+      #t #f)
   )
+
+(defun v-snake-end-damage-shield! ()
+  (when *v-snake-damage-shield-active?*
+    (set! *v-snake-damage-shield-cooldown-time* (-> *display* game-clock frame-counter))
+    (set! *v-snake-damage-shield-cooldown-active?* #t)
+    (format #t "[Sand Shark Damage Shield] ended; 35-second cooldown started~%"))
+  (set! *v-snake-damage-shield-active?* #f)
+  (set! (-> *v-snake-damage-shield-owner-storage* 0) (the-as handle #f))
+  (none)
+  )
+
+(defun v-snake-update-damage-shield! ((this wvehicle))
+  (when (and *v-snake-damage-shield-active?*
+             (or (not (handle->process (-> *v-snake-damage-shield-owner-storage* 0)))
+                 (and (= (handle->process (-> *v-snake-damage-shield-owner-storage* 0)) this)
+                      (not (v-snake-damage-shield-protects? this)))))
+    (v-snake-end-damage-shield!))
+  ;; Re-equipping cannot reset the cooldown; an active shield cannot be extended.
+  (when (and *v-snake-damage-shield-equipped?*
+             (not *v-snake-damage-shield-active?*)
+             (or (not *v-snake-damage-shield-cooldown-active?*)
+                 (>= (- (-> *display* game-clock frame-counter)
+                        *v-snake-damage-shield-cooldown-time*)
+                     (seconds 35)))
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (logtest? (-> this v-flags) (vehicle-flag player-driving))
+             (not (logtest? (-> this v-flags) (vehicle-flag dead)))
+             (> (-> this hit-points) 0.0)
+             (cpad-pressed? 0 right))
+    (set! (-> *v-snake-damage-shield-owner-storage* 0) (process->handle this))
+    (set! *v-snake-damage-shield-time* (-> *display* game-clock frame-counter))
+    (set! *v-snake-damage-shield-active?* #t)
+    (sound-play "shield-on")
+    (format #t "[Sand Shark Damage Shield] activated for 4 seconds~%"))
+  (none)
+  )
+
+(defun v-snake-set-camouflage-fade! ((this wvehicle) (active? symbol))
+  ;; Visual only: keep all collision masks and Jak's draw state unchanged.
+  (if active?
+      (logior! (-> this draw status) (draw-control-status force-fade))
+      (logclear! (-> this draw status) (draw-control-status force-fade)))
+  (set! (-> this draw force-fade) (the-as uint (if active? 13 128)))
+  (dotimes (i (-> this info physics-model wheel-count))
+    ;; A wheel slot can be raw zero before its drawable is spawned.
+    (unless (zero? (-> this wheel i handle u64))
+      (let ((wheel (handle->process (-> this wheel i handle))))
+        (when wheel
+          (let ((draw (-> (the-as process-drawable wheel) draw)))
+            (if active?
+                (logior! (-> draw status) (draw-control-status force-fade))
+                (logclear! (-> draw status) (draw-control-status force-fade)))
+            (set! (-> draw force-fade) (the-as uint (if active? 13 128))))))))
+  (none)
+  )
+
+(defun v-snake-end-camouflage! ()
+  (when *v-snake-camouflage-active?*
+    (let ((car (handle->process (-> *v-snake-camouflage-owner-storage* 0))))
+      (when car (v-snake-set-camouflage-fade! (the-as wvehicle car) #f)))
+    (set! *v-snake-camouflage-active?* #f)
+    (set! (-> *v-snake-camouflage-owner-storage* 0) (the-as handle #f))
+    ;; These timestamps are shared across vehicle, turret and menu callers.
+    ;; current-time/set-time! use PP's clock, which can differ between them.
+    (set! *v-snake-camouflage-cooldown-time* (-> *display* game-clock frame-counter))
+    (set! *v-snake-camouflage-cooldown-active?* #t)
+    (format #t "[Sand Shark Camouflage] ended; 25-second cooldown started~%"))
+  (none)
+  )
+
+(defun v-snake-update-camouflage! ((this wvehicle))
+  (let ((eligible? (and *v-snake-camouflage-equipped?*
+                        (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                        (logtest? (-> this v-flags) (vehicle-flag player-driving))
+                        (not (logtest? (-> this v-flags) (vehicle-flag dead)))
+                        (> (-> this hit-points) 0.0))))
+    (when *v-snake-camouflage-active?*
+      (let ((car (handle->process (-> *v-snake-camouflage-owner-storage* 0))))
+        (cond
+          ((not car)
+           (format #t "[Sand Shark Camouflage] ending: vehicle no longer exists~%")
+           (v-snake-end-camouflage!))
+          ((= car this)
+           (cond
+             ((not eligible?)
+              (format #t "[Sand Shark Camouflage] ending: unequipped, dismounted, dead or outside Hero Mode~%")
+              (v-snake-end-camouflage!))
+             ((>= (- (-> *display* game-clock frame-counter) *v-snake-camouflage-time*) (seconds 10))
+              (format #t "[Sand Shark Camouflage] ending: 10 seconds elapsed~%")
+              (v-snake-end-camouflage!)))))))
+    (when (and eligible? (cpad-pressed? 0 right)
+               (not *v-snake-camouflage-active?*))
+      (cond
+        ((or (not *v-snake-camouflage-cooldown-active?*)
+             (>= (- (-> *display* game-clock frame-counter) *v-snake-camouflage-cooldown-time*) (seconds 25)))
+         (set! (-> *v-snake-camouflage-owner-storage* 0) (process->handle this))
+         (set! *v-snake-camouflage-active?* #t)
+         (set! *v-snake-camouflage-time* (-> *display* game-clock frame-counter))
+         (format #t "[Sand Shark Camouflage] activated for 10 seconds; opacity 13/128~%"))
+        (else (format #t "[Sand Shark Camouflage] cooldown not ready~%"))))
+    (when (and *v-snake-camouflage-active?*
+               (= (handle->process (-> *v-snake-camouflage-owner-storage* 0)) this))
+      (v-snake-set-camouflage-fade! this #t)))
+  (none)
+  )
+
+(defun v-snake-camouflage-hides-target? ()
+  (if (and *v-snake-camouflage-active?* *v-snake-camouflage-equipped?*
+           (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           *target* (focus-test? *target* pilot-riding)
+           (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-snake))
+           (< (- (-> *display* game-clock frame-counter) *v-snake-camouflage-time*) (seconds 10))
+           (let ((car (handle->process (-> *v-snake-camouflage-owner-storage* 0))))
+             (and car
+                  (logtest? (-> (the-as wvehicle car) v-flags) (vehicle-flag player-driving)))))
+      #t #f)
+  )
+
+(define *gila-stomper-fwd?* #f)
 
 (defun gila-stomper-fwd-enabled? ((this wvehicle))
   (and (= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
@@ -38,10 +181,8 @@
 
 (defun wvehicle-wheel-driven? ((this wvehicle) (arg0 vehicle-wheel-info))
   (if (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
-      (or (dust-demon-4wd-enabled? this)
-          ;; The Dust Demon's rear axle is the negative-Z wheel pair.
-          (< (-> arg0 local-pos z) 0.0)
-          )
+      ;; The Dust Demon remains rear-wheel drive.
+      (< (-> arg0 local-pos z) 0.0)
       (if (= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
           (if (gila-stomper-fwd-enabled? this)
               (> (-> arg0 local-pos z) 0.0)
@@ -60,7 +201,7 @@
 (defun wvehicle-drive-wheel-count ((this wvehicle))
   (cond
     ((= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
-     (if (dust-demon-4wd-enabled? this) 4 2)
+     2
      )
     ((= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
      (if (gila-stomper-fwd-enabled? this) 2 4)
@@ -75,30 +216,362 @@
   )
 
 (defun heat-seeker-manual-gears-active? ((this wvehicle))
-  (and (= (-> this info vehicle-type) (vehicle-type-u8 v-fox))
-       (logtest? (vehicle-flag player-driving) (-> this v-flags))
-       )
+  (if (and (= (-> this info vehicle-type) (vehicle-type-u8 v-fox))
+           (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+      #t
+      #f)
   )
 
 (defun dust-demon-manual-gears-active? ((this wvehicle))
-  (and (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
-       (logtest? (vehicle-flag player-driving) (-> this v-flags))
-       )
+  (if (and (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
+           (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+      #t
+      #f)
+  )
+
+(defun tough-puppy-manual-gears-active? ((this wvehicle))
+  ;; Shared clutch drivetrain for the supported Hero Mode player vehicles.
+  ;; Runtime state follows the driven vehicle's full handle, resetting on swaps.
+  ;; Keep this helper name for existing physics/effects callers.
+  (if (and (or (= (-> this info vehicle-type) (vehicle-type-u8 v-turtle))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-rhino))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-toad))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-fox))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-x-ride)))
+           (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+      #t
+      #f)
+  )
+
+(defun hero-extended-gears? ((this wvehicle))
+  ;; Runtime-only Hero Mode extensions preserve the shared Normal Mode
+  ;; transmission constants.
+  (if (and (or (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-turtle))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-rhino))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
+               (= (-> this info vehicle-type) (vehicle-type-u8 v-toad)))
+           (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      #t #f))
+
+(defun wvehicle-effective-gear-count ((this wvehicle))
+  (if (hero-extended-gears? this)
+      (case (-> this info vehicle-type)
+        (((vehicle-type-u8 v-turtle)) 7)
+        (((vehicle-type-u8 v-snake)) 11)
+        (((vehicle-type-u8 v-scorpion)) 8)
+        (((vehicle-type-u8 v-rhino)) 9)
+        (((vehicle-type-u8 v-mirage)) 10)
+        (((vehicle-type-u8 v-toad)) 9)
+        (else (the int (-> this info transmission gear-count))))
+      (the int (-> this info transmission gear-count))))
+
+(defun wvehicle-effective-gear-ratio ((this wvehicle))
+  ;; Hero overdrive is local to the vehicle; never mutate shared constants.
+  (if (hero-extended-gears? this)
+      (case (-> this info vehicle-type)
+        (((vehicle-type-u8 v-scorpion))
+         (case (-> this gear-select)
+           ((4) 0.8)
+           ((5) 0.67)
+           ((6) 0.57)
+           ((7) 0.49)
+           (else (-> this info transmission gear-ratio-array (-> this gear-select)))))
+        (((vehicle-type-u8 v-rhino))
+         (case (-> this gear-select)
+           ((5) 0.8)
+           ((6) 0.67)
+           ((7) 0.57)
+           ((8) 0.49)
+           (else (-> this info transmission gear-ratio-array (-> this gear-select)))))
+        (((vehicle-type-u8 v-toad))
+         (case (-> this gear-select)
+           ((5) 0.8)
+           ((6) 0.67)
+           ((7) 0.57)
+           ((8) 0.49)
+           (else (-> this info transmission gear-ratio-array (-> this gear-select)))))
+        (((vehicle-type-u8 v-mirage))
+         (case (-> this gear-select)
+           ((5) 0.8)
+           ((6) 0.67)
+           ((7) 0.57)
+           ((8) 0.49)
+           ((9) 0.42)
+           (else (-> this info transmission gear-ratio-array (-> this gear-select)))))
+        (else
+         (case (-> this gear-select)
+           ((5) 0.8)
+           ((6) 0.67)
+           ((7) 0.57)
+           ((8) 0.49)
+           ((9) 0.42)
+           ((10) 0.36)
+           (else (-> this info transmission gear-ratio-array (-> this gear-select))))))
+      (-> this info transmission gear-ratio-array (-> this gear-select))))
+
+(defun tough-puppy-clutch-held? ((this wvehicle))
+  (if (and (tough-puppy-manual-gears-active? this) (cpad-hold? 0 l2))
+      #t
+      #f)
+  )
+
+(defun tough-puppy-handbrake-clutch? ((this wvehicle))
+  ;; Circle opens the clutch but does not authorize manual gear changes.
+  ;; Read the button too, so a newly pressed handbrake cannot load the engine
+  ;; for one frame before the smoothed vehicle controls are updated.
+  (if (and (tough-puppy-manual-gears-active? this)
+           (or (cpad-hold? 0 circle) (> (-> this controls handbrake) 0.05)))
+      #t
+      #f)
+  )
+
+;; Full handles prevent a recycled vehicle process inheriting a stalled engine.
+;; No vehicle layout changes or extra level-owned processes are needed.
+(define *tough-puppy-stall-owner* (new 'static 'array handle 1))
+(set! (-> *tough-puppy-stall-owner* 0) (the-as handle #f))
+(define *tough-puppy-engine-stalled?* #f)
+(define *tough-puppy-clutch-was-held?* #f)
+(define *tough-puppy-clutch-release-pending?* #f)
+(define *tough-puppy-clutch-start-gear* 1)
+(define *tough-puppy-clutch-mismatch* 0.0)
+(define *tough-puppy-slip-remaining* 0.0)
+(define *tough-puppy-slip-severity* 0.0)
+(define *tough-puppy-low-rpm-seconds* 0.0)
+(define *tough-puppy-clutch-heat* 0.0)
+(define *tough-puppy-clutch-overheated?* #f)
+(define *tough-puppy-bog-remaining* 0.0)
+(define *tough-puppy-bog-severity* 0.0)
+
+(defun tough-puppy-clutch-level ((this wvehicle))
+  ;; Per-car manual-transmission difficulty for Hero Mode.
+  (case (-> this info vehicle-type)
+    (((vehicle-type-u8 v-turtle) (vehicle-type-u8 v-toad)) 1)
+    (((vehicle-type-u8 v-rhino) (vehicle-type-u8 v-scorpion) (vehicle-type-u8 v-snake)) 2)
+    (((vehicle-type-u8 v-fox) (vehicle-type-u8 v-x-ride)) 3)
+    (((vehicle-type-u8 v-mirage)) 4)
+    (else 1))
+  )
+
+(defun tough-puppy-stall-grace ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((1) 0.35)
+    ((2) 0.24)
+    ((3) 0.16)
+    (else 0.1))
+  )
+
+(defun tough-puppy-stall-rpm-scale ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((1) 1.0)
+    ((2) 1.1)
+    ((3) 1.2)
+    (else 1.3))
+  )
+
+(defun tough-puppy-slip-threshold ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((1) 2200.0)
+    ((2) 1500.0)
+    ((3) 1000.0)
+    (else 700.0))
+  )
+
+(defun tough-puppy-slip-duration ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((1) 0.25)
+    ((2) 0.45)
+    ((3) 0.65)
+    (else 0.85))
+  )
+
+(defun tough-puppy-clean-shift-threshold ((this wvehicle))
+  ;; Clean-shift healing uses a much tighter window than the point where tire
+  ;; slip begins. Higher skill levels demand progressively closer rev matching.
+  (case (tough-puppy-clutch-level this)
+    ((1) 350.0)
+    ((2) 300.0)
+    ((3) 225.0)
+    (else 150.0))
+  )
+
+(defun tough-puppy-bog-duration ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((1) 0.45)
+    ((2) 0.65)
+    ((3) 0.85)
+    (else 1.1))
+  )
+
+(defun tough-puppy-grip-loss ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((1) 0.25)
+    ((2) 0.45)
+    ((3) 0.65)
+    (else 0.8))
+  )
+
+(defun tough-puppy-engine-braking ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((1) 0.08)
+    ((2) 0.1)
+    ((3) 0.13)
+    (else 0.16))
+  )
+
+(defun tough-puppy-apply-gearbox-damage! ((this wvehicle) (amount float))
+  ;; Gearbox mistakes cannot directly destroy the car, but the lost health is
+  ;; persistent and leaves an Expert driver much less room for combat damage.
+  (when (> (-> this hit-points) 0.01)
+    (set! (-> this hit-points) (fmax 0.01 (- (-> this hit-points) amount))))
+  (none)
+  )
+
+(defun tough-puppy-reward-clean-shift! ((this wvehicle))
+  ;; Runtime hit-points are normalized. inv-hit-points is exactly one HP for
+  ;; the current vehicle, regardless of that vehicle's maximum health.
+  (when (and (> (-> this hit-points) 0.0) (< (-> this hit-points) 1.0))
+    (set! (-> this hit-points)
+          (fmin 1.0 (+ (-> this hit-points) (-> this info damage inv-hit-points)))))
+  (none)
+  )
+
+(defun tough-puppy-update-clutch-heat! ((this wvehicle) (dt float))
+  (if (= (tough-puppy-clutch-level this) 4)
+      (begin
+        (if *tough-puppy-clutch-overheated?*
+            (-! *tough-puppy-clutch-heat* (* 0.35 dt))
+            (if (and (> (-> this clutch-grab) 0.05)
+                     (< (-> this clutch-grab) 0.95)
+                     (> (-> this controls throttle) 0.25))
+                (+! *tough-puppy-clutch-heat* (* 0.5 dt))
+                (-! *tough-puppy-clutch-heat* (* 0.22 dt))))
+        (set! *tough-puppy-clutch-heat* (fmax 0.0 (fmin 1.0 *tough-puppy-clutch-heat*)))
+        (when (and (not *tough-puppy-clutch-overheated?*)
+                   (>= *tough-puppy-clutch-heat* 1.0))
+          (set! *tough-puppy-clutch-overheated?* #t)
+          (tough-puppy-apply-gearbox-damage! this 0.03)
+          (set! *tough-puppy-slip-severity* 1.0)
+          (set! *tough-puppy-slip-remaining* 0.85))
+        (when (and *tough-puppy-clutch-overheated?*
+                   (<= *tough-puppy-clutch-heat* 0.35))
+          (set! *tough-puppy-clutch-overheated?* #f)))
+      (begin
+        (set! *tough-puppy-clutch-heat* 0.0)
+        (set! *tough-puppy-clutch-overheated?* #f)))
+  (none)
+  )
+
+(defun tough-puppy-road-rpm ((this wvehicle))
+  (* 9.549297
+     (/ (fabs (vector-dot
+                (vector-! (new 'stack 'vector) (-> this rbody lin-velocity)
+                          (-> this surface-velocity))
+                (-> this rbody matrix fvec)))
+        (fmax 1.0 (-> this avg-drive-wheel-radius)))
+     (fabs (wvehicle-effective-gear-ratio this))
+     (-> this info transmission final-drive-ratio))
+  )
+
+(defun tough-puppy-clutch-release-rate ((this wvehicle))
+  ;; Higher-level cars have a faster, narrower digital bite window. An
+  ;; overheated Expert clutch slips until it cools down.
+  (if *tough-puppy-clutch-overheated?*
+      0.65
+      (case (tough-puppy-clutch-level this)
+        ((1) (if (> *tough-puppy-clutch-mismatch* 1200.0) 1.25 2.5))
+        ((2) (if (> *tough-puppy-clutch-mismatch* 1000.0) 1.6 3.2))
+        ((3) (if (> *tough-puppy-clutch-mismatch* 800.0) 2.0 4.2))
+        (else (if (> *tough-puppy-clutch-mismatch* 600.0) 2.5 5.0))))
+  )
+
+(defun tough-puppy-shift-delay ((this wvehicle))
+  ;; Clean shifts become faster as difficulty rises; poorly matched shifts
+  ;; interrupt power for longer.
+  (let ((clean? (< *tough-puppy-clutch-mismatch* (tough-puppy-slip-threshold this))))
+    (case (tough-puppy-clutch-level this)
+      ((1) 15)
+      ((2) (if clean? 11 15))
+      ((3) (if clean? 8 18))
+      (else (if clean? 5 22))))
+  )
+
+(defun tough-puppy-gear-reject-threshold ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((3) 2600.0)
+    ((4) 1800.0)
+    (else 100000.0))
+  )
+
+(defun tough-puppy-clutchless-shift-damage ((this wvehicle))
+  (case (tough-puppy-clutch-level this)
+    ((3) 0.005)
+    ((4) 0.015)
+    (else 0.0))
+  )
+
+(defun tough-puppy-downshift-grip-scale ((this wvehicle) (wheel vehicle-wheel-info))
+  (if (and (tough-puppy-manual-gears-active? this)
+           (= (handle->process (-> *tough-puppy-stall-owner* 0)) this)
+           (> *tough-puppy-slip-remaining* 0.0)
+           (wvehicle-wheel-driven? this wheel))
+      (- 1.0 (* 0.55 *tough-puppy-slip-severity*
+                (/ (tough-puppy-grip-loss this) 0.55)
+                (fmin 1.0 (/ *tough-puppy-slip-remaining*
+                              (tough-puppy-slip-duration this)))))
+      1.0)
+  )
+
+(defun tough-puppy-engine-stalled? ((this wvehicle))
+  (and (tough-puppy-manual-gears-active? this)
+       (= (handle->process (-> *tough-puppy-stall-owner* 0)) this)
+       *tough-puppy-engine-stalled?*)
+  )
+
+(defun tough-puppy-stall-engine! ((this wvehicle))
+  (set! (-> *tough-puppy-stall-owner* 0) (process->handle this))
+  (set! *tough-puppy-engine-stalled?* #t)
+  (set! (-> this engine-rev) 0.0)
+  (set! (-> this engine-rpm) 0.0)
+  (set! (-> this engine-torque) 0.0)
+  (set! (-> this clutch-grab) 0.0)
+  (sound-stop (-> this engine1-sound-id))
+  (sound-stop (-> this engine2-sound-id))
+  (sound-stop (-> this engine3-sound-id))
+  (none)
+  )
+
+(defun tough-puppy-update-stall! ((this wvehicle) (rev float) (dt float))
+  ;; Require sustained low RPM, rather than a single physics-substep dip.
+  (when (and (tough-puppy-manual-gears-active? this)
+             (= (handle->process (-> *tough-puppy-stall-owner* 0)) this))
+    (if (and (not (tough-puppy-engine-stalled? this))
+             (not (tough-puppy-clutch-held? this))
+             (not (tough-puppy-handbrake-clutch? this))
+             (not (logtest? (-> this v-flags) (vehicle-flag in-air dead)))
+             (> (-> this clutch-grab) 0.35)
+             (< rev (* 0.10471976
+                       (-> this info engine min-rpm)
+                       (tough-puppy-stall-rpm-scale this))))
+        (begin
+          (+! *tough-puppy-low-rpm-seconds* dt)
+          (when (>= *tough-puppy-low-rpm-seconds* (tough-puppy-stall-grace this))
+            (tough-puppy-stall-engine! this)))
+        (set! *tough-puppy-low-rpm-seconds* 0.0)))
+  (none)
   )
 
 (defun manual-gears-active? ((this wvehicle))
-  (or (heat-seeker-manual-gears-active? this)
-      (dust-demon-manual-gears-active? this)
-      )
-  )
-
-(defun dust-demon-gear-speed-limit ((gear int))
-  (case gear
-    ((1) (meters 36))
-    ((2) (meters 45))
-    ((3) (meters 52))
-    (else (meters 52))
-    )
+  (if (or (heat-seeker-manual-gears-active? this)
+          (dust-demon-manual-gears-active? this)
+          (tough-puppy-manual-gears-active? this))
+      #t
+      #f)
   )
 
 (defmethod wvehicle-method-166 ((this wvehicle) (arg0 float) (arg1 float))
@@ -359,20 +832,13 @@
         )
     )
   (when (logtest? (vehicle-flag player-driving) (-> this v-flags))
-    (when (or (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
-              (= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion)))
+    (when (= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
       (cond
         ((cpad-pressed? 0 right)
-         (if (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
-             (set! *dust-demon-4wd?* #t)
-             (set! *gila-stomper-fwd?* #t)
-             )
+         (set! *gila-stomper-fwd?* #t)
          )
         ((cpad-pressed? 0 left)
-         (if (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage))
-             (set! *dust-demon-4wd?* #f)
-             (set! *gila-stomper-fwd?* #f)
-             )
+         (set! *gila-stomper-fwd?* #f)
          )
         )
       )
@@ -406,12 +872,16 @@
                (or (>= (-> this hit-points) 1.0)
                    (<= (-> this hit-points) 0.0)))
       (set! *sand-shark-repair-active?* #f))
-    ;; Emergency Repair is intentionally a player-triggered, one-shot defense.
-    ;; D-pad right arms or disarms it; it restores 25% maximum health only after
-    ;; the driven Sand Shark reaches 10% health or less.
+    ;; Emergency Repair is intentionally a player-triggered, one-shot defense. saves your ass in those butt clenching moments.
+    ;; D-pad right arms or disarms it; it restores 25% hp.
+    ;; Cooldown starts after the repair is applied, and it cannot be rearmed until the cooldown expires.
     (when (and (= (-> this info vehicle-type) (vehicle-type-u8 v-snake))
                *v-snake-emergency-repair-equipped?*
                (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (or (not *v-snake-emergency-repair-cooldown-active?*)
+                   (>= (- (-> *display* game-clock frame-counter)
+                          *v-snake-emergency-repair-cooldown-time*)
+                       (seconds 30)))
                (cpad-pressed? 0 right))
       (set! *v-snake-emergency-repair-armed?*
             (not *v-snake-emergency-repair-armed?*)))
@@ -419,10 +889,17 @@
                *v-snake-emergency-repair-equipped?*
                *v-snake-emergency-repair-armed?*
                (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (or (not *v-snake-emergency-repair-cooldown-active?*)
+                   (>= (- (-> *display* game-clock frame-counter)
+                          *v-snake-emergency-repair-cooldown-time*)
+                       (seconds 30)))
                (< 0.0 (-> this hit-points))
                (<= (-> this hit-points) 0.1))
       (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
-      (set! *v-snake-emergency-repair-armed?* #f))
+      (set! *v-snake-emergency-repair-armed?* #f)
+      (set! *v-snake-emergency-repair-cooldown-time* (-> *display* game-clock frame-counter))
+      (set! *v-snake-emergency-repair-cooldown-active?* #t)
+      (format #t "[Sand Shark Emergency Repair] repaired 25%; 30-second cooldown started~%"))
     (let ((v1-39 *game-info*))
       (set! (-> v1-39 health-bar-vehicle) (-> this hit-points))
       (set! (-> v1-39 race-number-turbos) (the int (-> this turbo-supply)))
@@ -440,6 +917,44 @@
     0
     )
   ((method-of-type vehicle vehicle-method-77) this)
+  ;; Tachometer and current gear above the lower-left boost HUD, safe for 4:3 for the streamers that'll play this mod XD. This is needed to see the current gear and RPM when using the manual transmission, otherwise you have to guess when to shift. hello?
+  (when (and (tough-puppy-manual-gears-active? this)
+             (not (paused?)) (not (movie?)) (not *progress-process*)
+             (not (load-in-progress? *level*))
+             (not (logtest? (-> this v-flags) (vehicle-flag dead))))
+    (let ((training-layout? (task-open? "desert-turtle-training-in-desert"))
+          (x (the int (* 8.0 (-> *video-params* relative-x-scale))))
+          (width (the int (* 90.0 (-> *video-params* relative-x-scale)))))
+      ;; Turtle Training temporarily moves the tachometer above the skull-gem
+      ;; pickup HUD. Closing the task automatically restores the normal layout.
+      (let ((bar-y (if training-layout? 105 310))
+            (font (new 'stack 'font-context *font-default-matrix* x (if training-layout? 88 293) 0.0
+                       (font-color default) (font-flags shadow kerning middle))))
+        (set-width! font width)
+        (set-height! font 80)
+        (set-scale! font 1.75)
+        (print-game-text
+          (case (-> this gear-select)
+            ((0) "R") ((1) "1") ((2) "2") ((3) "3") ((4) "4") ((5) "5") ((6) "6") ((7) "7") ((8) "8") ((9) "9") ((10) "10") (else "-"))
+          font #f 44 (bucket-id hud-draw-pris2))
+      ;; Fixed to 4:3 tachometer for streamers or whatever. Red zone begins at 90% RPM, you prbabily want to shift the gear there unless it is max rpm then don"t duh.
+      ;; Yellow marker shows the RPM required by road speed and selected gear.
+      (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                   (bucket-id hud-draw-pris2))
+        (draw-sprite2d-xy buf x bar-y width 5
+                          (new 'static 'rgba :r 55 :g 55 :b 55 :a 100) #x3fffff)
+        (draw-sprite2d-xy buf (+ x (the int (* 0.9 (the float width)))) bar-y
+                          (- width (the int (* 0.9 (the float width)))) 5
+                          (new 'static 'rgba :r 180 :g 25 :b 25 :a 128) #x3fffff)
+        (draw-sprite2d-xy buf x (+ bar-y 1)
+                          (the int (* (the float width) (fmax 0.0 (fmin 1.0
+                            (/ (-> this engine-rpm) (-> this info engine max-rpm)))))) 3
+                          (new 'static 'rgba :r 100 :g 210 :b 240 :a 128) #x3fffff)
+        (draw-sprite2d-xy buf
+                          (+ x (the int (* (the float (- width 1)) (fmin 1.0
+                            (/ (tough-puppy-road-rpm this) (-> this info engine max-rpm))))))
+                          (- bar-y 2) 1 9
+                          (new 'static 'rgba :r 255 :g 200 :b 48 :a 128) #x3fffff)))))
   (none)
   )
 
@@ -469,15 +984,115 @@
   )
 
 (defmethod wvehicle-method-162 ((this wvehicle) (arg0 float))
+  (when (tough-puppy-manual-gears-active? this)
+    (when (!= (handle->process (-> *tough-puppy-stall-owner* 0)) this)
+      (set! (-> *tough-puppy-stall-owner* 0) (process->handle this))
+      (set! *tough-puppy-engine-stalled?* #f)
+      (set! *tough-puppy-clutch-was-held?* #f)
+      (set! *tough-puppy-clutch-release-pending?* #f)
+      (set! *tough-puppy-clutch-mismatch* 0.0)
+      (set! *tough-puppy-slip-remaining* 0.0)
+      (set! *tough-puppy-low-rpm-seconds* 0.0)
+      (set! *tough-puppy-slip-severity* 0.0)
+      (set! *tough-puppy-clutch-heat* 0.0)
+      (set! *tough-puppy-clutch-overheated?* #f)
+      (set! *tough-puppy-bog-remaining* 0.0)
+      (set! *tough-puppy-bog-severity* 0.0))
+    (tough-puppy-update-clutch-heat! this arg0)
+    (when (tough-puppy-handbrake-clutch? this)
+      (set! (-> this clutch-grab) 0.0)
+      (set! *tough-puppy-low-rpm-seconds* 0.0)
+      ;; Rejoin at the gentle 0.4-second rate after the handbrake is released.
+      (set! *tough-puppy-clutch-mismatch* 0.0))
+    (set! *tough-puppy-slip-remaining* (fmax 0.0 (- *tough-puppy-slip-remaining* arg0)))
+    (set! *tough-puppy-bog-remaining* (fmax 0.0 (- *tough-puppy-bog-remaining* arg0)))
+    (when (and (tough-puppy-clutch-held? this) (not *tough-puppy-clutch-was-held?*))
+      (set! *tough-puppy-clutch-start-gear* (-> this gear-select))
+      (set! *tough-puppy-clutch-release-pending?* #f))
+    (when (and *tough-puppy-clutch-was-held?* (not (tough-puppy-clutch-held? this)))
+      (set! *tough-puppy-clutch-release-pending?* #t))
+    (set! *tough-puppy-clutch-was-held?*
+          (if (tough-puppy-clutch-held? this) #t #f))
+    ;; Evaluate once, once the requested gear has actually been selected.
+    (when (and *tough-puppy-clutch-release-pending?*
+               (or (= (-> this shift-state) 0) (= (-> this shift-state) 3))
+               (= (-> this gear-select) (-> this next-gear-select)))
+      (let ((required (tough-puppy-road-rpm this)))
+        (set! *tough-puppy-clutch-mismatch* (fabs (- required (-> this engine-rpm))))
+        ;; Reward an actual, tightly rev-matched gear change with exactly one
+        ;; vehicle HP. Launches and clutch taps without a gear change do not heal.
+        (when (and (!= (-> this gear-select) *tough-puppy-clutch-start-gear*)
+                   (> (-> this gear-select) 0)
+                   (not (tough-puppy-engine-stalled? this))
+                   (not (logtest? (-> this v-flags) (vehicle-flag in-air dead)))
+                   (<= *tough-puppy-clutch-mismatch*
+                       (tough-puppy-clean-shift-threshold this)))
+          (tough-puppy-reward-clean-shift! this))
+        ;; A badly mismatched downshift on Advanced or Expert refuses the gear.
+        ;; The driver remains in the previous gear and pays a gearbox-health cost.
+        (when (and (not (tough-puppy-engine-stalled? this))
+                   (not (logtest? (-> this v-flags) (vehicle-flag in-air dead)))
+                   (> (-> this gear-select) 0)
+                   (< (-> this gear-select) *tough-puppy-clutch-start-gear*)
+                   (>= (tough-puppy-clutch-level this) 3)
+                   (> (- required (-> this engine-rpm))
+                      (tough-puppy-gear-reject-threshold this)))
+          (tough-puppy-apply-gearbox-damage!
+            this (if (= (tough-puppy-clutch-level this) 4) 0.025 0.01))
+          (set! (-> this gear-select) *tough-puppy-clutch-start-gear*)
+          (set! (-> this next-gear-select) *tough-puppy-clutch-start-gear*))
+        ;; Any poor clutch release can unsettle the driven wheels. The severity
+        ;; and duration are profile-dependent, so Assisted remains forgiving.
+        (when (and (not (tough-puppy-engine-stalled? this))
+                   (not (logtest? (-> this v-flags) (vehicle-flag in-air dead)))
+                   (> (-> this gear-select) 0)
+                   (> *tough-puppy-clutch-mismatch* (tough-puppy-slip-threshold this)))
+          (set! *tough-puppy-slip-severity*
+                (fmin 1.0
+                      (fmax 0.2
+                            (/ (- *tough-puppy-clutch-mismatch*
+                                  (tough-puppy-slip-threshold this))
+                               2500.0))))
+          (set! *tough-puppy-slip-remaining* (tough-puppy-slip-duration this))
+          ;; A digital L2 release is interpreted through RPM matching. Releasing
+          ;; into a large mismatch bogs the engine instead of delivering full
+          ;; torque immediately.
+          (set! *tough-puppy-bog-severity*
+                (fmin 1.0
+                      (fmax 0.25
+                            (/ *tough-puppy-clutch-mismatch* 3000.0))))
+          (set! *tough-puppy-bog-remaining* (tough-puppy-bog-duration this))))
+      (set! *tough-puppy-clutch-release-pending?* #f))
+    ;; Either direction's accelerator can restart with the clutch held.
+    ;; Also accept pressing L2 after Square, so button order does not matter.
+    (when (and (tough-puppy-engine-stalled? this)
+               (tough-puppy-clutch-held? this)
+               (or (cpad-pressed? 0 x)
+                   (and (cpad-hold? 0 square)
+                        (or (cpad-pressed? 0 square) (cpad-pressed? 0 l2)))))
+      (set! *tough-puppy-engine-stalled?* #f)
+      (set! *tough-puppy-low-rpm-seconds* 0.0)
+      (set! (-> this engine-rev) (* 0.10471976 (-> this info engine idle-rpm)))
+      (set! (-> this sound-engine-rpm) (-> this info engine idle-rpm))
+      (set! (-> this clutch-grab) 0.0)))
   (let ((s5-0 (-> this info)))
     (let ((s4-0 (new 'stack-no-clear 'wvehicle-physics-work)))
       (let ((f0-0 (-> this engine-rev)))
         (set! (-> s4-0 mat uvec x) (* 9.549297 f0-0))
         )
       (set! (-> s4-0 mat uvec z) 1.0)
-      (if (or (= 0.0 (-> this controls throttle))
+      ;; L2 disconnects drive without cutting throttle: X button can still rev. room room!
+      (when (or (tough-puppy-clutch-held? this) (tough-puppy-handbrake-clutch? this)
+                (tough-puppy-engine-stalled? this))
+        (set! (-> s4-0 mat uvec z) 0.0))
+      (when (and *tough-puppy-clutch-overheated?*
+                 (not (tough-puppy-clutch-held? this))
+                 (not (tough-puppy-handbrake-clutch? this)))
+        (set! (-> s4-0 mat uvec z) 0.35))
+      (if (or (and (not (tough-puppy-manual-gears-active? this))
+                   (= 0.0 (-> this controls throttle)))
               (and (logtest? (vehicle-flag turbo-boost) (-> this v-flags))
-                   (= (-> this gear-select) (+ (-> s5-0 transmission gear-count) -1))
+                   (= (-> this gear-select) (+ (wvehicle-effective-gear-count this) -1))
                    (< (-> s5-0 transmission upshift-rpm) (-> s4-0 mat uvec x))
                    )
               )
@@ -495,15 +1110,6 @@
                 )
           )
           (set! (-> s4-0 mat uvec y) (* 9.549297 f0-12))
-          ;; Hold the selected Dust Demon gear at its requested speed ceiling
-          ;; until the driver shifts with Up/Down.
-          (when (and (dust-demon-manual-gears-active? this)
-                     (< 0 (-> this gear-select))
-                     (>= (vector-dot (-> s4-0 mat rvec) (-> this rbody matrix fvec))
-                         (dust-demon-gear-speed-limit (-> this gear-select)))
-                     )
-            (set! (-> s4-0 mat uvec z) 0.0)
-            )
           )
         (cond
           ((logtest? (vehicle-flag reverse-gear) (-> this v-flags))
@@ -515,7 +1121,7 @@
            )
           ((and (not (manual-gears-active? this))
                 (< (-> s5-0 transmission upshift-rpm) (-> s4-0 mat uvec y))
-                (and (< (-> this gear-select) (+ (-> s5-0 transmission gear-count) -1))
+                (and (< (-> this gear-select) (+ (wvehicle-effective-gear-count this) -1))
                      (> (-> this gear-select) 0)
                      (= (-> this clutch-grab) 1.0)
                      (< 0.5 (-> this controls throttle))
@@ -535,6 +1141,16 @@
         (cond
           ((zero? v1-47)
            (cond
+             ;; L2 is a fully open clutch, so selecting reverse with L2+Square
+             ;; can rev the engine without creeping backward.
+             ((tough-puppy-clutch-held? this)
+              (set! (-> this clutch-grab) 0.0))
+             ((or (tough-puppy-handbrake-clutch? this)
+                  (tough-puppy-engine-stalled? this))
+              (seek! (-> this clutch-grab) 0.0 (* 16.0 arg0)))
+             ((tough-puppy-manual-gears-active? this)
+              (seek! (-> this clutch-grab) (-> s4-0 mat uvec z)
+                     (* (tough-puppy-clutch-release-rate this) arg0)))
              ((>= 1 (-> this gear-select))
               (cond
                 ((or (< (-> s4-0 mat uvec x) (-> s5-0 engine clutch-min-rpm)) (= (-> this controls throttle) 0.0))
@@ -568,13 +1184,21 @@
            )
           ((= v1-47 2)
            (set! (-> this gear-select) (-> this next-gear-select))
-           (when (< (the-as uint 15) (- (the-as uint (-> s4-0 mat uvec w)) (the-as uint (-> this shift-time))))
+           (when (tough-puppy-manual-gears-active? this)
+             ;; Judge this shift against the road RPM required by the newly
+             ;; selected gear. A rev-matched shift therefore clears sooner.
+             (set! *tough-puppy-clutch-mismatch*
+                   (fabs (- (tough-puppy-road-rpm this) (-> this engine-rpm)))))
+            (when (< (the-as uint (tough-puppy-shift-delay this))
+                     (- (the-as uint (-> s4-0 mat uvec w)) (the-as uint (-> this shift-time))))
              (set! (-> this shift-state) (the-as uint 3))
              (set! (-> this shift-time) (the-as uint (-> s4-0 mat uvec w)))
              )
            )
           ((= v1-47 3)
-           (seek! (-> this clutch-grab) (-> s4-0 mat uvec z) (* 8.0 arg0))
+           (seek! (-> this clutch-grab) (-> s4-0 mat uvec z)
+                  (* (if (tough-puppy-manual-gears-active? this)
+                         (tough-puppy-clutch-release-rate this) 8.0) arg0))
            (when (!= (-> this next-gear-select) (-> this gear-select))
              (set! (-> this shift-state) (the-as uint 1))
              (set! (-> this shift-time) (the-as uint (-> s4-0 mat uvec w)))
@@ -587,7 +1211,7 @@
           )
         )
       )
-    (set! (-> this gear-ratio) (-> s5-0 transmission gear-ratio-array (-> this gear-select)))
+    (set! (-> this gear-ratio) (wvehicle-effective-gear-ratio this))
     (set! (-> this final-drive-ratio) (-> s5-0 transmission final-drive-ratio))
     (set! (-> this total-gear-ratio) (* (-> this final-drive-ratio) (-> this gear-ratio)))
     (set! (-> this inv-total-gear-ratio) (/ 1.0 (-> this total-gear-ratio)))
@@ -617,7 +1241,31 @@
              )
         (set! (-> s4-0 rvec z) 0.0)
         )
-    (set! (-> this engine-torque) (wvehicle-method-166 this (-> this engine-rpm) (-> s4-0 rvec z)))
+    (set! (-> this engine-torque)
+          (if (tough-puppy-engine-stalled? this) 0.0
+              (wvehicle-method-166 this (-> this engine-rpm) (-> s4-0 rvec z))))
+    (when (and (tough-puppy-manual-gears-active? this)
+               (not (tough-puppy-engine-stalled? this)))
+      ;; Poor clutch engagement temporarily chokes positive engine output. The
+      ;; car keeps moving, but acceleration falls away until the bog clears.
+      (when (and (> *tough-puppy-bog-remaining* 0.0)
+                 (> (-> this engine-torque) 0.0))
+        (set! (-> this engine-torque)
+              (* (-> this engine-torque)
+                 (fmax 0.18 (- 1.0 (* 0.75 *tough-puppy-bog-severity*))))))
+      ;; Low-RPM/high-gear lugging: weak, lightly surging torque, not camera shake.
+      (when (and (> (-> this gear-select) 1) (< (-> this engine-rpm) 1800.0)
+                 (> (-> this engine-torque) 0.0))
+        (set! (-> this engine-torque)
+              (* (-> this engine-torque)
+                 (fmax 0.25 (fmin 1.0 (/ (-> this engine-rpm) 1800.0)))
+                 (+ 0.92 (* 0.08 (sin (* 1747.6267 (the float (current-time)))))))))
+      ;; Closed-throttle pumping drag is transmitted only through the clutch.
+      (when (and (< (-> this controls throttle) 0.05)
+                 (> (-> this engine-rpm) (+ (-> this info engine idle-rpm) 200.0)))
+        (set! (-> this engine-torque)
+              (* -1.0 (tough-puppy-engine-braking this) (-> this engine-max-torque)
+                 (/ (-> this engine-rpm) (-> this info engine peak-torque-rpm))))))
     (let ((f0-13 0.0))
       (dotimes (v1-23 (-> s5-0 physics-model wheel-count))
         (let ((a0-9 (-> this wheel v1-23 info)))
@@ -719,10 +1367,17 @@
           )
     (case (-> this shift-state)
       ((1 2)
-       (set! f0-11 0.0)
+       (unless (tough-puppy-clutch-held? this)
+         (set! f0-11 0.0))
        )
       )
     (seek! (-> this controls throttle) f0-11 (* 8.0 (seconds-per-frame)))
+    ;; Square has become reverse throttle: release the forward brake fully
+    ;; before clutch engagement instead of dragging it through the launch.
+    (when (and (tough-puppy-manual-gears-active? this)
+               (logtest? (vehicle-flag reverse-gear) (-> this v-flags))
+               (> f0-11 0.0) (= f30-0 0.0))
+      (set! (-> this controls brake) 0.0))
     (+! (-> this controls brake) (* (- f30-0 (-> this controls brake)) (fmin 1.0 (* 8.0 (seconds-per-frame)))))
     )
   (set! (-> this controls prev-flags) (-> this controls flags))
@@ -756,14 +1411,31 @@
       )
   ;; Manual transmission controls. Index 0 remains reverse; forward gears are
   ;; selected with Up/Down on the D-pad.
-  (when (and (or (= (-> this info vehicle-type) (vehicle-type-u8 v-fox))
-                 (= (-> this info vehicle-type) (vehicle-type-u8 v-mirage)))
+  ;; Advanced and Expert transmissions reject clutchless requests. This is a
+  ;; deliberate grind rather than a shift: it damages the gearbox and briefly
+  ;; disturbs driven-wheel grip.
+  (when (and (tough-puppy-manual-gears-active? this)
+             (>= (tough-puppy-clutch-level this) 3)
+             (not (tough-puppy-clutch-held? this))
+             (zero? (-> this shift-state))
+             (not (logtest? (vehicle-flag reverse-gear) (-> this v-flags)))
+             (or (and (cpad-pressed? 0 up)
+                      (< (-> this gear-select) (+ (wvehicle-effective-gear-count this) -1)))
+                 (and (cpad-pressed? 0 down) (< 1 (-> this gear-select)))))
+    (tough-puppy-apply-gearbox-damage! this (tough-puppy-clutchless-shift-damage this))
+    (set! *tough-puppy-slip-severity*
+          (if (= (tough-puppy-clutch-level this) 4) 0.75 0.4))
+    (set! *tough-puppy-slip-remaining* (tough-puppy-slip-duration this)))
+  (when (and (or (and (or (heat-seeker-manual-gears-active? this)
+                               (dust-demon-manual-gears-active? this))
+                           (not (tough-puppy-manual-gears-active? this)))
+                      (tough-puppy-clutch-held? this))
              (zero? (-> this shift-state))
              (not (logtest? (vehicle-flag reverse-gear) (-> this v-flags)))
              )
     (cond
       ((and (cpad-pressed? 0 up)
-            (< (-> this gear-select) (+ (-> this info transmission gear-count) -1))
+            (< (-> this gear-select) (+ (wvehicle-effective-gear-count this) -1))
             )
        (set! (-> this next-gear-select) (+ (-> this gear-select) 1))
        )
@@ -782,11 +1454,12 @@
   (if (logtest? (vehicle-flag camera-inside-view) (-> this v-flags))
       (set! (-> this v-flags) (the-as vehicle-flag (logior (vehicle-flag camera-look-mode) (-> this v-flags))))
       )
-  (if (cpad-pressed? 0 l2)
+  ;; Tough Puppy reserves L2 for its clutch, not directional camera looking.
+  (if (and (not (tough-puppy-manual-gears-active? this)) (cpad-pressed? 0 l2))
       (set! (-> this cam-view) 1)
       )
   (cond
-    ((cpad-hold? 0 l2)
+    ((and (not (tough-puppy-manual-gears-active? this)) (cpad-hold? 0 l2))
      (let ((f30-0 (analog-input (the-as int (-> *cpad-list* cpads 0 rightx)) 128.0 48.0 110.0 -1.0))
            (f0-8 (analog-input (the-as int (-> *cpad-list* cpads 0 righty)) 128.0 48.0 110.0 -1.0))
            )
@@ -1019,7 +1692,8 @@
   (if (not (logtest? (vehicle-flag turbo-boost) (-> this v-flags)))
       (set! (-> this turbo-ready) (fmin 1.0 (+ (-> this turbo-ready) (* 0.5 (seconds-per-frame)))))
       )
-  (if (logtest? (-> this controls flags) (vehicle-controls-flag vcf2))
+  (if (and (not (tough-puppy-engine-stalled? this))
+           (logtest? (-> this controls flags) (vehicle-controls-flag vcf2)))
       (vehicle-method-64 this)
       )
   (none)

@@ -101,6 +101,34 @@
                                      )
   )
 
+;; Session-local Hero Mode desert exploration. Each cell covers 32 big-map pixels.
+(define *hero-desert-map-explored* (new 'static 'array uint8 4096))
+(define *hero-desert-map-fog-color* (new 'static 'rgba :a 128))
+
+(defun hero-desert-map-exploration-active? ()
+  (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (= (level-status? *level* 'desert #f) 'active))
+      #t
+      #f))
+
+(defun update-hero-desert-map-exploration! ()
+  (when (and (hero-desert-map-exploration-active?) *target*)
+    ;; These are the vanilla desert big-map origin and inverse scale.
+    (let* ((pos (target-pos 0))
+           (map-x (the int (* (- (-> pos x) -2038169.6) 0.0000364389)))
+           (map-y (the int (* (- (-> pos z) -2301542.5) 0.0000364389)))
+           )
+      (when (and (>= map-x 0) (< map-x 2048) (>= map-y 0) (< map-y 2048))
+        (let ((cell-x (shr map-x 5))
+              (cell-y (shr map-y 5)))
+          (dotimes (dy 3)
+            (dotimes (dx 3)
+              (let ((x (+ cell-x dx -1))
+                    (y (+ cell-y dy -1)))
+                (when (and (>= x 0) (< x 64) (>= y 0) (< y 64))
+                  (set! (-> *hero-desert-map-explored* (+ x (* y 64))) (the-as uint8 1))))))))))
+  (none))
+
 (define *minimap* (new 'static 'minimap
                     :draw-tmpl (new 'static 'dma-gif-packet
                       :dma-vif (new 'static 'dma-packet
@@ -2102,6 +2130,7 @@
         )
 
 (defmethod update! ((this minimap))
+  (update-hero-desert-map-exploration!)
   (set! (-> this map-bits) (the-as uint 0))
   (let* ((s5-0 (the-as level #f))
          (s4-0 *minimap-table-entry-array*)

@@ -1,6 +1,8 @@
 ;;-*-Lisp-*-
 (in-package goal)
 
+(define-extern tough-puppy-engine-stalled? (function wvehicle object))
+
 ;; name: wvehicle-effects.gc
 ;; name in dgo: wvehicle-effects
 ;; dgos: LPATK, LFACCAR, WASALL
@@ -942,7 +944,9 @@
   (let ((s5-0 (-> this info))
         (s4-1 (not (logtest? (vehicle-flag ai-driving) (-> this v-flags))))
         )
-    (when (logtest? (vehicle-flag ignition) (-> this v-flags))
+    ;; Stalled engines are silent; do not feed zero RPM into logarithmic pitch.
+    (when (and (not (tough-puppy-engine-stalled? this))
+               (logtest? (vehicle-flag ignition) (-> this v-flags)))
       (if (zero? (-> this engine1-sound-id))
           (set! (-> this engine1-sound-id) (new-sound-id))
           )

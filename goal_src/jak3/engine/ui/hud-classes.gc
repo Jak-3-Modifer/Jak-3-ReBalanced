@@ -7,8 +7,107 @@
 
 ;; DECOMP BEGINS
 
+(define *hero-desert-compass-heading* 0.0)
+(define *hero-compass-last-draw-frame* -1)
+
+;;;; Compass is a purchasable kiosk item. It always shows North relative to
+;; the player's facing direction, on foot or in a vehicle.
+
+;; These colors are deliberately allocated once.  The compass is drawn every
+;; frame, and allocating a new static rgba for every live contact eventually
+;; exhausts the static heap and leaves the game stuck in allocation work.
+(define *hero-compass-line-color* (new 'static 'rgba :r 180 :g 180 :b 180 :a 96))
+(define *hero-compass-center-color* (new 'static 'rgba :r 255 :g 200 :b 48 :a 128))
+
+;; Keep full handles in array storage so unloaded or recycled actors are safe.
+(define *hero-hover-painted-beasts* (new 'static 'array handle 4))
+(defun clear-hero-hover-painted-beasts! ()
+  (dotimes (i 4)
+    (set! (-> *hero-hover-painted-beasts* i) (the-as handle #f)))
+  (none))
+(clear-hero-hover-painted-beasts!)
+
+(defun draw-hero-desert-compass! ((map hud-map))
+  ;; Use the map process's always-running update, even in areas without a minimap.
+  ;; HUD updates also run while streaming and can be called repeatedly during
+  ;; state transitions. Do not inspect level geometry or emit UI DMA then.
+  (when (and *target* *display* *level* *load-state*
+             (not (load-in-progress? *level*))
+             (!= *hero-compass-last-draw-frame* (-> *display* base-clock frame-counter)))
+  ;; Use the gameplay area's name, not a geometry search through streamed
+  ;; levels. Only draw after the gameplay level has finished streaming.
+  (let ((inside (level-get *level* (-> *load-state* vis-nick))))
+    (when (and inside
+               (= (-> inside status) 'active)
+               (case (-> inside info taskname)
+                 (('desert 'wascity 'temple 'city 'forest 'factory 'nest) #t)
+                 (else #f))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (logtest? (-> *game-info* purchase-secrets) (game-secrets gs62))
+               (logtest? (-> *game-info* secrets) (game-secrets gs62))
+               (task-node-closed? (game-task-node wascity-pre-game-resolution))
+               (not (focus-test? *target* dead teleporting))
+               (not (movie?))
+               (not *progress-process*)
+               (not (paused?))
+               (not (and (nonzero? *screen-shot-work*)
+                         (!= (-> *screen-shot-work* count) -1)
+                         (not (-> *screen-shot-work* hud-enable)))))
+      (set! *hero-compass-last-draw-frame* (-> *display* base-clock frame-counter))
+      (let* ((scale (-> *video-params* relative-x-scale))
+             ;; Centered in the HUD's 512-wide space, including 4:3 displays.
+             (center 256.0)
+             (y 12)
+             (half-width (* 52.0 scale)))
+        ;; Always update the player-relative heading so North tracks the player
+        ;; facing direction both on foot and in any vehicle.
+        (let ((forward (vector-z-quaternion! (new 'stack-no-clear 'vector)
+                                             (-> *target* control quat))))
+          (when (> (+ (square (-> forward x)) (square (-> forward z))) 0.0001)
+            (set! *hero-desert-compass-heading* (atan (-> forward x) (-> forward z)))))
+        ;; Draw after the regular HUD so mission timer boards cannot cover the compass.
+        (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                     (bucket-id hud-draw-pris2))
+          ;; No background panel; leave the desert and existing loot HUD visible.
+          (draw-sprite2d-xy buf (the int (- center half-width)) (+ y 12)
+                            (the int (* half-width 2.0)) 1
+                            *hero-compass-line-color* #x3fffff)
+          (draw-sprite2d-xy buf (- (the int center) 1) (- y 5) 2 4
+                            *hero-compass-center-color* #x3fffff))
+        ;; print-game-text opens its own DMA bucket. Keep these calls outside
+        ;; the line-primitive bucket above; nesting both writers on global-buf
+        ;; corrupts the frame DMA chain and can freeze as soon as the compass
+        ;; toggle is enabled.
+        (let ((font (new 'stack 'font-context *font-default-matrix* 0 y 0.0
+                         (font-color default) (font-flags shadow kerning large middle))))
+          (set-width! font 30)
+          (set-height! font 16)
+          ;; Native angles use 65536 units per revolution. The purchased
+          ;; compass reveals only North, positioned relative to Jak's facing.
+          (let ((delta (unwrap-angle (- *hero-desert-compass-heading*))))
+            (when (<= (fabs delta) 14336.0)
+              ;; print-game-text centers inside origin + width/2, not at origin.
+              (set! (-> font origin x)
+                    (- (+ center (* (/ delta 16384.0) half-width))
+                       (* 0.5 (-> font width))))
+              (set-scale! font 0.28)
+              (set! (-> font color) (if (< (fabs delta) 2048.0)
+                                       (font-color orange) (font-color default)))
+              (print-game-text "N" font #f 44 (bucket-id hud-draw-pris2)))))))))
+  (none)
+  )
 
 (defmethod draw ((this hud-map))
+  ;; Submit compass DMA only from the HUD draw pass. Calling this from
+  ;; update-values! can queue multiple draw packets before the next rendered
+  ;; frame, which eventually fills the frame buffer while the player moves.
+  (draw-hero-desert-compass! this)
+  ;; Wascity's Hero Mode map is unlocked only by its saved shop purchase.
+  ;; Keep update-values! running so an unowned map does not hide the compass.
+  (unless (or (hero-desert-map-exploration-active?)
+              (and *level* *load-state* (not (hero-area-map-owned? 'wascity))
+                   (let ((inside (level-get *level* (-> *load-state* vis-nick))))
+                     (and inside (= (-> inside info taskname) 'wascity)))))
   (set-hud-piece-position!
     (-> this sprites 1)
     (the int (+ (- 512.0 (* 20.0 (-> *video-params* relative-x-scale))) (* 140.0 (-> this offset))))
@@ -67,6 +166,7 @@
      )
     )
   0
+  ) ;; map ownership guard
   (none)
   )
 

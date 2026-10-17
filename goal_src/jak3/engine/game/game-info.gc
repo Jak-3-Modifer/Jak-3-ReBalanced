@@ -18,10 +18,23 @@
 
 ;; DECOMP BEGINS
 
+(defun hero-area-map-owned? ((area symbol))
+  ;; Existing item bits are saved by the normal game-save path. Normal Mode
+  ;; retains its original maps; these purchases do not consume secret bits.
+  (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (case area
+        (('wascity) (logtest? (-> *game-info* items) (game-items item30)))
+        (('desert) (logtest? (-> *game-info* items) (game-items item31)))
+        (else #t)))
+  )
+
 ;; Session-local mineb hint tracking; survives checkpoint reloads. (AI-assisted)
 (define *mineb-light-freeze-deaths* 0)
 (define *mineb-light-freeze-hint-pending?* #f)
 (define *mineb-light-freeze-hint-remaining* 0.0)
+;; Session-only HUD timer. Blueprint ownership itself is persisted in game-info.
+(define *hero-blueprint-notice* 0.0)
+(define *hero-npc-shop-info* (new 'static 'hero-npc-shop-info))
 
 (defmethod debug-draw ((this border-plane))
   (let* ((v1-0 (-> this action))
@@ -451,6 +464,12 @@
 
 (defmethod inc-death-count! ((this game-info))
   (let ((level (level-get-target-inside *level*)))
+    ;; Clear before death-count debounce: every desert death loses carried loot.
+    (when (and level
+               (logtest? (-> this secrets) (game-secrets hero-mode))
+               (= (-> level info taskname) 'desert))
+      (dotimes (tier 3)
+        (set! (-> this hero-artifacts-pending tier) 0)))
     (when (and level (>= (- (-> *display* game-clock frame-counter) (-> this death-time)) (seconds 2)))
       (when (= (-> level name) 'mineb)
         (+! *mineb-light-freeze-deaths* 1)
@@ -599,7 +618,13 @@
      (set! (-> this custom-orbs-mask-3) (the-as uint64 0))
      (dotimes (tier 3)
        (set! (-> this hero-artifacts tier) 0)
+       (set! (-> this hero-artifacts-pending tier) 0)
        )
+     (set! (-> *hero-npc-shop-info* blueprints) (the-as uint 0))
+     (set! (-> *hero-npc-shop-info* purchases) (the-as uint 0))
+     (dotimes (shop 8)
+       (set! (-> *hero-npc-shop-info* prices shop) (the-as uint 0)))
+     (set! *hero-blueprint-notice* 0.0)
      (set! (-> this light-crystal) 0.0)
      (set! (-> this dark-crystal) 0.0)
      (set! (-> this karma) 0.0)

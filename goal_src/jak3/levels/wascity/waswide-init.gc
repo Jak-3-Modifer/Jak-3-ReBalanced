@@ -90,12 +90,17 @@
     )
   (market-activate arg0)
   (restore-wascity-speeches)
+  ;; Start the manager unconditionally.  WWD can activate before the loaded
+  ;; save has restored the Hero Mode secret; the manager itself keeps the
+  ;; feature disabled outside Hero Mode.
+  (hero-wascity-npc-shop-start)
   0
   (none)
   )
 
 (defun waswide-deactivate ((arg0 level))
   (format 0 "waswide-deactivate~%")
+  (hero-wascity-npc-shop-stop)
   (set! (-> *traffic-info* ctywide-level) (the-as level #f))
   (set! *city-mode* #f)
   0

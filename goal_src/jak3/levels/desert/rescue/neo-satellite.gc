@@ -1156,6 +1156,7 @@
    (hero-repeat-slam?           symbol)
    (hero-final-stay-in-cone?    symbol)
    (hero-final-tracked-slam?    symbol)
+   (hero-escape-laser-chase?    symbol)
    )
   (:state-methods
     sat-idle
@@ -1663,6 +1664,7 @@
   (set! (-> this hero-repeat-slam?) #f)
   (set! (-> this hero-final-stay-in-cone?) #f)
   (set! (-> this hero-final-tracked-slam?) #f)
+  (set! (-> this hero-escape-laser-chase?) #f)
   (none)
   )
 
@@ -2284,9 +2286,12 @@
     (neo-sat-method-233 self)
     (neo-sat-method-220 self)
     (neo-sat-method-201 self)
-    (when (not (and (or (= (-> self current-stage) 1)
-                        (= (-> self current-stage) 2))
-                    (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+    ;; Keep the spinning lasers active while the Hero Mode phase-two escape
+    ;; branch chases Jak back down for its forced slam.
+    (when (or (-> self hero-escape-laser-chase?)
+              (not (and (or (= (-> self current-stage) 1)
+                            (= (-> self current-stage) 2))
+                        (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))))
       (dotimes (gp-0 (-> *neo-sat-laser-array* length))
         (neo-sat-method-206 self (-> *neo-sat-laser-array* gp-0 joint) #f)
         )
@@ -2301,8 +2306,12 @@
       (if (and (or (= (-> self current-stage) 1)
                    (= (-> self current-stage) 2))
                (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-          (when (or (< slam-distance (meters 3))
-                    (time-elapsed? (-> self state-time) (seconds 6)))
+          (when (or (and (not (-> self hero-escape-laser-chase?))
+                         (< slam-distance (meters 3)))
+                    (time-elapsed? (-> self state-time)
+                                   (if (-> self hero-escape-laser-chase?)
+                                       (seconds 5)
+                                       (seconds 6))))
             (vector-copy! (-> self shockwave-origin) (-> self root trans))
             (go-virtual neo-sat-drill-prepare)
             )
@@ -2323,6 +2332,7 @@
   :event enemy-event-handler
   :enter (behavior ()
     (set-time! (-> self state-time))
+    (set! (-> self hero-escape-laser-chase?) #f)
     (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
       (set! (-> self current-height-probe-index) 0)
       )
@@ -3299,7 +3309,14 @@
             (vector-copy! (-> self shockwave-origin) (-> self root trans))
             (go-virtual neo-sat-drill-prepare)
             )
-          (set-time! (-> self new-spin-time))
+          (if (= (-> self current-stage) 1)
+              (begin
+                ;; Escaping the phase-two laser ring no longer leaves Neo Sat
+                ;; waiting forever. Chase Jak with the lasers spinning, then
+                ;; force the existing slam sequence after five seconds.
+                (set! (-> self hero-escape-laser-chase?) #t)
+                (go-virtual neo-sat-drill-returning))
+              (set-time! (-> self new-spin-time)))
           )
       )
     ;; Escape starts the slam in stage one and the first stage-three sweep.

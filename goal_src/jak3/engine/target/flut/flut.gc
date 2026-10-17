@@ -594,7 +594,9 @@
   (logior! (-> self mask) (process-mask crate))
   (cond
     ;; og:preserve-this hack to prevent NaNs
-    ((= (-> self level name) 'desliz)
+    ((or (string= (-> self name) "desert-bush-flut")
+         (= (-> self level name) 'desliz)
+         (= (-> self level name) 'desert))
      (go-virtual idle)
      )
     ((logtest? arg3 (flut-flag ff2))

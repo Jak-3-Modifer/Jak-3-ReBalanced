@@ -99,6 +99,7 @@
   :virtual #t
   :enter (behavior ()
     (desert-hover-clear-car-protection!)
+    (clear-hero-hover-painted-beasts!)
     (set! *desert-hover-vehicle-locked-out* #f)
     (set-setting! 'extra-bank '((desert2 desbst1)) 0.0 0)
     ;; Hero Mode adds the standard Wasteland Marauder encounter.  Keep the
@@ -129,6 +130,7 @@
     )
   :exit (behavior ()
     (desert-hover-clear-car-protection!)
+    (clear-hero-hover-painted-beasts!)
     (set! *desert-hover-vehicle-locked-out* #f)
     (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
       (set! (-> *was-squad-control* target-count) 0)
@@ -272,6 +274,20 @@
                                       (-> v1-49 actor extra process)
                                       #f)
                                   des-beast)))
+              ;; Track every living Beast automatically for the green compass markers.
+              (when (and (< s3-1 4)
+                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                (set! (-> *hero-hover-painted-beasts* s3-1)
+                      (if (and beast
+                               (not (logtest? (-> v1-49 actor extra perm status) (entity-perm-status dead))))
+                          (process->handle beast)
+                          (the-as handle #f))))
+              ;; Ease Marauder pressure only once the last Beast enters phase two.
+              (when (and beast (= s5-1 1)
+                         (< (-> beast hit-points2) 0.0)
+                         (not (logtest? (-> v1-49 actor extra perm status) (entity-perm-status dead)))
+                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                (set! (-> *was-squad-control* target-count) 1))
               ;; A negative secondary health value marks the final Beast's
               ;; phase two, whose slower 0.9 speed must remain untouched.
               (when (and beast

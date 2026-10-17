@@ -129,18 +129,21 @@
   ;; movement AI is stateful, and forcing its throttle and brake here can
   ;; leave spawned desert vehicles in an invalid control state.  Camouflage
   ;; instead prevents fresh turret tracking while preserving normal driving.
-  (unless (v-turtle-camouflage-hides-target?)
+  (unless (or (v-turtle-camouflage-hides-target?)
+              (v-snake-camouflage-hides-target?))
     (let ((s5-0 (-> this target-status)))
       (when (< 122880.0 (vector-vector-distance (-> s5-0 position) (-> this root trans)))
         (let ((f1-0 (vector-length (-> s5-0 velocity))))
           (set! (-> this turret-control inaccuracy)
                 (* (-> this inaccuracy-factor)
-                    ;; Tough Puppy Turret Jammer is passive while equipped.
+                    ;; Each car's jammer is passive only while that car is ridden.
                    (if (and *target*
                             (focus-test? *target* pilot-riding)
                             (or (and (= *v-turtle-ability-loadout* 6)
                                      (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-turtle)))
-                                 #f)
+                                 (and *v-snake-turret-jammer-equipped?*
+                                      (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                      (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-snake))))
                             )
                        2.5
                        1.0

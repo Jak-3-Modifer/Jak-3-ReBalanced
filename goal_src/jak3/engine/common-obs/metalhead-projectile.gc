@@ -488,6 +488,19 @@
   (none)
   )
 
+(defmethod deal-damage! ((this metalhead-shot) (victim process) (block event-message-block))
+  ;; Keep unrelated Metal Head shots damaging; only these enemy shots are immune.
+  (let ((source (as-type (-> this entity) entity-actor)))
+    (if (and *target*
+             (= victim *target*)
+             (focus-test? *target* dark)
+             (or (= (-> this type symbol) 'spyder-shot)
+                 (and source
+                      (or (= (-> source etype symbol) 'gekko)
+                          (= (-> source etype symbol) 'gecko)))))
+        #t ;; Consume the hit normally without sending a damaging attack.
+        ((method-of-type projectile deal-damage!) this victim block))))
+
 (defmethod init-proj-settings! ((this metalhead-shot))
   (vector-copy! (-> this tail-pos) (-> this root trans))
   (set! (-> this attack-mode) 'metalhead-shot)
@@ -613,6 +626,19 @@
    )
   )
 
+
+(defmethod deal-damage! ((this metalhead-grenade-shot) (victim process) (block event-message-block))
+  ;; This also gates the grenade's radial explosion, not just direct contact.
+  (let ((source (as-type (-> this entity) entity-actor)))
+    (if (and *target*
+             (= victim *target*)
+             (focus-test? *target* dark)
+             source
+             (or (= (-> source etype symbol) 'flamer-hover)
+                 (= (-> source etype symbol) 'flamer-lava)
+                 (= (-> source etype symbol) 'flaming-lava)))
+        #t
+        ((method-of-type projectile deal-damage!) this victim block))))
 
 (defmethod projectile-method-26 ((this metalhead-grenade-shot))
   (cond

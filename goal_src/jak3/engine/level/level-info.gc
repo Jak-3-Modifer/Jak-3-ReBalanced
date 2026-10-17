@@ -12573,9 +12573,10 @@
                  :index #xc8
                  :task-level #x6
                  :master-level 'wasall
-                 :level-flags (level-flags sky ocean-near-translucent ocean-far desert)
+                 :level-flags (level-flags sky ocean-near-translucent ocean-far desert flut)
                  :packages '("dust-stormp" "desert")
                  :run-packages '("common")
+                 ;; Keep the original bank footprint so desinter and wasdoors fit.
                  :memory-mode (level-memory-mode tiny-center-small)
                  :music-bank 'desert
                  :extra-sound-bank #f
@@ -14027,7 +14028,9 @@
                      :want-sound (new 'static 'array symbol 3 'wasall1 'desert1 'desert2)
                      )
                    )
-                 :callback-list '((36 . desert-deactivate) (35 . desert-activate) (12 . *hfrag-texture-anim-array*))
+                 :callback-list '((36 . desert-with-flut-deactivate)
+                                  (35 . desert-with-flut-activate)
+                                  (12 . *hfrag-texture-anim-array*))
                  :borrow #f
                  :bottom-height (meters -100)
                  :fog-height (meters 80)

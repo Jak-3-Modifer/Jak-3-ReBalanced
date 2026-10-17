@@ -1,0 +1,175 @@
+;;-*-Lisp-*-
+(in-package goal)
+
+;; A persistent desert mount, available immediately in both modes.
+;; Handles include a process ID and must retain all 64 bits. Symbol values
+;; only retain 32 bits, so store handles in static array elements instead.
+(define *desert-bush-flut-storage* (new 'static 'array handle 1))
+(define *desert-unlocked-flut-manager-storage* (new 'static 'array handle 1))
+(set! (-> *desert-bush-flut-storage* 0) (the-as handle #f))
+(set! (-> *desert-unlocked-flut-manager-storage* 0) (the-as handle #f))
+
+(deftype desert-unlocked-flut-manager (process)
+  ((owner          level)
+   (mounted?       symbol)
+   (return-home?   symbol)
+   )
+  (:state-methods active)
+  )
+
+(defbehavior desert-bush-flut-init flut ((owner entity-actor))
+  (let ((placement (new 'stack 'transformq)))
+    (set-vector! (-> placement trans)
+                 (meters 2744.93) (meters 26.36) (meters 2812.93) 1.0)
+    (quaternion-copy! (-> placement quat) *unity-quaternion*)
+    (flut-init owner placement (the-as handle #f) (flut-flag ff0) 'normal)
+    )
+  )
+
+(defun desert-bush-flut-activate ((owner level))
+  ;; Restore the Burning Bush spawn path: use Desert's own anchor, not Jak's
+  ;; entity (which can belong to a different level). Retry until it is ready.
+  (when (and (not (handle->process (-> *desert-bush-flut-storage* 0)))
+             *target*
+             (not (load-in-progress? *level*))
+             (not (focus-test? *target* dead teleporting))
+             ;; DST loads hundreds of meters before this terrain sector does.
+             ;; Do not run the Flut's ground/nav probes in unloaded terrain.
+             (< (vector-vector-distance-squared
+                  (-> *target* control trans)
+                  (new 'static 'vector :x (meters 2744.93) :y (meters 26.36)
+                       :z (meters 2812.93) :w 1.0))
+                (square (meters 60)))
+             (> (-> owner entity length) 0))
+    (let ((anchor (the-as entity-actor #f)))
+      ;; The first level entity need not be an actor. flut-init requires one.
+      (dotimes (index (-> owner entity length))
+        (when (not anchor)
+          (set! anchor (as-type (-> owner entity data index entity) entity-actor))))
+      (when anchor
+        (set! (-> *desert-bush-flut-storage* 0)
+              (ppointer->handle
+                (process-spawn flut :init desert-bush-flut-init anchor
+                               :name "desert-bush-flut" :to *entity-pool*)))
+        (when (handle->process (-> *desert-bush-flut-storage* 0))
+          (format 0 "Desert Flut spawned at 2744.93 26.36 2812.93~%"))
+        )
+      )
+    )
+  (none)
+  )
+
+(defun desert-bush-flut-deactivate ((owner level))
+  (let ((mount (handle->process (-> *desert-bush-flut-storage* 0))))
+    (when mount
+      (deactivate mount)
+      )
+    )
+  (set! (-> *desert-bush-flut-storage* 0) (the-as handle #f))
+  (none)
+  )
+
+(defun desert-unlocked-flut-from-target ()
+  ;; After a normal dismount, target-flut creates the replacement Flut as one
+  ;; of Jak's children.  Keep that handle so the mount stays where it was left.
+  (when *target*
+    (let ((child (-> *target* child)))
+      (while child
+        (let ((proc (ppointer->process child)))
+          (when (type? proc flut)
+            (return (process->handle proc))
+            )
+          )
+        (set! child (-> child 0 brother))
+        )
+      )
+    )
+  (the-as handle #f)
+  )
+
+(defbehavior desert-unlocked-flut-manager-init desert-unlocked-flut-manager ((owner level))
+  (set! (-> self owner) owner)
+  ;; Let generic level cleanup find this process before DST code is unloaded.
+  (set! (-> self level) owner)
+  (set! (-> self mounted?) #f)
+  (set! (-> self return-home?) #f)
+  (go-virtual active)
+  )
+
+(defstate active (desert-unlocked-flut-manager)
+  :virtual #t
+  :code (behavior ()
+    (until #f
+      (cond
+        ;; The original world Flut is consumed while Jak rides it.
+        ((and *target* (focus-test? *target* flut))
+         (set! (-> self mounted?) #t)
+         (when (focus-test? *target* dead)
+           (set! (-> self return-home?) #t)
+           )
+         )
+        ((-> self mounted?)
+         (cond
+           ;; After a death, discard any remnant and wait for Jak to revive
+           ;; before recreating the Flut at its fixed home point.
+           ((-> self return-home?)
+            (when (and *target* (not (focus-test? *target* dead)))
+              (let ((returned (desert-unlocked-flut-from-target)))
+                (when (handle->process returned)
+                  (deactivate (handle->process returned))
+                  )
+                )
+              (desert-bush-flut-deactivate (-> self owner))
+              (desert-bush-flut-activate (-> self owner))
+              (set! (-> self mounted?) #f)
+              (set! (-> self return-home?) #f)
+              )
+            )
+           ;; A normal dismount leaves the same Flut at the dismount point.
+           (else
+             (let ((returned (desert-unlocked-flut-from-target)))
+               (when (handle->process returned)
+                 (set! (-> *desert-bush-flut-storage* 0) returned)
+                 (set! (-> self mounted?) #f)
+                 )
+               )
+             )
+           )
+         )
+        ;; Respawn a lost/unmounted Flut at its home point.
+        ((and *target*
+              (not (focus-test? *target* dead))
+              (not (handle->process (-> *desert-bush-flut-storage* 0))))
+         (desert-bush-flut-activate (-> self owner))
+         )
+        )
+      (suspend)
+      )
+    )
+  )
+
+(defun desert-unlocked-flut-manager-activate ((owner level))
+  (when (not (handle->process (-> *desert-unlocked-flut-manager-storage* 0)))
+    ;; Only create the lightweight manager here. Its main thread waits for
+    ;; nearby terrain to finish loading before creating the mount.
+    (set! (-> *desert-unlocked-flut-manager-storage* 0)
+          (ppointer->handle
+            (process-spawn desert-unlocked-flut-manager
+                           :init desert-unlocked-flut-manager-init owner
+                           :name "desert-unlocked-flut-manager"
+                           :to *entity-pool*))
+          )
+    )
+  (none)
+  )
+
+(defun desert-unlocked-flut-manager-deactivate ((owner level))
+  (let ((manager (handle->process (-> *desert-unlocked-flut-manager-storage* 0))))
+    (when manager
+      (deactivate manager)
+      )
+    )
+  (set! (-> *desert-unlocked-flut-manager-storage* 0) (the-as handle #f))
+  (desert-bush-flut-deactivate owner)
+  (none)
+  )

@@ -1768,10 +1768,10 @@
   (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
     (set! (-> *game-info* eco-pill-light) (get-light-eco-capacity *game-info*))
     )
-  ;; Normal Mode remains Sand Shark-only. Hero Mode accepts every earned
-  ;; vehicle except the Heat Seeker (v-fox) and Car-X (v-x-ride).
+  ;; Normal Mode remains Sand Shark-only. Hero Mode excludes the Tough Puppy
+  ;; (v-toad), Dune Hopper (v-turtle), Heat Seeker, and Car-X.
   (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-      (let ((allowed-vehicles (the-as int (game-vehicles v-turtle v-snake v-scorpion v-toad v-rhino v-mirage))))
+      (let ((allowed-vehicles (the-as int (game-vehicles v-snake v-scorpion v-rhino v-mirage))))
         (set-setting! 'vehicles 'abs (shr allowed-vehicles 32) allowed-vehicles)
         )
 
