@@ -1,5 +1,5 @@
 > [!NOTE]
-> You can watch a showcase of the mod [here](https://youtu.be/ry4AJo1XTPI?t=9048).
+> You can watch a showcase of the mod [here](https://youtube.com/playlist?list=PLIHNDhRIiDNY&si=ruG1JXjV0omwZQRm).
 
 
 # Jak 3 ReBalanced
