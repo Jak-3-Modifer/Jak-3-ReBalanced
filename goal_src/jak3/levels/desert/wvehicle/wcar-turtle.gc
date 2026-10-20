@@ -31,6 +31,70 @@
 (define *v-turtle-loadout-menu-page* 0)
 (define *v-turtle-loadout-menu-selection* 0)
 
+;; World trigger for the Turtle tuning prototype.
+(define *v-turtle-tuning-trigger-enabled?* #t)
+(define *v-turtle-tuning-trigger-pos*
+  (new 'static 'vector
+       :x (meters 2287.49)
+       :y (meters 31.55)
+       :z (meters 151.33)
+       :w 1.0))
+(define *v-turtle-tuning-trigger-radius* (meters 5.0))
+(define *v-turtle-tuning-trigger-height* (meters 2.0))
+(define *v-turtle-tuning-trigger-max-speed* (meters 0.75))
+
+(define-extern *v-turtle-tuning-menu-open?* symbol)
+(define-extern v-turtle-tuning-open! (function none))
+
+(defun configure-v-turtle-tuning-trigger! ((x float) (y float) (z float))
+  "Configure and enable the temporary Turtle tuning location."
+  (set-vector! *v-turtle-tuning-trigger-pos* (meters x) (meters y) (meters z) 1.0)
+  (set! *v-turtle-tuning-trigger-enabled?* #t)
+  (none)
+  )
+
+(defun v-turtle-tuning-world-eligible? ((this wvehicle))
+  (let ((vehicle-pos (-> this root trans))
+        (dx (- (-> this root trans x) (-> *v-turtle-tuning-trigger-pos* x)))
+        (dz (- (-> this root trans z) (-> *v-turtle-tuning-trigger-pos* z)))
+        )
+    (and *v-turtle-tuning-trigger-enabled?*
+         (= *master-mode* 'game)
+         (not *popup-menu-open*)
+         (not *progress-process*)
+         (progress-allowed?)
+         *target*
+         (focus-test? *target* pilot-riding)
+         (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-turtle))
+         (logtest? (-> this v-flags) (vehicle-flag player-driving on-ground))
+         (not (logtest? (-> this v-flags) (vehicle-flag in-air dead)))
+         (> (-> this hit-points) 0.0)
+         (<= (fabs (- (-> vehicle-pos y) (-> *v-turtle-tuning-trigger-pos* y)))
+             *v-turtle-tuning-trigger-height*)
+         (<= (+ (* dx dx) (* dz dz)) (square *v-turtle-tuning-trigger-radius*))
+         (<= (vector-length-squared (-> this rbody lin-velocity))
+             (square *v-turtle-tuning-trigger-max-speed*)))
+    )
+  )
+
+(defun v-turtle-update-tuning-world-trigger! ((this wvehicle))
+  (when (v-turtle-tuning-world-eligible? this)
+    (let ((font (new 'stack 'font-context *font-default-matrix* 256 350 0.0
+                     (font-color cyan)
+                     (font-flags shadow kerning middle middle-vert large))))
+      (set-width! font 420)
+      (set-height! font 52)
+      (set-scale! font 0.42)
+      (pc-encode-utf8-string "<PAD_L3> - TUNE VEHICLE" *pc-encoded-temp-string*)
+      (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
+    (when (cpad-pressed? 0 l3)
+      (v-turtle-tuning-open!)
+      (cpad-clear! 0 l3)
+      (sound-play "menu-pick")
+      (set-master-mode 'progress)))
+  (none)
+  )
+
 (defun v-turtle-mass-inverter-unlocked? ()
   (task-node-open? (game-task-node desert-course-race-resolution))
   )
@@ -377,6 +441,7 @@
   )
 
 (defmethod vehicle-method-79 ((this v-turtle))
+  (v-turtle-update-tuning-world-trigger! this)
   ;; R1 activates equipped weapon modules.
   (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
              (cpad-pressed? 0 r1)

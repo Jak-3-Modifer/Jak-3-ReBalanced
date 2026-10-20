@@ -244,6 +244,10 @@ on impact, during touch, on exit, etc."
                       )
         )
 
+(define *tall-walk-mods* (copy *walk-mods* 'global))
+(set! (-> *tall-walk-mods* transv-max) (* 1.2 (-> *walk-mods* transv-max)))
+(set! (-> *tall-walk-mods* target-speed) (* 1.2 (-> *walk-mods* target-speed)))
+
 (define *walk-no-turn-mods* (new 'static 'surface
                               :name 'run
                               :tiltv 65536.0

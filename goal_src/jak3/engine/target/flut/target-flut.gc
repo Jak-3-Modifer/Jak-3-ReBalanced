@@ -485,7 +485,14 @@
 (defbehavior target-flut-post-post target ()
   (vector+! (-> self flut flut-trans) (-> self control trans) (-> self control cspace-offset))
   (quaternion-copy! (the-as quaternion (-> self flut flut-quat)) (-> self control quat))
-  (vector-copy! (-> self flut flut-scale) (-> self control scale))
+  (if (or (logtest? (-> self game secrets) (game-secrets midget-jak))
+          (logtest? (-> self game secrets) (game-secrets growth-spurt))
+          )
+      ;; Flut has its own rendered skeleton.  Keep the mount at its authored
+      ;; size while Jak independently uses the active rider scale.
+      (set-vector! (-> self flut flut-scale) 1.0 1.0 1.0 1.0)
+      (vector-copy! (-> self flut flut-scale) (-> self control scale))
+      )
   (let ((v1-8 (-> *target-shadow-control* settings shadow-dir quad)))
     (set! (-> *flut-shadow-control* settings shadow-dir quad) v1-8)
     )
@@ -573,6 +580,9 @@
       )
     (update-rates! (-> self clock) f30-0)
     )
+  ;; Wild Flut mode bypasses target-post, so apply the size-secret interaction
+  ;; scale before animation transforms are finalized.
+  (target-midget-jak-scale!)
   (ja-post)
   (joint-points)
   (do-target-gspot)
@@ -1448,7 +1458,12 @@
             (logior! (-> self target-flags) (target-flags lleg-no-ik rleg-no-ik))
             )
           )
-        (let* ((f0-19 (* (current-cycle-distance (-> self skel)) (-> self control scale x)))
+        (let* ((f0-19 (* (current-cycle-distance (-> self skel))
+                         (if (logtest? (-> self game secrets) (game-secrets midget-jak))
+                             1.0
+                             (-> self control scale x)
+                             )
+                          ))
                (f0-21 (/ (* 58.0 (-> self control ctrl-xz-vel)) (* 60.0 f0-19)))
                )
           (ja :num! (loop! f0-21))
@@ -1615,7 +1630,12 @@
           )
         0
         (logior! (-> self target-flags) (target-flags lleg-no-ik rleg-no-ik))
-        (let* ((f0-19 (* (current-cycle-distance (-> self skel)) (-> self control scale x)))
+        (let* ((f0-19 (* (current-cycle-distance (-> self skel))
+                         (if (logtest? (-> self game secrets) (game-secrets midget-jak))
+                             1.0
+                             (-> self control scale x)
+                             )
+                          ))
                (f0-21 (/ (* 58.0 (-> self control ctrl-xz-vel)) (* 60.0 f0-19)))
                )
           (ja :num! (loop! f0-21))
@@ -3366,7 +3386,13 @@
         :to self
         )
       )
-    (go target-jump 10240.0 10240.0 *flut-get-off-mods*)
+    (let ((f0-0 (if (logtest? (-> self game secrets) (game-secrets midget-jak))
+                    24576.0
+                    10240.0
+                    )
+                ))
+      (go target-jump f0-0 f0-0 *flut-get-off-mods*)
+      )
     )
   :post (behavior ()
     (let ((f30-0 (-> self alt-cam-pos y)))

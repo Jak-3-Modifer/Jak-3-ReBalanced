@@ -43,11 +43,6 @@ Common commands that are useful.  We use https://taskfile.dev/ to make cross-pla
 
 #  Agent Instructions
 
-## Mission
-Improve Jak 3 gameplay through targeted GOAL
-modifications while preserving game stability,
-compatibility, and unrelated functionality.
-
 ## Sources of Truth
 1. Actual source and definitions in this repository
 2. Verified working patterns in the repository

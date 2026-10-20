@@ -311,6 +311,7 @@
     (custom-orbs-mask-1      uint64)
     (custom-orbs-mask-2      uint64)
     (custom-orbs-mask-3      uint64)
+    (mine-world-orbs-mask    uint64)
     (light-crystal           float)
    (dark-crystal            float)
    (karma                   float)
@@ -464,6 +465,10 @@
   ((blueprints uint32)
    (purchases  uint32)
    (prices     uint32 8)))
+
+;; Shared persistent storage for the Hero NPC shop and its small shop-side
+;; cosmetic unlocks.  Its contents are serialized by the existing save marker.
+(define-extern *hero-npc-shop-info* hero-npc-shop-info)
 
 
 (defmethod get-next-attack-id! ((this game-info))

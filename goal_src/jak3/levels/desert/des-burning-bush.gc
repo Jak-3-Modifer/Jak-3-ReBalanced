@@ -382,6 +382,24 @@
         (suspend)
         )
       )
+    (if (= (-> self task current-node) (game-task-node desert-bbush-custom-orbs-introduction))
+        (begin
+          ;; Keep the existing collect-gems state active while the Oracle
+          ;; recording plays. This avoids changing the burning bush type's
+          ;; state-method layout and keeps the mission node from advancing.
+          (add-setting! 'music-volume 'rel (-> *setting-control* user-current music-volume-movie) 0)
+          (set-time! (-> self state-time))
+          (when (play-sound-file
+                  "sfx/orcale.flac"
+                  (the int (* 100.0 (-> *setting-control* user-current dialog-volume)))
+                  )
+            (until (time-elapsed? (-> self state-time) (seconds 17.25))
+              (suspend)
+              )
+            )
+          (remove-setting! 'music-volume)
+          )
+        )
     (des-burning-bush-method-36 self)
     )
   :post (behavior ()

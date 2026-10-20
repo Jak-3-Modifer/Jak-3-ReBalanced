@@ -2352,6 +2352,12 @@
       )
     (update-rates! (-> self clock) f30-0)
     )
+  ;; Board mode has its own post path.  Apply Mini Jak here so the secret
+  ;; remains active while riding; the normal board scale follows the rider.
+  (if (logtest? (-> self game secrets) (game-secrets midget-jak))
+      (set-vector! (-> self control scale) 0.5 0.5 0.5 1.0)
+      (set-vector! (-> self control scale) 1.0 1.0 1.0 1.0)
+    )
   (ja-post)
   (joint-points)
   (do-target-gspot)
@@ -2922,6 +2928,11 @@
         )
       )
     (update-rates! (-> self clock) f30-0)
+    )
+  ;; Rail riding uses its own board post path as well.
+  (if (logtest? (-> self game secrets) (game-secrets midget-jak))
+      (set-vector! (-> self control scale) 0.5 0.5 0.5 1.0)
+      (set-vector! (-> self control scale) 1.0 1.0 1.0 1.0)
     )
   (ja-post)
   (joint-points)

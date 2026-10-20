@@ -2042,10 +2042,14 @@
   (set! (-> this rats-to-spawn)
         (res-lump-value (-> this entity) 'extra-id uint :default (the-as uint128 1) :time -1000000000.0)
         )
-  ;; Hero Mode removes this one rat wave so the nearby Arc Wielder puzzle has
-  ;; a clear purpose without altering the normal-mode encounter.
+  ;; Remove selected rat waves in Hero Mode without altering Normal Mode.
   (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-             (string= (-> this name) "rat-spawner-9")
+             (or (string= (-> this name) "rat-spawner-7")
+                 (string= (-> this name) "rat-spawner-9")
+                 (string= (-> this name) "rat-spawner-10")
+                 (string= (-> this name) "rat-spawner-11")
+                 (string= (-> this name) "rat-spawner-14")
+                 )
              )
     (set! (-> this rats-to-spawn) (the-as uint 0))
     )

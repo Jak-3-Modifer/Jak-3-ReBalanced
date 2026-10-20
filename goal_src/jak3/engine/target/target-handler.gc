@@ -1848,7 +1848,13 @@
   )
 
 (defbehavior target-exit target ()
-  (set! (-> self control mod-surface) *walk-mods*)
+  (set! (-> self control mod-surface)
+        (if (and (logtest? (-> self game secrets) (game-secrets growth-spurt))
+                 (not (logtest? (-> self game secrets) (game-secrets midget-jak))))
+            *tall-walk-mods*
+            *walk-mods*
+            )
+        )
   (set! (-> self control anim-collide-offset-local quad) (the-as uint128 0))
   (set! (-> self control anim-collide-offset-world quad) (the-as uint128 0))
   (set! (-> self control old-anim-collide-offset-world quad) (the-as uint128 0))

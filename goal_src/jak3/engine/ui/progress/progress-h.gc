@@ -605,7 +605,6 @@
     )
   )
 
-
 (deftype menu-secret-option (menu-option)
   ((current-index    float)
    (target-index     float)

@@ -796,6 +796,16 @@
     (let ((f28-0 (lerp-scale 1.0 (* 1.05 (-> self darkjak-giant-interp)) f30-0 0.0 1.0))
           (f26-0 (lerp-scale 1.0 (* 0.20000002 (+ 5.0 (-> self darkjak-giant-interp))) f30-0 0.0 1.0))
           )
+      ;; Dark Jak owns its scale each frame, so apply the active size secret
+      ;; without changing the independent weapon/projectile sizes.
+      (cond
+        ((logtest? (-> self game secrets) (game-secrets growth-spurt))
+         (set! f28-0 (* f28-0 1.4))
+         )
+        ((logtest? (-> self game secrets) (game-secrets midget-jak))
+         (set! f28-0 (* f28-0 0.65))
+         )
+        )
       (set-vector! (-> self control scale) f28-0 f28-0 f28-0 1.0)
       (let ((a3-2 (new 'stack-no-clear 'vector)))
         (set! (-> a3-2 x) f26-0)

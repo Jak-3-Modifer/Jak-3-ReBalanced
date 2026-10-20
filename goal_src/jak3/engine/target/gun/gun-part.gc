@@ -41,6 +41,8 @@
 (define-extern *gun-dark-3-nuke-fade-curve* curve-color-piecewise)
 (define-extern *gun-dark-3-nuke-blur-segs* uint)
 
+;; Existing callbacks are implemented in gun-util.gc and target-part.gc.
+;; Declare them here because the Morph Gun color wrappers call them directly.
 ;; DECOMP BEGINS
 
 gun

@@ -1,6 +1,9 @@
 ;;-*-Lisp-*-
 (in-package goal)
 
+(define-extern v-turtle-tuning-turbo-strength (function wvehicle float float))
+(define-extern v-turtle-tuning-turbo-duration (function wvehicle uint uint))
+
 ;; name: wvehicle-util.gc
 ;; name in dgo: wvehicle-util
 ;; dgos: LPATK, LFACCAR, WASALL
@@ -430,8 +433,10 @@
         (set! (-> this turbo-ready) 0.0)
         (+! (-> this turbo-supply) -1.0)
         (set! (-> this turbo-boost-time) (the-as uint (current-time)))
-        (set! (-> this turbo-boost-factor) (-> this info handling turbo-boost-factor))
-        (set! (-> this turbo-boost-duration) (-> this info handling turbo-boost-duration))
+        (set! (-> this turbo-boost-factor)
+              (v-turtle-tuning-turbo-strength this (-> this info handling turbo-boost-factor)))
+        (set! (-> this turbo-boost-duration)
+              (v-turtle-tuning-turbo-duration this (-> this info handling turbo-boost-duration)))
         (logior! (-> this v-flags) (vehicle-flag turbo-boost))
         )
       )

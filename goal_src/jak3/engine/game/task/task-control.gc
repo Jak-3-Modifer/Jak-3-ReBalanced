@@ -94,6 +94,11 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
         (rescue-task (-> *game-info* play-list (game-task desert-rescue)))
         (rescue-vehicle-node (-> *game-info* sub-task-list (game-task-node desert-rescue-get-vehicle)))
         (rescue-node (-> *game-info* sub-task-list (game-task-node desert-rescue-rescue)))
+        (catch-lizards-vehicle-node
+          (-> *game-info* sub-task-list (game-task-node desert-catch-lizards-restrict-to-snake)))
+        (catch-lizards-continue-1 (get-continue-by-name *game-info* "desert-lizard-corral"))
+        (catch-lizards-continue-2 (get-continue-by-name *game-info* "desert-lizard-corral-snake-1"))
+        (catch-lizards-continue-3 (get-continue-by-name *game-info* "desert-lizard-corral-snake-2"))
         (leaper-intro (-> *game-info* sub-task-list (game-task-node wascity-leaper-race-introduction)))
         (gun-game-intro (-> *game-info* sub-task-list (game-task-node wascity-gungame-introduction)))
         (arena-3-intro (-> *game-info* sub-task-list (game-task-node arena-fight-3-introduction)))
@@ -122,6 +127,9 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
           (set! (-> rescue-node reset quit-info retry continue) "wasdoors-desert")
           (set! (-> rescue-node reset fail-info fail continue) "wasdoors-desert")
           (set! (-> rescue-node reset death-info fail continue) "wasdoors-desert")
+          ;; Allow any unlocked desert vehicle for Catch Lizards. The mission
+          ;; manager preserves the selected type through its capture scenes.
+          (set! (-> catch-lizards-vehicle-node manager index) -1)
           (set! (-> leaper-intro parent-node 0) (game-task-node temple-oracle-resolution))
           (set! (-> gun-game-intro parent-node 0) (game-task-node city-power-game-resolution))
           ;; Hero Mode makes Arena 3 available immediately after Desert Rescue.
@@ -141,6 +149,10 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
           (set! (-> rescue-node reset quit-info retry continue) "wasdoors-desert-snake")
           (set! (-> rescue-node reset fail-info fail continue) "wasdoors-desert-snake")
           (set! (-> rescue-node reset death-info fail continue) "wasdoors-desert-snake")
+          (set! (-> catch-lizards-vehicle-node manager index) 1)
+          (set! (-> catch-lizards-continue-1 vehicle-type) (the-as uint (vehicle-type-u8 v-turtle)))
+          (set! (-> catch-lizards-continue-2 vehicle-type) (the-as uint (vehicle-type-u8 v-turtle)))
+          (set! (-> catch-lizards-continue-3 vehicle-type) (the-as uint (vehicle-type-u8 v-turtle)))
           (set! (-> leaper-intro parent-node 0) (game-task-node desert-artifact-race-1-resolution))
           (set! (-> gun-game-intro parent-node 0) (game-task-node desert-rescue-hold-doors))
           (set! (-> arena-3-intro parent-node 0) (game-task-node wascity-gungame-resolution))

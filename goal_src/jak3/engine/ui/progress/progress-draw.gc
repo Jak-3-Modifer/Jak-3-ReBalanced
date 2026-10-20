@@ -4003,14 +4003,14 @@
     ((or (= (-> this name) (text-id text-0040))
          (= (-> this name) (text-id text-0041)))
      (cond
-       ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))) 5)
+       ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))) 4)
        ((hero-area-map-owned? (if (= (-> this name) (text-id text-0040)) 'wascity 'desert)) 1)
        (else 0))
      )
     ;; The compass is a Hero Mode-only, persistent purchase and toggle.
     ((and (= (-> this secret) (game-secrets gs62))
           (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
-     5
+     4
      )
     ;; Hero Mode normally bypasses shop mission gates; Compass must not.
     ((and (= (-> this secret) (game-secrets gs62))

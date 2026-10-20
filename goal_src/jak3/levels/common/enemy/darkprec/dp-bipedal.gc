@@ -1076,22 +1076,18 @@
       )
   )
 
-(defun dp-bipedal-dark-attack? ((arg0 event-message-block))
-  "True for Dark Morph-Gun shots and Dark Jak attacks."
+(defun dp-bipedal-growth-attack? ((arg0 event-message-block))
+  "True for Dark Jak melee, Dark Bomb, Dark Blast, Dark Strike, and gun-dark-1 attacks."
   (let ((attack (the-as attack-info (-> arg0 param 1))))
-    (and (not (lightjak-player-gun-attack? attack))
-         (or (= (-> attack mode) 'gravity-end)
-             (logtest? (penetrate
-                         dark-skin
-                         dark-punch
-                         dark-bomb
-                         dark-smack
-                         jak-dark-shot
-                         jak-dark-blackhole
-                         )
-                       (-> attack penetrate-using)
-                       ))
-        )
+    (logtest? (penetrate dark-punch dark-bomb dark-smack jak-dark-shot)
+              (-> attack penetrate-using))
+    )
+  )
+
+(defun dp-bipedal-gun-dark-3-attack? ((arg0 event-message-block))
+  "True for gun-dark-3 nuke attacks."
+  (let ((attack (the-as attack-info (-> arg0 param 1))))
+    (logtest? (penetrate jak-dark-nuke) (-> attack penetrate-using))
     )
   )
 
@@ -3119,14 +3115,16 @@
           ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
           )
         )
-       ((not (dp-bipedal-dark-attack? arg3))
+       ((dp-bipedal-growth-attack? arg3)
+         ;; These attacks remain non-damaging, but each accepted hit increases
+         ;; the Dark Bipedal's uniform scale by 0.1.
+         (let ((scale (+ (-> this root scale x) 0.001)))
+           (set-vector! (-> this root scale) scale scale scale 1.0)
+           )
+         )
+       ((not (dp-bipedal-gun-dark-3-attack? arg3))
         ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
         )
-       (else
-         ;; Dark attacks remain non-damaging, but each one raises the Bipedal
-         ;; by one metre so Dark Jak can still manipulate its position.
-         (+! (-> this root trans y) (meters 1))
-         )
        )
      )
     (('hit 'hit-knocked 'hit-flinch)

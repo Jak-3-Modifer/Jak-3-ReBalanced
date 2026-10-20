@@ -25,6 +25,191 @@
 
 (define *progress-state-pc* (new 'static 'progress-global-state-pc :music-player-track #f))
 
+;; Development-only Turtle tuning. The always-loaded pause module owns the
+;; temporary step data; vehicle code reads it only while the player drives the
+;; Turtle. Nothing here is serialized or mutates shared vehicle constants.
+(define *v-turtle-tuning-stock-steps*
+  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 3))
+(define *v-turtle-tuning-max-steps*
+  (new 'static 'array int 11 12 10 8 10 11 12 30 40 32 10 6))
+(define *v-turtle-tuning-applied-steps*
+  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 3))
+(define *v-turtle-tuning-proposed-steps*
+  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 3))
+(define *v-turtle-tuning-menu-open?* #f)
+(define *v-turtle-tuning-category* 0)
+(define *v-turtle-tuning-selection* 0)
+
+(define-extern v-turtle-tuning-category-count (function int int))
+(define-extern v-turtle-tuning-index-at (function int int int))
+(define-extern v-turtle-tuning-open! (function none))
+(define-extern v-turtle-tuning-close! (function none))
+(define-extern v-turtle-tuning-apply! (function none))
+(define-extern v-turtle-tuning-adjust! (function int int none))
+(define-extern v-turtle-tuning-reset-selected! (function int none))
+(define-extern v-turtle-tuning-reset-all! (function none))
+(define-extern v-turtle-tuning-step (function int symbol int))
+(define-extern v-turtle-tuning-stock-value (function int float))
+(define-extern v-turtle-tuning-value (function int symbol float))
+(define-extern v-turtle-tuning-min-value (function int float))
+(define-extern v-turtle-tuning-max-value (function int float))
+
+(defun turtle-tuning-pause-eligible? ()
+  (if (and *game-info* *target*
+           (focus-test? *target* pilot-riding)
+           (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-turtle)))
+      #t
+      #f)
+  )
+
+(defun turtle-tuning-parameter-name ((index int))
+  (case index
+    ((0) "Engine Torque")
+    ((1) "Final Drive")
+    ((2) "Steering Response")
+    ((3) "Front Grip")
+    ((4) "Rear Grip")
+    ((5) "Brake Strength")
+    ((6) "Front Suspension Stiffness")
+    ((7) "Rear Suspension Stiffness")
+    ((8) "Suspension Damping")
+    ((9) "Turbo Strength")
+    (else "Turbo Duration"))
+  )
+
+(defun turtle-tuning-category-name ((category int))
+  (case category
+    ((0) "ENGINE & TURBO")
+    ((1) "HANDLING")
+    (else "SUSPENSION"))
+  )
+
+(defun turtle-tuning-print-line ((font font-context) (text string) (x float) (y float) (scale float) (center? symbol))
+  (set! (-> font origin x) x)
+  (set! (-> font origin y) y)
+  (set-scale! font scale)
+  (set! (-> font flags)
+        (if center?
+            (font-flags shadow kerning middle middle-vert large)
+            (font-flags shadow kerning large)))
+  (pc-encode-utf8-string text *pc-encoded-temp-string*)
+  (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+  (none)
+  )
+
+(defun turtle-tuning-format-value-line! ((index int) (first-line? symbol))
+  (if (= index 0)
+      (if first-line?
+          (format (clear *temp-string*) "Min ~D   Stock ~D"
+                  (the int (v-turtle-tuning-min-value index))
+                  (the int (v-turtle-tuning-stock-value index)))
+          (format (clear *temp-string*) "Applied ~D   Proposed ~D   Max ~D   Step ~D/~D"
+                  (the int (v-turtle-tuning-value index #f))
+                  (the int (v-turtle-tuning-value index #t))
+                  (the int (v-turtle-tuning-max-value index))
+                  (v-turtle-tuning-step index #t)
+                  (-> *v-turtle-tuning-max-steps* index)))
+      (if first-line?
+          (format (clear *temp-string*) "Min ~F   Stock ~F"
+                  (v-turtle-tuning-min-value index)
+                  (v-turtle-tuning-stock-value index))
+          (format (clear *temp-string*) "Applied ~F   Proposed ~F   Max ~F   Step ~D/~D"
+                  (v-turtle-tuning-value index #f)
+                  (v-turtle-tuning-value index #t)
+                  (v-turtle-tuning-max-value index)
+                  (v-turtle-tuning-step index #t)
+                  (-> *v-turtle-tuning-max-steps* index))))
+  (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+  (none)
+  )
+
+(defun turtle-tuning-update! ()
+  (if (not (turtle-tuning-pause-eligible?))
+      (begin
+        (v-turtle-tuning-close!)
+        (hide-progress-screen))
+      (let ((count (v-turtle-tuning-category-count *v-turtle-tuning-category*)))
+        (cond
+          ((cpad-pressed? 0 up)
+           (set! *v-turtle-tuning-selection*
+                 (mod (+ *v-turtle-tuning-selection* (- count 1)) count))
+           (sound-play "menu-pick"))
+          ((cpad-pressed? 0 down)
+           (set! *v-turtle-tuning-selection*
+                 (mod (+ *v-turtle-tuning-selection* 1) count))
+           (sound-play "menu-pick"))
+          ((cpad-pressed? 0 l1)
+           (set! *v-turtle-tuning-category* (mod (+ *v-turtle-tuning-category* 2) 3))
+           (set! *v-turtle-tuning-selection* 0)
+           (sound-play "menu-pick"))
+          ((cpad-pressed? 0 r1)
+           (set! *v-turtle-tuning-category* (mod (+ *v-turtle-tuning-category* 1) 3))
+           (set! *v-turtle-tuning-selection* 0)
+           (sound-play "menu-pick"))
+          ((cpad-pressed? 0 left right)
+           (v-turtle-tuning-adjust!
+             (v-turtle-tuning-index-at *v-turtle-tuning-category* *v-turtle-tuning-selection*)
+             (if (cpad-pressed? 0 left) -1 1))
+           (sound-play "menu-pick"))
+          ((cpad-pressed? 0 triangle)
+           (v-turtle-tuning-reset-selected!
+             (v-turtle-tuning-index-at *v-turtle-tuning-category* *v-turtle-tuning-selection*))
+           (sound-play "menu-pick"))
+          ((cpad-pressed? 0 r2)
+           (v-turtle-tuning-reset-all!)
+           (sound-play "menu-pick"))
+          ((cpad-pressed? 0 x)
+           (v-turtle-tuning-apply!)
+           (hide-progress-screen)
+           (sound-play "menu-pick"))
+          ((cpad-pressed? 0 circle)
+           (v-turtle-tuning-close!)
+           (hide-progress-screen)
+           (sound-play "menu-back")))
+        (cpad-clear! 0 up down left right l1 r1 r2 x circle triangle)))
+  (none)
+  )
+
+(defun turtle-tuning-draw! ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 0 0 0.0
+                   (font-color default) (font-flags shadow kerning large))))
+    (set-width! font 470)
+    (set-height! font 28)
+    (if *v-turtle-tuning-menu-open?*
+        (begin
+          (set! (-> font color) (font-color cyan))
+          (turtle-tuning-print-line font "TURTLE TUNING TEST" 256.0 48.0 0.48 #t)
+          (set! (-> font color) (font-color yellow))
+          (turtle-tuning-print-line font
+                                    (turtle-tuning-category-name *v-turtle-tuning-category*)
+                                    256.0 76.0 0.34 #t)
+          (dotimes (row (v-turtle-tuning-category-count *v-turtle-tuning-category*))
+            (let ((index (v-turtle-tuning-index-at *v-turtle-tuning-category* row))
+                  (y (+ 104.0 (* (the float row) 61.0))))
+              (set! (-> font color)
+                    (if (= row *v-turtle-tuning-selection*)
+                        (font-color yellow)
+                        (font-color white)))
+              (format (clear *temp-string*) "~A~A"
+                      (if (= row *v-turtle-tuning-selection*) "> " "  ")
+                      (turtle-tuning-parameter-name index))
+              (turtle-tuning-print-line font *temp-string* 34.0 y 0.31 #f)
+              (set! (-> font color) (font-color white))
+              (+! (-> font origin y) 17.0)
+              (turtle-tuning-format-value-line! index #t)
+              (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+              (+! (-> font origin y) 17.0)
+              (turtle-tuning-format-value-line! index #f)
+              (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))))
+          (set! (-> font color) (font-color cyan))
+          (turtle-tuning-print-line font "<PAD_L1><PAD_R1> Category   <PAD_DPAD_UP><PAD_DPAD_DOWN> Select   <PAD_DPAD_LEFT><PAD_DPAD_RIGHT> Adjust"
+                                    256.0 355.0 0.22 #t)
+          (turtle-tuning-print-line font "<PAD_X> Apply   <PAD_TRIANGLE> Stock Selected   <PAD_R2> Stock All   <PAD_CIRCLE> Cancel"
+                                    256.0 378.0 0.22 #t))
+        (none)))
+  (none)
+  )
+
 (defmacro when-not-drawn-decoration (&rest body)
   `(when (> (-> *display* real-clock integral-frame-counter) (-> *progress-state-pc* decoration-draw-time))
       ,@body
@@ -98,6 +283,8 @@
 
 (defbehavior progress-trans progress ()
   ;; og:preserve-this added variable
+  (when *v-turtle-tuning-menu-open?*
+    (turtle-tuning-update!))
   (let ((speed-mod (if (-> *pc-settings* fast-progress?) (-> *pc-cheat-state* progress-speed) 1.0)))
     (cond
       ((and (= (-> self next) 'none) (or (= (-> self starting-state) 'main) (= (-> self anim-frame) 1.0)))
@@ -341,7 +528,7 @@
 
 (defbehavior progress-post progress ()
   (local-vars (sv-208 font-context) (sv-212 int) (sv-216 hud-box) (sv-220 symbol))
-  (when (-> self current-options)
+  (when (and (-> self current-options) (not *v-turtle-tuning-menu-open?*))
     (set-selected-color self)
     (set! (-> self scissor-count) -1)
     (progress-method-33 self (-> *progress-work* full-screen))
@@ -447,6 +634,8 @@
       )
     (progress-method-34 self)
     )
+  (when (and (= (-> self current) 'main) (= (-> self next) 'none))
+    (turtle-tuning-draw!))
   (ja-post)
   )
 

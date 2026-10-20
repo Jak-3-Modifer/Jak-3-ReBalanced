@@ -66,7 +66,13 @@
 (defstate target-stance (target)
   :event target-standard-event-handler
   :enter (behavior ()
-    (set! (-> self control mod-surface) *walk-mods*)
+    (set! (-> self control mod-surface)
+          (if (and (logtest? (-> self game secrets) (game-secrets growth-spurt))
+                   (not (logtest? (-> self game secrets) (game-secrets midget-jak))))
+              *tall-walk-mods*
+              *walk-mods*
+              )
+          )
     (set-time! (-> self state-time))
     )
   :exit (behavior ()
@@ -174,7 +180,13 @@
   :event target-walk-event-handler
   :enter (behavior ()
     (set-time! (-> self state-time))
-    (set! (-> self control mod-surface) *walk-mods*)
+    (set! (-> self control mod-surface)
+          (if (and (logtest? (-> self game secrets) (game-secrets growth-spurt))
+                   (not (logtest? (-> self game secrets) (game-secrets midget-jak))))
+              *tall-walk-mods*
+              *walk-mods*
+              )
+          )
     )
   :exit (behavior ()
     (target-effect-exit)
@@ -1858,7 +1870,13 @@
     (if (!= (-> self control ground-pat material) (pat-material ice))
         (delete-back-vel)
         )
-    (set! (-> self control mod-surface) *walk-mods*)
+    (set! (-> self control mod-surface)
+          (if (and (logtest? (-> self game secrets) (game-secrets growth-spurt))
+                   (not (logtest? (-> self game secrets) (game-secrets midget-jak))))
+              *tall-walk-mods*
+              *walk-mods*
+              )
+          )
     (start-bobbing!
       (-> self water)
       (lerp-scale 0.0 4096.0 (-> self control ground-impact-vel) 40960.0 102400.0)

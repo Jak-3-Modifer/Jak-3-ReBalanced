@@ -265,7 +265,13 @@
       )
     (until #f
       (while (begin
-               (set! (-> self vehicle-handle) (-> *vehicle-info* handle-by-vehicle-type 12))
+               (set! (-> self vehicle-handle)
+                     (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                              *target*
+                              (focus-test? *target* pilot-riding)
+                              (not (focus-test? *target* flut)))
+                         (-> *target* pilot vehicle)
+                         (-> *vehicle-info* handle-by-vehicle-type 12)))
                (not (handle->process (-> self vehicle-handle)))
                )
         (suspend)
@@ -367,6 +373,16 @@
                (logior! (-> v1-133 extra perm status) (entity-perm-status subtask-complete))
                )
            )
+         (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (let ((vehicle (the-as wvehicle (handle->process (-> self vehicle-handle)))))
+             (when vehicle
+               (let ((vehicle-type (-> vehicle info vehicle-type)))
+                 (set! (-> (get-continue-by-name *game-info* "desert-lizard-corral") vehicle-type)
+                       (the-as uint vehicle-type))
+                 (set! (-> (get-continue-by-name *game-info* "desert-lizard-corral-snake-1") vehicle-type)
+                       (the-as uint vehicle-type))
+                 (set! (-> (get-continue-by-name *game-info* "desert-lizard-corral-snake-2") vehicle-type)
+                       (the-as uint vehicle-type))))))
          (send-event (handle->process (-> self vehicle-handle)) 'go-die)
          (when (-> self arrow-handle)
            (send-event (handle->process (-> self arrow-handle)) 'leave)
@@ -445,10 +461,15 @@
                  )
                )
              (while (begin
-                      (set! (-> self vehicle-handle) (-> *vehicle-info* handle-by-vehicle-type 12))
+                       (set! (-> self vehicle-handle)
+                             (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                      *target*
+                                      (focus-test? *target* pilot-riding)
+                                      (not (focus-test? *target* flut)))
+                                 (-> *target* pilot vehicle)
+                                 (-> *vehicle-info* handle-by-vehicle-type 12)))
                       (not (handle->process (-> self vehicle-handle)))
                       )
-               (format *stdebug* "waiting for turtle~%")
                (suspend)
                )
              (let ((v1-189 (the-as wvehicle (handle->process (-> self vehicle-handle)))))
@@ -647,9 +668,10 @@
             )
         )
       )
-    ;; Only the Dune Hopper (v-turtle) is valid for this mission. Riding a
-    ;; captured lizard remains allowed because it is part of the objective.
-    (when (and *target*
+    ;; Normal Mode retains the original Turtle restriction. Hero Mode accepts
+    ;; whichever desert vehicle the player selected.
+    (when (and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+               *target*
                (focus-test? *target* pilot-riding)
                (not (focus-test? *target* flut))
                (!= (-> *target* pilot vehicle) (-> *vehicle-info* handle-by-vehicle-type 12))

@@ -7,6 +7,9 @@
 (define-extern tough-puppy-stall-engine! (function wvehicle none))
 (define-extern tough-puppy-update-stall! (function wvehicle float float none))
 (define-extern tough-puppy-downshift-grip-scale (function wvehicle vehicle-wheel-info float))
+(define-extern v-turtle-tuning-suspension-spring (function wvehicle vehicle-wheel-info float float))
+(define-extern v-turtle-tuning-suspension-damping (function wvehicle float float))
+(define-extern v-turtle-tuning-forward-grip (function wvehicle vehicle-wheel-info float float))
 
 ;; name: wvehicle-physics.gc
 ;; name in dgo: wvehicle-physics
@@ -271,7 +274,7 @@
                           (-> this info extra gravity)
                           f30-0
                           (-> this susp-spring-control)
-                          (-> s1-0 suspension-spring)
+                          (v-turtle-tuning-suspension-spring this s1-0 (-> s1-0 suspension-spring))
                           )
                        )
                  (f2-5 0.25)
@@ -279,7 +282,7 @@
                  (f0-5 (fmax f0-4 (+ f1-9 (* f2-5
                                              (/ 1.0 f3-0)
                                              (-> this info info mass)
-                                             (-> s1-0 suspension-damping)
+                                             (v-turtle-tuning-suspension-damping this (-> s1-0 suspension-damping))
                                              (dust-demon-suspension-damping-scale
                                                this
                                                (fmax 0.0 (- (vector-dot (-> arg1 velocity) (-> s2-0 ground-normal))))
@@ -383,7 +386,7 @@
           (let ((f0-36
                   (* (-> s2-1 up-force)
                      (-> s2-1 friction-coef)
-                     (-> s1-1 forward-grip)
+                     (v-turtle-tuning-forward-grip this s1-1 (-> s1-1 forward-grip))
                      (-> arg1 probe-work-array 0 world-normal y)
                      )
                   )
@@ -547,7 +550,7 @@
           (set! (-> arg1 probe-work-array 0 probe-pos x)
                 (* (-> s1-2 friction-coef)
                    (-> s1-2 up-force)
-                   (-> s2-2 forward-grip)
+                   (v-turtle-tuning-forward-grip this s2-2 (-> s2-2 forward-grip))
                    (dust-demon-sand-forward-grip-scale this s2-2 (-> s1-2 surface surface-type))
                    )
                 )

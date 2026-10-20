@@ -3320,6 +3320,20 @@
            )
           )
         (combine! gp-0 arg1 self)
+        (let ((slash-attacker (handle->process (-> gp-0 attacker))))
+          (when (and slash-attacker
+                     (logtest? (process-mask enemy) (-> slash-attacker mask))
+                     (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                     (task-node-open? (game-task-node arena-fight-2-fight))
+                     (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+            (format #t
+                    "[Arena2 Slash] target-hit entered form=board arg=~A damage=~f health-before=~f mask=#x~X~%"
+                    arg0
+                    (-> gp-0 damage)
+                    (-> self fact health)
+                    (-> gp-0 mask))
+            )
+          )
         (when (not (logtest? (-> gp-0 mask) (attack-mask vector)))
           (vector-z-quaternion! (-> gp-0 vector) (-> self control quat-for-control))
           (vector-xz-normalize! (-> gp-0 vector) (- (fabs (-> gp-0 shove-back))))
@@ -3390,6 +3404,18 @@
               )
              (else
                (pickup-collectable! (-> self fact) (pickup-type health) (- (-> gp-0 damage)) (the-as handle #f))
+               )
+             )
+           (let ((slash-attacker (handle->process (-> gp-0 attacker))))
+             (when (and slash-attacker
+                        (logtest? (process-mask enemy) (-> slash-attacker mask))
+                        (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                        (task-node-open? (game-task-node arena-fight-2-fight))
+                        (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+               (format #t
+                       "[Arena2 Slash] target-hit applied form=board health-after=~f hit-time=~D~%"
+                       (-> self fact health)
+                       (-> self game hit-time))
                )
              )
            (target-hit-effect gp-0)

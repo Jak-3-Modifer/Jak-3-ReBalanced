@@ -616,6 +616,7 @@
      (set! (-> this custom-orbs-mask-1) (the-as uint64 0))
      (set! (-> this custom-orbs-mask-2) (the-as uint64 0))
      (set! (-> this custom-orbs-mask-3) (the-as uint64 0))
+     (set! (-> this mine-world-orbs-mask) (the-as uint64 0))
      (dotimes (tier 3)
        (set! (-> this hero-artifacts tier) 0)
        (set! (-> this hero-artifacts-pending tier) 0)

@@ -15,6 +15,7 @@
 
 (define-extern wvehicle type)
 (declare-type wvehicle process-drawable)
+(declare-type squad-control basic)
 
 ;; DECOMP BEGINS
 

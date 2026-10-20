@@ -801,7 +801,20 @@
 ;; WARN: Return type mismatch symbol vs none.
 (defbehavior target-walk-anim target ((arg0 int))
   (let ((f24-0 0.0)
-        (f26-0 (fmax 0.0 (fmin 1.0 (* 0.000048828126 (+ -16384.0 (-> self control ctrl-xz-vel))))))
+        (f26-0 (fmax 0.0
+                    (fmin 1.0
+                          (* 0.000048828126
+                             (+ -16384.0
+                                (if (and (logtest? (-> self game secrets) (game-secrets growth-spurt))
+                                         (not (logtest? (-> self game secrets) (game-secrets midget-jak))))
+                                    (* 0.8333333 (-> self control ctrl-xz-vel))
+                                    (-> self control ctrl-xz-vel)
+                                    )
+                                )
+                             )
+                          )
+                    )
+                )
         (f30-0 0.0)
         (f28-0 0.0)
         (s5-0 #f)
@@ -992,7 +1005,14 @@
             (until (ja-done? 0)
               (suspend)
               ;; og:preserve-this changed for high fps
-              (ja :num! (seek! max (/ (* (fmax 20480.0 (-> self control ctrl-xz-vel)) (seconds-per-frame-high-fps))
+              (ja :num! (seek! max (/ (* (fmax 20480.0
+                                                   (if (and (logtest? (-> self game secrets) (game-secrets growth-spurt))
+                                                            (not (logtest? (-> self game secrets) (game-secrets midget-jak))))
+                                                       (* 0.8333333 (-> self control ctrl-xz-vel))
+                                                       (-> self control ctrl-xz-vel)
+                                                       )
+                                                   )
+                                                 (seconds-per-frame-high-fps))
                                       (/ (-> *TARGET-bank* run-up-cycle-dist) (-> *TARGET-bank* run-cycle-length))
                                       )
                                )
@@ -1283,7 +1303,15 @@
             )
           )
         (ja :chan 6 :frame-interp0 f26-0 :frame-interp1 f26-0)
-        (let* ((f1-14 (* (current-cycle-distance (-> self skel)) (-> self control scale x)))
+        ;; Mini Jak keeps the stock locomotion cadence at the original movement
+        ;; speed instead of doubling the walk/run animation rate at half scale.
+        (let* ((f1-14 (* (current-cycle-distance (-> self skel))
+                         (if (logtest? (-> self game secrets) (game-secrets midget-jak))
+                             1.0
+                             (-> self control scale x)
+                             )
+                         )
+               )
                (f0-70 (/ (-> self control ctrl-xz-vel) (* 60.0 (/ f1-14 (-> *TARGET-bank* run-cycle-length)))))
                )
           (ja :num! (loop! f0-70))

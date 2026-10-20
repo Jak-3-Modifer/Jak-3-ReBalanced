@@ -143,6 +143,8 @@ void load_and_link_dgo_from_c(const char* name,
                               bool jump_from_c_to_goal) {
   Timer timer;
   lg::debug("[Load and Link DGO From C] {}", name);
+  const bool diagnose_waschase =
+      strcmp(name, "waschase.DGO") == 0 || strcmp(name, "WASCHASE.DGO") == 0;
   u32 oldShowStall = sShowStallMsg;
 
   // remember where the heap top point is so we can clear temporary allocations
@@ -191,12 +193,19 @@ void load_and_link_dgo_from_c(const char* name,
 
     char objName[64];
     strcpy(objName, (dgoObj + 4).cast<char>().c());  // name from dgo object header
+    if (diagnose_waschase) {
+      lg::info("[WASCHASE DIAG] linking {} ({} bytes, last={})", objName, objSize,
+               lastObjectLoaded);
+    }
     lg::debug("[link and exec] {:18s} {} {:6d} heap-use {:8d} {:8d}: 0x{:x}", objName,
               lastObjectLoaded, objSize, kheapused(kglobalheap),
               kdebugheap.offset ? kheapused(kdebugheap) : 0, kglobalheap->current.offset);
     {
       auto p = scoped_prof(fmt::format("link-{}", objName).c_str());
       link_and_exec(obj, objName, objSize, heap, linkFlag, jump_from_c_to_goal);  // link now!
+    }
+    if (diagnose_waschase) {
+      lg::info("[WASCHASE DIAG] linked {}", objName);
     }
 
     // inform IOP we are done

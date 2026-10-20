@@ -2726,10 +2726,24 @@
                       )))
        (cond
          (valid?
+          (when (= (-> this count) 1)
+            (format #t
+                    "[Arena 2 Debug] 30th valid kill: challenge=~D source=~A alive=~D~%"
+                    *hero-arena-2-challenge*
+                    source
+                    (-> this count-alive))
+            )
           ((method-of-type task-manager-arena-fight-base taskman-event-handler) this arg0 arg1 arg2 arg3)
           )
          (source
           (when (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+            (format #t
+                    "[Arena 2 Debug] FAIL invalid lethal source: challenge=~D source=~A count=~D alive=~D attacker=~A~%"
+                    *hero-arena-2-challenge*
+                    source
+                    (-> this count)
+                    (-> this count-alive)
+                    arg0)
             (go-fail this)
             )
           )
@@ -3041,6 +3055,11 @@
              (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
                  (= *hero-arena-2-challenge* 3)
                  ))
+    (format #t
+            "[Arena 2 Debug] FAIL player damage: challenge=~D hit-time=~D baseline=~D~%"
+            *hero-arena-2-challenge*
+            (-> *game-info* hit-time)
+            (-> this start-time))
     (go-fail this)
     )
   ;; Fail from an attack being used, even when it misses. Gun use is sampled
@@ -3062,11 +3081,23 @@
            )
       (when (or (and melee-attack? (!= *hero-arena-2-challenge* 2))
                 (and board-attack? (!= *hero-arena-2-challenge* 0)))
+        (format #t
+                "[Arena 2 Debug] FAIL active attack state: challenge=~D board=~A melee=~A danger-mode=~A penetrate=#x~X~%"
+                *hero-arena-2-challenge*
+                board-attack?
+                melee-attack?
+                (-> *target* control danger-mode)
+                penetrate-using)
         (go-fail this)
         )
       (when (cpad-pressed? 0 r1)
         (if (focus-test? *target* board)
             (when (!= *hero-arena-2-challenge* 0)
+              (format #t
+                      "[Arena 2 Debug] FAIL new board R1 press: challenge=~D danger-mode=~A penetrate=#x~X~%"
+                      *hero-arena-2-challenge*
+                      (-> *target* control danger-mode)
+                      penetrate-using)
               (go-fail this)
               )
             (let ((used-gun (if (using-gun? *target*)
@@ -3078,6 +3109,10 @@
                              (!= used-gun (pickup-type gun-red-2)))
                         (and (= *hero-arena-2-challenge* 2)
                              (!= used-gun (pickup-type gun-dark-2))))
+                (format #t
+                        "[Arena 2 Debug] FAIL prohibited gun R1 press: challenge=~D gun=~D~%"
+                        *hero-arena-2-challenge*
+                        used-gun)
                 (go-fail this)
                 )
               )
@@ -3258,7 +3293,64 @@
     )
   (when (and (zero? (-> this count-alive)) (zero? (-> this count)))
     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-        (advance-hero-arena-2-platform! this)
+        (if (and (= *hero-arena-2-challenge* 0) *target*)
+            ;; Challenge 1 ends in the existing zero-count transition.  Let
+            ;; its final attack finish, then use the target's normal board
+            ;; dismount path once Jak is safely grounded.  Challenge 2 does
+            ;; not become active until board mode and danger mode are gone.
+            (cond
+              ((focus-test? *target* board)
+               (when (and (not (focus-test? *target* dangerous))
+                          (not (focus-test? *target* dead grabbed))
+                          (logtest? (-> *target* control status) (collide-status on-surface on-ground))
+                          (not (and (-> *target* next-state)
+                                    (= (-> *target* next-state name) 'target-board-get-off))))
+                 (format #t "[Arena 2 Debug] requesting normal Jet Board dismount before Challenge 2~%")
+                 (send-event *target* 'change-mode 'normal)
+                 )
+               )
+              ((not (focus-test? *target* dangerous))
+               (format #t "[Arena 2 Debug] Jet Board dismount complete; Challenge 2 may begin~%")
+               (advance-hero-arena-2-platform! this)
+               )
+              )
+            (if (= *hero-arena-2-challenge* 1)
+                ;; Give Red-2 shockwaves two seconds to expire before Dark-2
+                ;; becomes mandatory.  dj-train is unused by Hero Mode and
+                ;; serves as this transition's one-shot state marker.
+                (if (zero? (-> this dj-train))
+                    (begin
+                      (set! (-> this dj-train) (the-as uint 1))
+                      (set-time! (-> this hint-time))
+                      (set-setting! 'attack #f 0.0 0)
+                      (cpad-clear! 0 r1)
+                      (format #t "[Arena 2 Debug] Challenge 2 complete; starting two-second transition~%")
+                      )
+                    (when (time-elapsed? (-> this hint-time) (seconds 2))
+                      (set-setting! 'attack #t 0.0 0)
+                      (cpad-clear! 0 r1)
+                      (set! (-> this dj-train) (the-as uint 0))
+                      (format #t "[Arena 2 Debug] Challenge 2 transition complete; activating Challenge 3~%")
+                      (advance-hero-arena-2-platform! this)
+                      ;; The transition itself already provided the projectile
+                      ;; buffer, so the next challenge may resume spawning.
+                      (set! (-> this next-spawn) (current-time))
+                      )
+                    )
+                (begin
+                  ;; Challenge 3 to 4 retains its existing behavior.
+                  (format #t
+                          "[Arena 2 Debug] advancing challenge: old=~D count=~D alive=~D danger=~A mode=~A penetrate=#x~X~%"
+                          *hero-arena-2-challenge*
+                          (-> this count)
+                          (-> this count-alive)
+                          (if *target* (focus-test? *target* dangerous) #f)
+                          (if *target* (-> *target* control danger-mode) #f)
+                          (if *target* (-> *target* control penetrate-using) 0))
+                  (advance-hero-arena-2-platform! this)
+                  )
+                )
+            )
         (let ((s5-6 #t))
           (dotimes (s4-5 4)
             (when (and (as-type (handle->process (-> this platform s4-5)) wstd-fight-plat)
@@ -3285,6 +3377,12 @@
   (when (-> this hud-counter)
     (send-event (handle->process (-> this hud-counter)) 'hide-and-die)
     (set! (-> this hud-counter) (the-as handle #f))
+    )
+  ;; Restore attacks if the mission exits during the Hero Mode transition.
+  (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (= (-> this dj-train) 1))
+    (set-setting! 'attack #t 0.0 0)
+    (set! (-> this dj-train) (the-as uint 0))
     )
   (none)
   )

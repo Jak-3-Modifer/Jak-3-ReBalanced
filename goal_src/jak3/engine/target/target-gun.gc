@@ -2659,7 +2659,11 @@
         )
     (matrix-lerp! gp-0 a1-0 a2-0 (-> self gun gun-daxter))
     (matrix->transformq (-> self gun gun-pos) gp-0)
-    (vector-copy! (-> self gun gun-pos scale) (-> self control scale))
+    (if (logtest? (-> self game secrets) (game-secrets midget-jak))
+        ;; Mini Jak keeps the held gun at its authored size.
+        (set-vector! (-> self gun gun-pos scale) 1.0 1.0 1.0 1.0)
+        (vector-copy! (-> self gun gun-pos scale) (-> self control scale))
+        )
     (when (and (using-gun? self)
                (and (focus-test? self edge-grab) (let ((v1-18 (ja-group)))
                                                    (and v1-18 (or (= v1-18 jakb-jump-loop-ja)

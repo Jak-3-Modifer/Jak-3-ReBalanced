@@ -65,6 +65,9 @@
    (target-last-attacker?  symbol)
    (visible-last           time-frame)
    (arena-2-lethal-source  symbol)
+   ;; Temporary Arena Fight 2 slash diagnostic latch.  This keeps rejected
+   ;; contacts from printing every frame while one leap overlaps Jak.
+   (arena-2-slash-debug-touch? symbol)
    (traj                   trajectory       :inline)
    (skip-jump              symbol)
    )
@@ -98,8 +101,10 @@
            )
        'arena-dark-2
        )
-      ((and (logtest? penetrate-using (penetrate board))
-            (logtest? penetrate-using (penetrate spin)))
+      ((or (= (-> arg0 mode) 'board-spin)
+           (= (-> arg0 mode) 'board-zap)
+           (and (logtest? penetrate-using (penetrate board))
+                (logtest? penetrate-using (penetrate spin))))
        'arena-board-active
        )
       ((and (not (logtest? penetrate-using (penetrate board)))
@@ -577,6 +582,18 @@
              (set! (-> a3-1 prim-core collide-as) (collide-spec enemy))
              (set! (-> a3-1 prim-core collide-with) (collide-spec jak bot player-list))
              )
+           (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                      (task-node-open? (game-task-node arena-fight-2-fight))
+                      (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+                      (= arg1 1))
+             (format #t
+                     "[Arena2 Slash] collision armed marauder=#x~X prim=~D action=#x~X as=#x~X with=#x~X~%"
+                     this
+                     (-> a3-1 prim-id)
+                     (-> a3-1 prim-core action)
+                     (-> a3-1 prim-core collide-as)
+                     (-> a3-1 prim-core collide-with))
+             )
            )
           (else
             (logclear! (-> a3-1 prim-core action) (collide-action deadly))
@@ -592,6 +609,36 @@
     )
   0
   (none)
+  )
+
+(defmethod send-attack-from-tshape ((this marauder) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
+  "Temporarily trace Arena Fight 2 slash attack delivery without changing it."
+  (let ((arena-2-slash?
+          (and (= arg0 *target*)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (task-node-open? (game-task-node arena-fight-2-fight))
+               (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+               (-> this next-state)
+               (= (-> this next-state name) 'jump)))
+        (health-before (if (= arg0 *target*) (-> *target* fact health) 0.0))
+        (hit-before (if (= arg0 *target*) (-> *game-info* hit-time) 0))
+        (result ((method-of-type enemy send-attack-from-tshape) this arg0 arg1 arg2))
+        )
+    (when arena-2-slash?
+      (format #t
+              "[Arena2 Slash] attack event result=~A id=~D configured-damage=~D health=~f->~f~%"
+              result
+              arg2
+              (-> this enemy-info attack-damage)
+              health-before
+              (-> *target* fact health))
+      (format #t
+              "[Arena2 Slash] attack event hit-time=~D->~D~%"
+              hit-before
+              (-> *game-info* hit-time))
+      )
+    result
+    )
   )
 
 (defmethod on-dying ((this marauder))
@@ -695,39 +742,69 @@
 
 (defmethod enemy-touched-handler ((this marauder) (arg0 process) (arg1 event-message-block))
   "General handler for when anything touches an enemy (automatic response)."
-  (when (!= (-> arg0 type) target)
-    (let ((s3-0 (-> arg1 param 0))
-          (v1-1 (as-type arg0 process-focusable))
-          )
-      (cond
-        ((and (focus-test? this dangerous)
-              (logtest? (process-mask enemy) (-> arg0 mask))
-              (and v1-1
-                   (not (logtest? (-> (the-as process-focusable v1-1) focus-status) (focus-status disable dead ignore grabbed)))
-                   )
-              ((method-of-type touching-shapes-entry prims-touching-action?)
-               (the-as touching-shapes-entry s3-0)
-               (-> this root)
-               (collide-action deadly)
-               (collide-action)
-               )
-              )
-         (let ((a3-2 (if ((method-of-type touching-shapes-entry prims-touching-action?)
-                          (the-as touching-shapes-entry s3-0)
-                          (-> this root)
-                          (collide-action persistent-attack)
-                          (collide-action)
-                          )
-                         (-> this persistent-attack-id)
-                         (-> this attack-id)
-                         )
-                     )
-               )
-           (send-attack-from-tshape this arg0 (the-as touching-shapes-entry s3-0) a3-2)
-           )
+  (cond
+    ((and (-> this next-state) (= (-> this next-state name) 'jump))
+     (let ((entry (the-as touching-shapes-entry (-> arg1 param 0))))
+       (when (and (= arg0 *target*)
+                  (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                  (task-node-open? (game-task-node arena-fight-2-fight))
+                  (not (task-node-closed? (game-task-node arena-fight-2-fight)))
+                  (not (-> this arena-2-slash-debug-touch?)))
+         (format #t
+                 "[Arena2 Slash] touched Jak marauder=#x~X entry=~A damaging-action=~A target-hit=~A target-flags=#x~X~%"
+                 this
+                 entry
+                 (and entry
+                      ((method-of-type touching-shapes-entry prims-touching-action?)
+                       entry
+                       (-> this root)
+                       (collide-action solid semi-solid deadly)
+                       (collide-action)))
+                 (focus-test? *target* hit)
+                 (-> *target* target-flags))
          )
-        (else
-          (send-event arg0 'touch (-> arg1 param 0))
+       ((method-of-type nav-enemy enemy-touched-handler) this arg0 arg1)
+       (when (= arg0 *target*)
+         (set! (-> this arena-2-slash-debug-touch?) #t)
+         )
+       )
+     )
+    (else
+      (when (!= (-> arg0 type) target)
+        (let ((s3-0 (-> arg1 param 0))
+              (v1-1 (as-type arg0 process-focusable))
+              )
+          (cond
+            ((and (focus-test? this dangerous)
+                  (logtest? (process-mask enemy) (-> arg0 mask))
+                  (and v1-1
+                       (not (logtest? (-> (the-as process-focusable v1-1) focus-status) (focus-status disable dead ignore grabbed)))
+                       )
+                  ((method-of-type touching-shapes-entry prims-touching-action?)
+                   (the-as touching-shapes-entry s3-0)
+                   (-> this root)
+                   (collide-action deadly)
+                   (collide-action)
+                   )
+                  )
+             (let ((a3-2 (if ((method-of-type touching-shapes-entry prims-touching-action?)
+                              (the-as touching-shapes-entry s3-0)
+                              (-> this root)
+                              (collide-action persistent-attack)
+                              (collide-action)
+                              )
+                             (-> this persistent-attack-id)
+                             (-> this attack-id)
+                             )
+                         )
+                   )
+               (send-attack-from-tshape this arg0 (the-as touching-shapes-entry s3-0) a3-2)
+               )
+             )
+            (else
+              (send-event arg0 'touch (-> arg1 param 0))
+              )
+            )
           )
         )
       )
@@ -1356,6 +1433,12 @@
 (defstate jump (marauder)
   :virtual #t
   :enter (behavior ()
+    (set! (-> self arena-2-slash-debug-touch?) #f)
+    (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (task-node-open? (game-task-node arena-fight-2-fight))
+               (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+      (format #t "[Arena2 Slash] jump state begin marauder=#x~X attack-id=~D~%" self (-> self attack-id))
+      )
     (toggle-collide-spec self #t 1)
     (let ((t9-1 (-> (method-of-type nav-enemy jump) enter)))
       (if t9-1

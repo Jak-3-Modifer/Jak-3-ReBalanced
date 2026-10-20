@@ -1376,6 +1376,20 @@
             )
           )
         (combine! sv-32 arg1 self)
+        (let ((slash-attacker (handle->process (-> sv-32 attacker))))
+          (when (and slash-attacker
+                     (logtest? (process-mask enemy) (-> slash-attacker mask))
+                     (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                     (task-node-open? (game-task-node arena-fight-2-fight))
+                     (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+            (format #t
+                    "[Arena2 Slash] target-hit entered form=foot arg=~A damage=~f health-before=~f mask=#x~X~%"
+                    arg0
+                    (-> sv-32 damage)
+                    (-> self fact health)
+                    (-> sv-32 mask))
+            )
+          )
         (when (not (logtest? (-> sv-32 mask) (attack-mask vector)))
           (vector-z-quaternion! (-> sv-32 vector) (-> self control quat-for-control))
           (vector-xz-normalize! (-> sv-32 vector) (- (fabs (-> sv-32 shove-back))))
@@ -1633,6 +1647,18 @@
               )
              (else
                (pickup-collectable! (-> self fact) (pickup-type health) (- (-> sv-32 damage)) (the-as handle #f))
+               )
+             )
+           (let ((slash-attacker (handle->process (-> sv-32 attacker))))
+             (when (and slash-attacker
+                        (logtest? (process-mask enemy) (-> slash-attacker mask))
+                        (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                        (task-node-open? (game-task-node arena-fight-2-fight))
+                        (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+               (format #t
+                       "[Arena2 Slash] target-hit applied form=foot health-after=~f hit-time=~D~%"
+                       (-> self fact health)
+                       (-> self game hit-time))
                )
              )
            (target-hit-effect sv-32)

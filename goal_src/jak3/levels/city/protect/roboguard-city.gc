@@ -30,6 +30,15 @@
 
 (define *protect-terry-defeated?* #f)
 
+;; Terry's close-range electric attack tuning.  The shock mode uses Jak's
+;; normal damage, invulnerability, stun, VFX, and SFX handling.
+(define *protect-terry-shock-radius* (meters 15))
+(define *protect-terry-shock-damage* 2.0)
+(define *protect-terry-shock-cooldown* (seconds 3))
+(define *protect-terry-last-shock-time* (the-as time-frame 0))
+(define *protect-terry-volley-cooldown* (seconds 1.75))
+(define *protect-terry-last-volley-time* (the-as time-frame 0))
+
 ;; The missile process is used by Protect HQ, but Terry lives in CTYPESC,
 ;; which compiles before LCTYPROT.  Keep the shared type declarations here so
 ;; both compilation units see the same process and initializer layout.
@@ -345,6 +354,14 @@
 
 ;; Match standard Robo Guard weapon resistances for the city variant.
 (defmethod get-damage-from-attack ((this roboguard-city) (arg0 object) (arg1 event-message-block))
+  ;; Damage is applied before msg-for-incoming-attack chooses Terry's reaction,
+  ;; so reject Guard Shot here as well as suppressing its hit reaction below.
+  (when (and (logtest? (-> this robo-flags) (robo-flag r15))
+             arg0
+             (type? arg0 guard-shot)
+             )
+    (return 0.0)
+    )
   (let* ((attack (the-as attack-info (-> arg1 param 1)))
          (damage ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1))
          (weapon-shot? (or (logtest? (penetrate jak-yellow-shot
@@ -1070,8 +1087,9 @@
             (-> this focus-pos)
             (the-as nav-poly #f))
           (vector-copy! (-> this move-dest) safe-dest)
-          ;; Keep a usable fallback while a path is resolving.
-          (vector-copy! (-> this move-dest) (-> this focus-pos))
+          ;; Do not feed an off-mesh target to navigation.  Hold position and
+          ;; retry the projection on the next combat decision instead.
+          (vector-copy! (-> this move-dest) (-> this root trans))
           )
       )
     )
@@ -1100,6 +1118,7 @@
                   ;; Terry may only initiate a roll from 50 m or farther.
                   ((and (>= focus-dist (meters 50))
                         (time-elapsed? (-> this last-roll-time) (seconds 2.5))
+                        (not (logtest? (-> this nav state flags) (nav-state-flag blocked avoiding-sphere)))
                         )
                    1
                    )
@@ -1165,6 +1184,7 @@
             ;; Let Terry recover after a roll before he can immediately start
             ;; another one, so being at range does not become a roll loop.
             (time-elapsed? (-> this last-roll-time) (seconds 2.5))
+            (not (logtest? (-> this nav state flags) (nav-state-flag blocked avoiding-sphere)))
             )
        1
        )
@@ -1174,6 +1194,7 @@
             s5-0
             (should-check-los? (-> this los) (seconds 0.6))
             (< (fabs (-> this torso-to-focus-angle)) 3640.889)
+            (time-elapsed? *protect-terry-last-volley-time* *protect-terry-volley-cooldown*)
             )
        5
        )
@@ -1436,6 +1457,14 @@
              (go-virtual hostile)
              )
          )
+        ;; A missing focus used to leave Terry in this stationary state
+        ;; forever. Return to hostile so the normal focus update can reacquire
+        ;; Jak and resume pursuit.
+        ((and (= v1-1 6)
+              (logtest? (-> self robo-flags) (robo-flag r15))
+              (time-elapsed? (-> self state-time) (-> self reaction-time)))
+         (go-virtual hostile)
+         )
         )
       )
     )
@@ -1598,6 +1627,15 @@
     (nav-enemy-method-179 self)
     )
   :trans (behavior ()
+    ;; If the floating firing channel fails to start or never crosses a shot
+    ;; frame, the stock state has no exit because fired-this-time? stays false.
+    ;; Recover only Terry after a bounded wait; active volleys keep their normal
+    ;; animation and cleanup path.
+    (when (and (logtest? (-> self robo-flags) (robo-flag r15))
+               (not (-> self fired-this-time?))
+               (time-elapsed? (-> self state-time) (seconds 2)))
+      (go-virtual hostile)
+      )
     (when (and (time-elapsed? (-> self fire-time)
                              (if (logtest? (-> self robo-flags) (robo-flag r15))
                                  (seconds 0.8)
@@ -2029,6 +2067,7 @@
               )
             (set-time! (-> this last-update-chase-pos-time))
             )
+          (set-time! *protect-terry-last-volley-time*)
           )
         (spawn-roboguard-projectile
           this
@@ -2135,35 +2174,50 @@
      ((method-of-type kg-squad-member event-handler) this arg0 arg1 arg2 arg3)
      )
     (('hit 'hit-knocked)
-     (logclear! (-> this mask) (process-mask actor-pause))
-     (logclear! (-> this focus-status) (focus-status dangerous))
-     (logclear! (-> this enemy-flags) (enemy-flag use-notice-distance))
-     (logior! (-> this enemy-flags) (enemy-flag alert))
-     (logior! (-> this focus-status) (focus-status hit))
-     (if (= (-> this hit-points) 0.0)
-         (logior! (-> this focus-status) (focus-status dead))
-         )
-     (logclear! (-> this enemy-flags) (enemy-flag lock-focus))
-     (focus-on-attacker! this)
-     (logior! (-> this enemy-flags) (enemy-flag lock-focus))
-     (process-contact-action arg0)
-     (send-event arg0 'get-attack-count 1)
-     (freeze-hit-begin)
-     (cond
-       ((or (= (-> this hit-points) 0.0)
-            (and (>= 1.0 (-> this hit-points)) (= (-> this incoming knocked-type) (knocked-type blue-shot)))
-            )
-        (on-dying this)
-        (go (method-of-object this explode))
-        )
-       (else
-         ;; Terry still loses HP, but does not play the normal flinch/knocked, because it was too easy having him be stunned by the vulcan
-         (if (logtest? (-> this robo-flags) (robo-flag r15))
-             (go (method-of-object this shoot-attack))
-             (go (method-of-object this knocked))
+     (if (and (logtest? (-> this robo-flags) (robo-flag r15))
+              (not (or (= (-> this hit-points) 0.0)
+                       (and (>= 1.0 (-> this hit-points))
+                            (= (-> this incoming knocked-type) (knocked-type blue-shot)))
+                       ))
+              )
+         (begin
+           ;; Terry has boss poise: retain damage/contact feedback without
+           ;; replacing his active combat state or restarting attack timers.
+           (process-contact-action arg0)
+           (send-event arg0 'get-attack-count 1)
+           ;; Do not begin or end the generic hit-freeze lifecycle here. Terry
+           ;; no longer enters that lifecycle for nonlethal poise hits.
+           (logclear! (-> this focus-status) (focus-status hit))
+           )
+         (begin
+           (logclear! (-> this mask) (process-mask actor-pause))
+           (logclear! (-> this focus-status) (focus-status dangerous))
+           (logclear! (-> this enemy-flags) (enemy-flag use-notice-distance))
+           (logior! (-> this enemy-flags) (enemy-flag alert))
+           (logior! (-> this focus-status) (focus-status hit))
+           (if (= (-> this hit-points) 0.0)
+               (logior! (-> this focus-status) (focus-status dead))
+               )
+           (logclear! (-> this enemy-flags) (enemy-flag lock-focus))
+           (focus-on-attacker! this)
+           (logior! (-> this enemy-flags) (enemy-flag lock-focus))
+           (process-contact-action arg0)
+           (send-event arg0 'get-attack-count 1)
+           (freeze-hit-begin)
+           (cond
+             ((or (= (-> this hit-points) 0.0)
+                  (and (>= 1.0 (-> this hit-points))
+                       (= (-> this incoming knocked-type) (knocked-type blue-shot)))
+                  )
+              (on-dying this)
+              (go (method-of-object this explode))
+              )
+             (else
+               (go (method-of-object this knocked))
+               )
              )
+           )
          )
-       )
      #t
      )
     (else
@@ -2226,6 +2280,39 @@
              )
     (send-attack-from-tshape this *target* (the-as touching-shapes-entry #f) (new-attack-id))
     (set-time! (-> this last-attack-time))
+    )
+  ;; Terry can repeatedly shock Jak at close range while actively fighting.
+  ;; send-event returns false when Jak's normal damage handling rejects the hit;
+  ;; only an accepted shock starts the cooldown.
+  (when (and (logtest? (-> this robo-flags) (robo-flag r15))
+             (> (-> this hit-points) 0.0)
+             (logtest? (-> this flags) (citizen-flag hostile))
+             *target*
+             (not (focus-test? *target* dead inactive))
+             (< (vector-vector-distance (-> this root trans) (target-pos 0))
+                *protect-terry-shock-radius*)
+             (time-elapsed? *protect-terry-last-shock-time* *protect-terry-shock-cooldown*)
+             )
+    (when (send-event
+            *target*
+            'attack
+            #f
+            (static-attack-info
+              :mask (vehicle-impulse-factor)
+              ((id (new-attack-id))
+               (damage *protect-terry-shock-damage*)
+               (vehicle-damage-factor 1.0)
+               (vehicle-impulse-factor 0.0)
+               (shove-back (meters 20))
+               (shove-up (meters 5))
+               (mode 'shock)
+               )
+              )
+            )
+      (set-time! *protect-terry-last-shock-time*)
+      (sound-play "shock")
+      (on-attack this *target*)
+      )
     )
   ;; The miniboss must instead survive until its full 200 HP is depleted.
   (when (and (not (logtest? (-> this robo-flags) (robo-flag r15)))
@@ -2329,6 +2416,8 @@
     )
   (set! (-> this hit-points) 400.0)
   (set-time! (-> this last-attack-time))
+  (set-time! *protect-terry-last-shock-time*)
+  (set-time! *protect-terry-last-volley-time*)
   (none)
   )
 
@@ -2500,9 +2589,18 @@
 
 ;; WARN: disable def twice: 6. This may happen when a cond (no else) is nested inside of another conditional, but it should be rare.
 (defmethod get-current-enemy ((this roboguard-city))
-  (if #t
-      (handle->process (-> this attacker-info enemy))
-      (squad-control-city-method-35 (-> this squad) this (-> this target-status handle))
+  ;; Terry enters after the Protect HQ squad encounter has finished.  Its
+  ;; attacker slot can therefore become empty and must not clear the direct Jak
+  ;; focus assigned by exit-transport.
+  (if (logtest? (-> this robo-flags) (robo-flag r15))
+      (if (and *target* (not (focus-test? *target* dead inactive)))
+          (the-as process *target*)
+          (the-as process #f)
+          )
+      (if #t
+          (handle->process (-> this attacker-info enemy))
+          (squad-control-city-method-35 (-> this squad) this (-> this target-status handle))
+          )
       )
   )
 
@@ -2618,7 +2716,7 @@
   (cond
     ((and (logtest? (-> this robo-flags) (robo-flag r15))
           arg0
-          (= (-> arg0 type) guard-shot)
+          (type? arg0 guard-shot)
           )
      'nothing
      )
