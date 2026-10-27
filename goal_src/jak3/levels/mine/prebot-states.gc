@@ -230,6 +230,14 @@
     )
   ;; Rebalanced: each fight stage gives the Prebot a fresh 101 HP.
   (set! (-> self stage-hit-points) 101.0)
+  ;; Hero Stage 1 uses pf7 while its cover-pillar firing phase is active and
+  ;; pf8 after its reinforcement/cover checkpoint has been consumed. Clear
+  ;; both whenever this stage is initialized so retries start the full loop.
+  (when (and (= (-> self stage) 1)
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             )
+    (logclear! (-> self flags) (prebot-flag pf7 pf8))
+    )
   (remove-setting! 'entity-name)
   (when (and (< (-> self stage) 4) (not (handle->process (-> self blocker))))
     (let ((gp-0 (new 'static 'inline-array vector 2 (new 'static 'vector) (new 'static 'vector))))
@@ -277,7 +285,13 @@
           (if (and *target*
                    (= (-> *target* game gun-type) (pickup-type gun-blue-1))
                    (-> this next-state)
-                   (= (-> this next-state name) 'watch-critters)
+                   (or (= (-> this next-state name) 'watch-critters)
+                       (and (= (-> this next-state name) 'watch-pillars)
+                            (= (-> this stage) 1)
+                            (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                            (logtest? (-> this flags) (prebot-flag pf7))
+                            )
+                       )
                    (handle->process (-> this gun))
                    (> (-> this stage-hit-points) 1.0)
                    )
@@ -334,17 +348,28 @@
        (set! (-> self minecar-hint-timer) 0)
        0
        )
-     (and (and (-> self next-state) (let ((v1-21 (-> self next-state name)))
-                                      (or (= v1-21 'watch-pillars) (= v1-21 'destroy-pillars))
-                                      )
+     (and (not (and (= (-> self stage) 1)
+                    (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                    (logtest? (-> self flags) (prebot-flag pf7))
+                    )
+               )
+          (and (-> self next-state) (let ((v1-21 (-> self next-state name)))
+                                     (or (= v1-21 'watch-pillars) (= v1-21 'destroy-pillars))
+                                     )
                )
           (< (+ 32358.4 (-> self entity extra trans y)) (-> (target-pos 0) y))
           )
      )
     (('attack)
      (let ((attack (the-as attack-info (-> arg3 param 1))))
-       (if (and (-> self next-state)
-                (= (-> self next-state name) 'watch-critters)
+        (if (and (-> self next-state)
+                 (or (= (-> self next-state name) 'watch-critters)
+                     (and (= (-> self next-state name) 'watch-pillars)
+                          (= (-> self stage) 1)
+                          (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                          (logtest? (-> self flags) (prebot-flag pf7))
+                          )
+                     )
                 (let ((group (ja-group)))
                   (and group
                        (or (= group prebot-gun-from-tentacle-ja)
@@ -703,33 +728,50 @@
     )
   )
 
+(define-extern prebot-launch-critter (function int :behavior prebot))
+
 (defstate watch-pillars (prebot)
   :virtual #t
   :event prebot-handler
   :enter (behavior ()
     (set-time! (-> self state-time))
-    (cond
-      ((and (logtest? (-> self flags) (prebot-flag pf1)) (logtest? (-> self flags) (prebot-flag pf2)))
-       (set! (-> self pillar-hint-timer) 0)
-       0
-       )
-      (else
-        (set-time! (-> self pillar-hint-timer))
+    (if (and (= (-> self stage) 1)
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (logtest? (-> self flags) (prebot-flag pf7))
+             )
+        ;; In Hero Stage 1 num-attacks counts boss-projectile impacts on the
+        ;; single pillar. no-collision-timer is otherwise unused by Prebot, so
+        ;; it safely tracks continuous cover use without disturbing hints.
+        (begin
+          (set! (-> self num-attacks) (the-as uint 0))
+          (set! (-> self pillar-hint-timer) 0)
+          (set! (-> self no-collision-timer) 0)
+          )
+        (begin
+          (cond
+            ((and (logtest? (-> self flags) (prebot-flag pf1)) (logtest? (-> self flags) (prebot-flag pf2)))
+             (set! (-> self pillar-hint-timer) 0)
+             0
+             )
+            (else
+              (set-time! (-> self pillar-hint-timer))
+              )
+            )
+          (case (-> self stage)
+            ((1)
+             ;; Rebalanced: shorten the minecart/rail-blocker objective window.
+             (set! (-> self num-attacks) (the-as uint 10))
+             )
+            ((2)
+             (set! (-> self num-attacks) (the-as uint 8))
+             )
+            (else
+              (set! (-> self num-attacks) (the-as uint 5))
+              )
+            )
+          )
         )
-      )
     (set-time! (-> self minecar-hint-timer))
-    (case (-> self stage)
-      ((1)
-       ;; Rebalanced: shorten the minecart/rail-blocker objective window.
-       (set! (-> self num-attacks) (the-as uint 10))
-       )
-      ((2)
-       (set! (-> self num-attacks) (the-as uint 8))
-       )
-      (else
-        (set! (-> self num-attacks) (the-as uint 5))
-        )
-      )
     (prebot-setup-shot-offsets)
     (set-setting! 'entity-name "camera-312" 0.0 0)
     )
@@ -743,7 +785,13 @@
       (set! (-> self pillar-hint-timer) 0)
       0
       )
-    (when (nonzero? (-> self pillar-hint-timer))
+    (when (and (not (and (= (-> self stage) 1)
+                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                         (logtest? (-> self flags) (prebot-flag pf7))
+                         )
+                    )
+               (nonzero? (-> self pillar-hint-timer))
+               )
       (set! (-> self minecar-hint-timer) (+ (current-time) (seconds -4)))
       (when (time-elapsed? (-> self pillar-hint-timer) (seconds 10))
         (set! (-> self pillar-hint-timer) 0)
@@ -763,7 +811,14 @@
           )
         )
       )
-    (when (and (nonzero? (-> self minecar-hint-timer)) (time-elapsed? (-> self minecar-hint-timer) (seconds 10)))
+    (when (and (not (and (= (-> self stage) 1)
+                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                         (logtest? (-> self flags) (prebot-flag pf7))
+                         )
+                    )
+               (nonzero? (-> self minecar-hint-timer))
+               (time-elapsed? (-> self minecar-hint-timer) (seconds 10))
+               )
       (set! (-> self minecar-hint-timer) 0)
       (cond
         ((< 1 (-> self stage))
@@ -790,6 +845,64 @@
         (set! (-> v1-63 user-object 0) (-> self flags))
         )
       )
+    ;; Hero Stage 1 anti-camping rule.  Jak must remain within four meters of
+    ;; the pillar and the pillar must lie on the boss-to-Jak segment.  Breaking
+    ;; either condition resets the continuous four-second cover timer.
+    (when (and (= (-> self stage) 1)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (logtest? (-> self flags) (prebot-flag pf7))
+               (not (logtest? (-> self flags) (prebot-flag pf8)))
+               )
+      (let ((pillar (handle->process (-> self pillars 0))))
+        (cond
+          (pillar
+            (let ((jak-xz (new 'stack-no-clear 'vector))
+                  (boss-xz (new 'stack-no-clear 'vector))
+                  (pillar-xz (new 'stack-no-clear 'vector))
+                  )
+              (vector-copy! jak-xz (target-pos 0))
+              (vector-copy! boss-xz (-> self root trans))
+              (vector-copy! pillar-xz (-> (the-as process-drawable pillar) root trans))
+              (set! (-> jak-xz y) 0.0)
+              (set! (-> boss-xz y) 0.0)
+              (set! (-> pillar-xz y) 0.0)
+              (cond
+                ((and (< (vector-vector-distance-squared jak-xz pillar-xz) (square (meters 4)))
+                      (< (vector-segment-distance-point! pillar-xz boss-xz jak-xz (the-as vector #f)) (meters 2.5))
+                      (< (vector-vector-distance-squared boss-xz pillar-xz)
+                         (vector-vector-distance-squared boss-xz jak-xz)
+                         )
+                      )
+                 (cond
+                   ((zero? (-> self no-collision-timer))
+                    (set-time! (-> self no-collision-timer))
+                    )
+                   ((and (time-elapsed? (-> self no-collision-timer) (seconds 4))
+                         (handle->process (-> self gun))
+                         )
+                    (logior! (-> self flags) (prebot-flag pf8))
+                    (set! (-> self no-collision-timer) 0)
+                    ;; Deploy the one-time reinforcements without leaving the
+                    ;; projectile-firing state or stowing the boss gun.
+                    (set! (-> self critters-to-launch) 3)
+                    (dotimes (launch-index 3)
+                      (prebot-launch-critter)
+                      )
+                    )
+                   )
+                 )
+                (else
+                  (set! (-> self no-collision-timer) 0)
+                  )
+                )
+              )
+            )
+          (else
+            (set! (-> self no-collision-timer) 0)
+            )
+          )
+        )
+      )
     (if (= (get-aspect-ratio) 'aspect16x9)
         (prebot-set-cam-slave-fov 13653.333)
         (prebot-set-cam-slave-fov 11650.845)
@@ -810,13 +923,28 @@
            )
          (ja :num! (seek!))
          (when (ja-done? 0)
-           (if (>= (the-as uint 1) (-> self num-attacks))
-               (go-virtual destroy-pillars)
+           (cond
+             ((and (= (-> self stage) 1)
+                   (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (logtest? (-> self flags) (prebot-flag pf7))
+                   (= (-> self stage-hit-points) 1.0)
+                   (or (>= (-> self num-attacks) (the-as uint 5))
+                       (not (handle->process (-> self pillars 0)))
+                       )
+                   )
+              (ja-channel-push! 1 (seconds 0.2))
+              (ja :group! prebot-gun-stow-again-ja :num! min)
+              )
+             ((>= (the-as uint 1) (-> self num-attacks))
+              (go-virtual destroy-pillars)
+              )
+             (else
+               (ja-channel-push! 1 (seconds 0.2))
+               (ja :group! prebot-gun-target-ja :num! min)
+               (set-time! (-> self state-time))
+               (prebot-setup-shot-offsets)
                )
-           (ja-channel-push! 1 (seconds 0.2))
-           (ja :group! prebot-gun-target-ja :num! min)
-           (set-time! (-> self state-time))
-           (prebot-setup-shot-offsets)
+             )
            )
          )
         ((let ((v1-117 (ja-group)))
@@ -824,10 +952,28 @@
            )
          (ja :num! (loop!))
          (cond
+           ((and (= (-> self stage) 1)
+                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                 (logtest? (-> self flags) (prebot-flag pf7))
+                 (= (-> self stage-hit-points) 1.0)
+                 (or (>= (-> self num-attacks) (the-as uint 5))
+                     (not (handle->process (-> self pillars 0)))
+                     )
+                 )
+            (blend-to-off! (-> self shoulder-aim-jm) (seconds 0.1) #f)
+            (ja-channel-push! 1 (seconds 0.2))
+            (ja :group! prebot-gun-stow-again-ja :num! min)
+            )
            ((time-elapsed? (-> self state-time) (seconds 1))
             (send-event (handle->process (-> self gun)) 'fire)
             (prebot-light-flash 1.0 0.4 0.0)
-            (+! (-> self num-attacks) -1)
+             (when (not (and (= (-> self stage) 1)
+                             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                             (logtest? (-> self flags) (prebot-flag pf7))
+                             )
+                        )
+               (+! (-> self num-attacks) -1)
+               )
             (set-time! (-> self state-time))
             (blend-to-off! (-> self shoulder-aim-jm) (seconds 0.1) #f)
             (ja-channel-push! 1 (seconds 0.1))
@@ -836,19 +982,72 @@
            (else
              (blend-on! (-> self shoulder-aim-jm) (seconds 0.25) 1.0 #f)
              (let ((gp-10 (new 'stack-no-clear 'vector)))
-               (vector-copy! gp-10 (target-pos 0))
-               (let ((s5-6 (vector<-cspace! (new 'stack-no-clear 'vector) (joint-node prebot-lod0-jg shoulderL))))
-                 (+! (-> gp-10 y) (-> self shot-extra-y))
-                 (set! (-> s5-6 y) (-> s5-6 x))
-                 (set! (-> s5-6 x) (-> s5-6 z))
-                 (set! (-> s5-6 z) (- (-> s5-6 y)))
-                 (set! (-> s5-6 y) 0.0)
-                 (vector-normalize! s5-6 (-> self shot-extra-xz))
-                 (vector+! gp-10 gp-10 s5-6)
+               (let ((cover-pillar (handle->process (-> self pillars 0))))
+                 (cond
+                   ((and (= (-> self stage) 1)
+                         (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                         (logtest? (-> self flags) (prebot-flag pf7))
+                         (= (-> self stage-hit-points) 1.0)
+                         cover-pillar
+                         )
+                    ;; Once Jak completes the firing objective, use the boss's
+                    ;; normal obstacle-destruction shot to finish the cover
+                    ;; pillar. Each impact still follows the existing five-hit
+                    ;; pillar handler before the phase may advance.
+                    (vector-copy! gp-10 (-> (the-as process-drawable cover-pillar) root trans))
+                    (+! (-> gp-10 y) -14336.0)
+                    )
+                   (else
+                     (vector-copy! gp-10 (target-pos 0))
+                     (let ((s5-6
+                            (vector<-cspace!
+                              (new 'stack-no-clear 'vector)
+                              (joint-node prebot-lod0-jg shoulderL)
+                              )
+                           ))
+                       (+! (-> gp-10 y) (-> self shot-extra-y))
+                       (set! (-> s5-6 y) (-> s5-6 x))
+                       (set! (-> s5-6 x) (-> s5-6 z))
+                       (set! (-> s5-6 z) (- (-> s5-6 y)))
+                       (set! (-> s5-6 y) 0.0)
+                       (vector-normalize! s5-6 (-> self shot-extra-xz))
+                       (vector+! gp-10 gp-10 s5-6)
+                       )
+                     )
+                   )
                  )
                (set-target! (-> self shoulder-aim-jm) gp-10)
                )
              )
+           )
+         )
+        ((let ((v1-139 (ja-group)))
+           (and v1-139 (= v1-139 prebot-gun-stow-again-ja))
+           )
+         (ja :num! (seek!))
+         (when (ja-done? 0)
+           (let ((gun-process (handle->process (-> self gun))))
+             (when gun-process
+               (deactivate gun-process)
+               )
+             (set! (-> self gun) (the-as handle #f))
+             )
+           ;; The temporary cover pillar belongs to the firing phase. Remove
+           ;; it before creating the real mine-cart pillar configuration.
+           (dotimes (pillar-index 5)
+             (let ((cover-pillar (handle->process (-> self pillars pillar-index))))
+               (when cover-pillar
+                 (deactivate cover-pillar)
+                 )
+               (set! (-> self pillars pillar-index) (the-as handle #f))
+               )
+             )
+           ;; Mark the custom firing checkpoint complete before entering the
+           ;; regular minecart pillar phase. This keeps later vanilla attack
+           ;; cycles from inserting the one-pillar phase a second time.
+           (logclear! (-> self flags) (prebot-flag pf7))
+           (logior! (-> self flags) (prebot-flag pf8))
+           (go-virtual activate-tentacles)
            )
          )
         ((let ((v1-154 (ja-group)))
@@ -929,7 +1128,22 @@
            (s4-0 (new 'stack-no-clear 'vector))
            (v1-0 (-> self stage))
            (gp-0 (cond
-                   ((= v1-0 1)
+                    ((and (= v1-0 1)
+                          (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                          (logtest? (-> self flags) (prebot-flag pf7))
+                          )
+                      ;; Hero Stage 1 creates only the second-shortest pillar. Its
+                     ;; offset is updated below from Jak's position before the
+                     ;; pillar process is spawned.
+                     (new 'static 'boxed-array :type prebot-eco-pillar-launch-spec
+                       (new 'static 'prebot-eco-pillar-launch-spec
+                         :offset (new 'static 'vector :w 1.0)
+                          :height 22528.0
+                          :style 1
+                         )
+                       )
+                     )
+                    ((= v1-0 1)
                     (new 'static 'boxed-array :type prebot-eco-pillar-launch-spec
                       (new 'static 'prebot-eco-pillar-launch-spec
                         :offset (new 'static 'vector :x 40960.0 :z 163840.0 :w 1.0)
@@ -1013,6 +1227,16 @@
                    )
                  )
            )
+      (when (and (= v1-0 1)
+                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                 (logtest? (-> self flags) (prebot-flag pf7))
+                 (not (handle->process (-> self pillars 0)))
+                 )
+        (vector-! (-> gp-0 0 offset) (target-pos 0) (-> self original-position))
+        ;; Keep the pillar rooted to the arena floor while matching Jak's X/Z.
+        (set! (-> gp-0 0 offset y) 0.0)
+        (set! (-> gp-0 0 offset w) 1.0)
+        )
       (let ((f30-0 0.0))
         (set! (-> self num-attacks) (the-as uint 0))
         (dotimes (s3-0 (min 5 (-> gp-0 length)))
@@ -1063,6 +1287,12 @@
       (when (>= (-> self num-attacks) (the-as uint (min 5 (-> gp-0 length))))
         (dotimes (s5-1 (min 5 (-> gp-0 length)))
           (send-event (handle->process (-> self pillars s5-1)) 'cool-down)
+          (when (and (= v1-0 1)
+                     (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                     (logtest? (-> self flags) (prebot-flag pf7))
+                     )
+            (send-event (handle->process (-> self pillars s5-1)) 'vulnerable)
+            )
           )
         (sound-play "pillar-cool")
         (go-virtual watch-pillars)
@@ -1244,16 +1474,39 @@
                )
              )
            )
-         ;; Rebalanced: after the Eco Creatures die, the Prebot keeps shooting
-         ;; until Jak removes 100 HP and leaves the protected final point.
-         (set! (-> self gun)
-               (ppointer->handle
-                 (process-spawn prebot-gun "gun-" (-> self root trans) :name "prebot-gun" :to self)
+          (cond
+            ((and (= (-> self stage) 1)
+                  (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                  (not (logtest? (-> self flags) (prebot-flag pf7)))
+                  (not (logtest? (-> self flags) (prebot-flag pf8)))
+                  )
+             ;; Hero Stage 1 order: slamdowns, laser pass-bys, Eco Creatures,
+             ;; then the one-pillar firing phase. Remove any old pillar so the
+             ;; custom cover pillar can use Jak's current position.
+             (dotimes (pillar-index 5)
+               (let ((old-pillar (handle->process (-> self pillars pillar-index))))
+                 (when old-pillar
+                   (deactivate old-pillar)
+                   )
+                 (set! (-> self pillars pillar-index) (the-as handle #f))
                  )
                )
-         (setup-masks (-> self draw) 0 0)
-         (ja-channel-push! 1 (seconds 0.2))
-         (ja :group! prebot-gun-from-tentacle-ja :num! min)
+             (logior! (-> self flags) (prebot-flag pf7))
+             (go-virtual activate-tentacles)
+             )
+            (else
+              ;; Rebalanced: after the Eco Creatures die, the Prebot keeps shooting
+              ;; until Jak removes 100 HP and leaves the protected final point.
+              (set! (-> self gun)
+                    (ppointer->handle
+                      (process-spawn prebot-gun "gun-" (-> self root trans) :name "prebot-gun" :to self)
+                      )
+                    )
+              (setup-masks (-> self draw) 0 0)
+              (ja-channel-push! 1 (seconds 0.2))
+              (ja :group! prebot-gun-from-tentacle-ja :num! min)
+              )
+            )
          (label cfg-26)
          )
         (else

@@ -157,6 +157,7 @@
   (endless-dark 18)
   (endless-light 19)
   (gs20 20)
+  ;; Repeatable shop action: closes the Shop and kills the player target.
   (gs21 21)
   (gungame-ratchet 22)
   (big-head 23)
@@ -203,7 +204,7 @@
   (dark-giant 61)
   ;; Persistent Hero Mode Compass purchase/toggle; retain the reserved enum name.
   (gs62 62)
-  ;; Reserved shop-toggle bit for the Wave Concussor self-launch effect.
+  ;; Persistent cosmetic shop toggle for the blue Morph Gun laser color.
   (gs63 63)
   )
 ;; ---game-secrets

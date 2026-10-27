@@ -3343,13 +3343,16 @@
             )
           ;; og:preserve-this
           ;; did we find one to unload?
-          ;; PC NOTE : added an extra check for DGO time and name. If you start a load and discard it on the next frame,
-          ;; you may attempt to start a new load right away before the ISO thread can properly stop the previous load
-          ;; which will just crash the game. Sadly this means loads may sometimes be delayed by one frame. The horror.
+          ;; PC NOTE : added extra checks for DGO time, load completion time, and name. If you start or finish a load and
+          ;; discard it on the next frame, you may attempt to start the same load again before the ISO thread can properly
+          ;; settle, which will just crash the game. Sadly this means loads may sometimes be delayed by one frame. The horror.
           (when (>= a0-3 0)
             (format 0 "  level loading : want to unload ~A. load-level is ~A~%" (-> *level* level a0-3 load-name) (-> *level* load-level))
             (when (or (!= (-> *level* level a0-3 load-name) (-> *level* load-level))
-                      (< 1 (- (-> *display* real-clock integral-frame-counter) *dgo-time*)))
+                      (and (< 1 (- (-> *display* real-clock integral-frame-counter) *dgo-time*))
+                           (or (zero? (-> *level* level a0-3 load-stop-time))
+                               (< 1 (- (-> *display* real-clock frame-counter)
+                                       (-> *level* level a0-3 load-stop-time))))))
               (let ((lev-to-unload (-> *level* level a0-3)))
                 (format 0 "Discarding level ~A~%" (-> lev-to-unload name))
                 (level-status-update! lev-to-unload 'inactive) ;; kill it.

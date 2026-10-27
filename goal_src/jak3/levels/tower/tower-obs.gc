@@ -1032,6 +1032,15 @@
   (go (method-of-object this idle))
   )
 
+(define *tower-light-shield-hint-pos*
+  (new 'static 'vector
+       :x (meters -309.11)
+       :y (meters 7.99)
+       :z (meters 483.45)
+       :w 1.0
+       )
+  )
+
 (deftype task-manager-tower-destroy (task-manager)
   ((creak-sound-id        sound-id)
    (creak-sound-timer     time-frame)
@@ -1041,12 +1050,48 @@
    (goo-sound-duration    time-frame)
    (goo-sound-playing     symbol)
    (goo-sound-location    vector  :inline)
+   (light-shield-hint?    symbol)
+   (light-shield-hint-time time-frame)
+   (light-shield-hint-deaths int32)
    )
   )
 
 
 (defmethod task-manager-method-26 ((this task-manager-tower-destroy))
   ((method-of-type task-manager task-manager-method-26) this)
+  (when (!= (-> this light-shield-hint-deaths) (-> *game-info* task-deaths))
+    (set! (-> this light-shield-hint?) #f)
+    (set! (-> this light-shield-hint-deaths) (-> *game-info* task-deaths))
+    )
+  (when (and *target*
+             (not (-> this light-shield-hint?))
+             (not (focus-test? *target* dead teleporting))
+             (not (movie?))
+             (< (vector-vector-xz-distance (target-pos 0) *tower-light-shield-hint-pos*) (meters 5))
+             )
+    (set! (-> this light-shield-hint?) #t)
+    (set-time! (-> this light-shield-hint-time))
+    )
+  (when (and (-> this light-shield-hint?)
+             (not (time-elapsed? (-> this light-shield-hint-time) (seconds 3.8)))
+             )
+    (let ((font-ctx
+            (new 'stack 'font-context *font-default-matrix* 32 290 0.0 (font-color default) (font-flags shadow kerning))
+            )
+          )
+      (set! (-> font-ctx flags) (font-flags shadow kerning middle middle-vert large))
+      (set-width! font-ctx 440)
+      (set-height! font-ctx 80)
+      (set-scale! font-ctx 0.8)
+      (format
+        (clear *temp-string*)
+        "Light Shield: Hold ~S, ~S"
+        (lookup-text! *common-text* (text-id progress-controls-pad-l2) #f)
+        (lookup-text! *common-text* (text-id progress-controls-pad-circle) #f)
+        )
+      (print-game-text *temp-string* font-ctx #f 44 (bucket-id hud-draw-hud-alpha))
+      )
+    )
   (none)
   )
 
@@ -1057,6 +1102,9 @@
   )
 
 (defmethod set-time-limit ((this task-manager-tower-destroy))
+  (set! (-> this light-shield-hint?) #f)
+  (set! (-> this light-shield-hint-time) 0)
+  (set! (-> this light-shield-hint-deaths) (-> *game-info* task-deaths))
   (set-setting! 'music 'towdestr 0.0 0)
   0
   (none)

@@ -10546,6 +10546,19 @@
 
 (set! (-> *ocean-map-desert* ocean-near-indices) *ocean-near-indices-desert*)
 
+;; Extend the Desert ocean across the complete map.  Entry zero references
+;; the existing fully-water tile and mask.  The 6x6 table controls the broad
+;; rendered surface; the 48x48 table controls transition/near rendering and
+;; water-height queries.
+(dotimes (ocean-mid-cell 36)
+  (set! (-> *ocean-mid-indices-desert* data ocean-mid-cell) (the-as uint16 0))
+  )
+
+(dotimes (ocean-cell 2304)
+  (set! (-> *ocean-trans-indices-desert* data ocean-cell parent) (the-as int16 0))
+  (set! (-> *ocean-trans-indices-desert* data ocean-cell child) (the-as int16 0))
+  )
+
 ;; Retint the existing Desert/Spargus ocean gradient without flattening the
 ;; small per-vertex variations used by the water mesh.  This maps the former
 ;; 121,169,209 near / 52,73,102 far range to 53,77,96 shallow / 51,56,83 deep.

@@ -35,6 +35,13 @@
 ;; Session-only HUD timer. Blueprint ownership itself is persisted in game-info.
 (define *hero-blueprint-notice* 0.0)
 (define *hero-npc-shop-info* (new 'static 'hero-npc-shop-info))
+(define *hero-burning-bush-trader-price* (the-as uint 0))
+
+(defun hero-burning-bush-trader-price-deactivate ((owner level))
+  ;; Wascity B can unload while waswide and its shop manager remain alive.
+  ;; Keep this callback in GAME so it is safe during either unload order.
+  (set! *hero-burning-bush-trader-price* (the-as uint 0))
+  (none))
 
 (defmethod debug-draw ((this border-plane))
   (let* ((v1-0 (-> this action))
@@ -623,6 +630,7 @@
        )
      (set! (-> *hero-npc-shop-info* blueprints) (the-as uint 0))
      (set! (-> *hero-npc-shop-info* purchases) (the-as uint 0))
+     (set! *hero-burning-bush-trader-price* (the-as uint 0))
      (dotimes (shop 8)
        (set! (-> *hero-npc-shop-info* prices shop) (the-as uint 0)))
      (set! *hero-blueprint-notice* 0.0)

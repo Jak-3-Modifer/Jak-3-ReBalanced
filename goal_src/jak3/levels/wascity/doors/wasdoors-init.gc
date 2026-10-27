@@ -1,6 +1,23 @@
 ;;-*-Lisp-*-
 (in-package goal)
 
+(define-extern *v-turtle-tuning-category* int)
+(define-extern *v-turtle-tuning-selection* int)
+(define-extern v-turtle-tuning-category-count (function int int))
+(define-extern v-turtle-tuning-index-at (function int int int))
+(define-extern v-turtle-tuning-open! (function none))
+(define-extern v-turtle-tuning-close! (function none))
+(define-extern v-turtle-tuning-apply! (function none))
+(define-extern v-turtle-tuning-adjust! (function int int none))
+(define-extern v-turtle-tuning-reset-selected! (function int none))
+(define-extern v-turtle-tuning-reset-all! (function none))
+(define-extern v-turtle-tuning-value (function int symbol float))
+(define-extern v-turtle-tuning-min-value (function int float))
+(define-extern v-turtle-tuning-max-value (function int float))
+(define-extern turtle-tuning-parameter-price (function int int))
+(define-extern turtle-tuning-total-cost (function int))
+(define-extern *v-turtle-tuning-confirm?* symbol)
+
 ;; name: wasdoors-init.gc
 ;; name in dgo: wasdoors-init
 ;; dgos: WSD
@@ -16,15 +33,6 @@
   (new 'static 'vector :x 9409536.0 :y 129884.16 :z 710492.16 :w 1.0)
   )
 
-;; Coordinates are stored in the engine's 4096-units-per-meter scale.
-;; The shop itself is a safe positional trigger; its visible bush will be
-;; added only once its art group is built for WSD.
-(define *wasdoors-bbush-shop-pos*
-  (new 'static 'vector :x 9140224.0 :y 129187.84 :z 728596.48 :w 1.0)
-  )
-
-(define *wasdoors-bbush-shop-open?* #f)
-
 ;; Hero Mode prototype trigger for the falling-rock collection minigame.
 ;; 2264.97, 9.46, -42.28 in Wasdoors world-space meters.
 (define *wasdoors-rock-catcher-trigger-pos*
@@ -32,21 +40,88 @@
   )
 
 (define *wasdoors-rock-catcher-open?* #f)
-(define *wasdoors-rock-catcher-cursor-x* 256.0)
+(define *wasdoors-rock-catcher-grid* (new 'static 'array int32 72))
+(define *wasdoors-rock-catcher-visited* (new 'static 'array int32 72))
+(define *wasdoors-rock-catcher-clear* (new 'static 'array int32 72))
+(define *wasdoors-rock-catcher-queue* (new 'static 'array int32 72))
+(define *wasdoors-rock-catcher-collected* (new 'static 'array int32 4))
+(define *wasdoors-rock-catcher-pair-x* 2)
+(define *wasdoors-rock-catcher-pair-y* 11)
+(define *wasdoors-rock-catcher-pair-rotation* 0)
+(define *wasdoors-rock-catcher-pair-a* 1)
+(define *wasdoors-rock-catcher-pair-b* 1)
+(define *wasdoors-rock-catcher-drop-tick* 0)
 (define *wasdoors-rock-catcher-score* 0)
-(define *wasdoors-rock-catcher-rock-x*
-  (new 'static 'array float 3 132.0 256.0 380.0)
+(define *wasdoors-rock-catcher-last-chain* 0)
+;; 0 = playing, 1 = collection goal reached, 2 = board filled.
+(define *wasdoors-rock-catcher-state* 0)
+;; Runtime-only prototype goal.  No saved inventory is modified.
+(define *wasdoors-rock-catcher-goal* 40)
+
+(defun wasdoors-rock-catcher-random-material ()
+  ;; Rock 50%, red 25%, blue 17%, yellow 8%.
+  (let ((roll (rand-vu-int-count 100)))
+    (cond
+      ((< roll 50) 1)
+      ((< roll 75) 2)
+      ((< roll 92) 3)
+      (else 4)
+      )
+    )
   )
-(define *wasdoors-rock-catcher-rock-y*
-  (new 'static 'array float 3 -36.0 -154.0 -272.0)
+
+(defun wasdoors-rock-catcher-pair-b-x ((x int) (rotation int))
+  (+ x (case rotation ((1) 1) ((3) -1) (else 0)))
+  )
+
+(defun wasdoors-rock-catcher-pair-b-y ((y int) (rotation int))
+  (+ y (case rotation ((0) 1) ((2) -1) (else 0)))
+  )
+
+(defun wasdoors-rock-catcher-cell-open? ((x int) (y int))
+  (and (>= x 0)
+       (< x 6)
+       (>= y 0)
+       (or (>= y 12)
+           (zero? (-> *wasdoors-rock-catcher-grid* (+ x (* y 6))))))
+  )
+
+(defun wasdoors-rock-catcher-pair-fits? ((x int) (y int) (rotation int))
+  (and (wasdoors-rock-catcher-cell-open? x y)
+       (wasdoors-rock-catcher-cell-open?
+         (wasdoors-rock-catcher-pair-b-x x rotation)
+         (wasdoors-rock-catcher-pair-b-y y rotation)))
+  )
+
+(defun wasdoors-rock-catcher-spawn-pair! ()
+  (set! *wasdoors-rock-catcher-pair-x* 2)
+  (set! *wasdoors-rock-catcher-pair-y* 11)
+  (set! *wasdoors-rock-catcher-pair-rotation* 0)
+  (set! *wasdoors-rock-catcher-pair-a* (wasdoors-rock-catcher-random-material))
+  (set! *wasdoors-rock-catcher-pair-b* (wasdoors-rock-catcher-random-material))
+  (set! *wasdoors-rock-catcher-drop-tick* 0)
+  (when (not (wasdoors-rock-catcher-pair-fits?
+               *wasdoors-rock-catcher-pair-x*
+               *wasdoors-rock-catcher-pair-y*
+               *wasdoors-rock-catcher-pair-rotation*))
+    (set! *wasdoors-rock-catcher-state* 2)
+    )
+  (none)
   )
 
 (defun wasdoors-reset-rock-catcher ()
-  (set! *wasdoors-rock-catcher-cursor-x* 256.0)
+  (dotimes (index 72)
+    (set! (-> *wasdoors-rock-catcher-grid* index) 0)
+    (set! (-> *wasdoors-rock-catcher-visited* index) 0)
+    (set! (-> *wasdoors-rock-catcher-clear* index) 0)
+    )
+  (dotimes (index 4)
+    (set! (-> *wasdoors-rock-catcher-collected* index) 0)
+    )
   (set! *wasdoors-rock-catcher-score* 0)
-  (set! (-> *wasdoors-rock-catcher-rock-y* 0) -36.0)
-  (set! (-> *wasdoors-rock-catcher-rock-y* 1) -154.0)
-  (set! (-> *wasdoors-rock-catcher-rock-y* 2) -272.0)
+  (set! *wasdoors-rock-catcher-last-chain* 0)
+  (set! *wasdoors-rock-catcher-state* 0)
+  (wasdoors-rock-catcher-spawn-pair!)
   (none)
   )
 
@@ -59,54 +134,275 @@
   (none)
   )
 
+(defun wasdoors-rock-catcher-draw-cell ((x int) (y int) (material int))
+  (let ((screen-x (+ 117 (* x 24)))
+        (screen-y (- 333 (* y 24))))
+    (when (and (> material 0) (>= y 0) (< y 12))
+      (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                   (bucket-id hud-draw-hud-alpha))
+        (draw-sprite2d-xy buf screen-x screen-y 21 21
+          (case material
+            ((1) (new 'static 'rgba :r 132 :g 136 :b 148 :a 255))
+            ((2) (new 'static 'rgba :r 232 :g 64 :b 52 :a 255))
+            ((3) (new 'static 'rgba :r 54 :g 142 :b 246 :a 255))
+            (else (new 'static 'rgba :r 244 :g 205 :b 48 :a 255)))
+          #x3fffff)
+        (draw-sprite2d-xy buf (+ screen-x 4) (+ screen-y 3) 8 5
+          (new 'static 'rgba :r 255 :g 255 :b 255 :a 100) #x3fffff)
+        )
+      )
+    )
+  (none)
+  )
+
 (defun wasdoors-draw-rock-catcher ()
   (let ((font (new 'stack 'font-context *font-default-matrix* 56 65 0.0
                    (font-color default)
                    (font-flags shadow kerning)
                    )))
-    ;; The test field is deliberately a simple 2D overlay: it does not use
-    ;; world collision, actors, or persistent inventory yet.
+    ;; The board remains a self-contained 2D overlay.  Its collection totals
+    ;; are deliberately not connected to persistent inventory in this milestone.
     (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
                                  (bucket-id hud-draw-hud-alpha))
-      (draw-sprite2d-xy buf 66 42 380 332 (new 'static 'rgba :r 8 :g 12 :b 20 :a 220) #x3fffff)
-      (draw-sprite2d-xy buf 70 46 372 324 (new 'static 'rgba :r 30 :g 42 :b 58 :a 224) #x3fffff)
-      ;; Collection line and cursor.
-      (draw-sprite2d-xy buf 86 336 340 3 (new 'static 'rgba :r 108 :g 220 :b 244 :a 240) #x3fffff)
-      (draw-sprite2d-xy buf (the int (- *wasdoors-rock-catcher-cursor-x* 10.0)) 346 20 5
-        (new 'static 'rgba :r 250 :g 220 :b 72 :a 255) #x3fffff)
-      (draw-sprite2d-xy buf (the int (- *wasdoors-rock-catcher-cursor-x* 4.0)) 340 8 6
-        (new 'static 'rgba :r 250 :g 220 :b 72 :a 255) #x3fffff)
-      ;; Draw every falling rock as a small, high-contrast stone tile.
-      (dotimes (index 3)
-        (let ((x (the int (-> *wasdoors-rock-catcher-rock-x* index)))
-              (y (the int (-> *wasdoors-rock-catcher-rock-y* index))))
-          (draw-sprite2d-xy buf (- x 11) y 22 14 (new 'static 'rgba :r 34 :g 34 :b 44 :a 255) #x3fffff)
-          (draw-sprite2d-xy buf (- x 8) (+ y 2) 16 10 (new 'static 'rgba :r 146 :g 152 :b 164 :a 255) #x3fffff)
+      (draw-sprite2d-xy buf 72 30 368 390 (new 'static 'rgba :r 8 :g 12 :b 20 :a 224) #x3fffff)
+      (draw-sprite2d-xy buf 76 34 360 382 (new 'static 'rgba :r 27 :g 37 :b 51 :a 232) #x3fffff)
+      (draw-sprite2d-xy buf 112 61 154 298 (new 'static 'rgba :r 5 :g 8 :b 13 :a 245) #x3fffff)
+      (draw-sprite2d-xy buf 116 65 146 290 (new 'static 'rgba :r 18 :g 24 :b 32 :a 255) #x3fffff)
+      )
+    (dotimes (index 72)
+      (let ((material (-> *wasdoors-rock-catcher-grid* index)))
+        (when (> material 0)
+          (wasdoors-rock-catcher-draw-cell (mod index 6) (/ index 6) material)
           )
         )
       )
+    (when (zero? *wasdoors-rock-catcher-state*)
+      (wasdoors-rock-catcher-draw-cell
+        *wasdoors-rock-catcher-pair-x*
+        *wasdoors-rock-catcher-pair-y*
+        *wasdoors-rock-catcher-pair-a*)
+      (wasdoors-rock-catcher-draw-cell
+        (wasdoors-rock-catcher-pair-b-x
+          *wasdoors-rock-catcher-pair-x* *wasdoors-rock-catcher-pair-rotation*)
+        (wasdoors-rock-catcher-pair-b-y
+          *wasdoors-rock-catcher-pair-y* *wasdoors-rock-catcher-pair-rotation*)
+        *wasdoors-rock-catcher-pair-b*)
+      )
     (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
-    (set-width! font 380)
+    (set-width! font 360)
     (set-height! font 50)
     (set! (-> font origin x) 256.0)
-    (set! (-> font origin y) 70.0)
-    (set-scale! font 0.46)
+    (set! (-> font origin y) 48.0)
+    (set-scale! font 0.40)
     (set! (-> font color) (font-color cyan))
-    (format (clear *temp-string*) "Rock Catcher - Test")
+    (format (clear *temp-string*) "RESOURCE MATCH")
     (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
     (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-    (set! (-> font origin y) 112.0)
-    (set-scale! font 0.30)
+    (set! (-> font flags) (font-flags shadow kerning))
+    (set-width! font 155)
+    (set! (-> font origin x) 282.0)
+    (set! (-> font origin y) 82.0)
+    (set-scale! font 0.25)
     (set! (-> font color) (font-color default))
-    (format (clear *temp-string*) "Collected: ~D" *wasdoors-rock-catcher-score*)
+    (format (clear *temp-string*) "GOAL: ~D / ~D"
+            (+ (-> *wasdoors-rock-catcher-collected* 0)
+               (-> *wasdoors-rock-catcher-collected* 1)
+               (-> *wasdoors-rock-catcher-collected* 2)
+               (-> *wasdoors-rock-catcher-collected* 3))
+            *wasdoors-rock-catcher-goal*)
     (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
     (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-    (set! (-> font origin y) 395.0)
-    (set-scale! font 0.27)
-    (format (clear *temp-string*) "<PAD_LEFT><PAD_RIGHT> Move    <PAD_X> Collect    <PAD_TRIANGLE> Exit")
+    (set! (-> font origin y) 116.0)
+    (format (clear *temp-string*) "SCORE: ~D" *wasdoors-rock-catcher-score*)
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 150.0)
+    (format (clear *temp-string*) "CHAIN: ~D" *wasdoors-rock-catcher-last-chain*)
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 202.0)
+    (set! (-> font color) (font-color menu-parent))
+    (format (clear *temp-string*) "COLLECTED")
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font color) (font-color default))
+    (set! (-> font origin y) 232.0)
+    (format (clear *temp-string*) "ROCK       ~D" (-> *wasdoors-rock-catcher-collected* 0))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 258.0)
+    (format (clear *temp-string*) "RED        ~D" (-> *wasdoors-rock-catcher-collected* 1))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 284.0)
+    (format (clear *temp-string*) "BLUE       ~D" (-> *wasdoors-rock-catcher-collected* 2))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set! (-> font origin y) 310.0)
+    (format (clear *temp-string*) "YELLOW     ~D" (-> *wasdoors-rock-catcher-collected* 3))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (when (!= *wasdoors-rock-catcher-state* 0)
+      (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+      (set-width! font 320)
+      (set! (-> font origin x) 256.0)
+      (set! (-> font origin y) 368.0)
+      (set-scale! font 0.34)
+      (set! (-> font color) (if (= *wasdoors-rock-catcher-state* 1)
+                                (font-color green)
+                                (font-color red)))
+      (format (clear *temp-string*)
+              (if (= *wasdoors-rock-catcher-state* 1) "COLLECTION COMPLETE" "BOARD FULL"))
+      (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+      (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+      )
+    (set! (-> font flags) (font-flags shadow kerning middle middle-vert))
+    (set-width! font 390)
+    (set! (-> font origin x) 256.0)
+    (set! (-> font origin y) 399.0)
+    (set-scale! font 0.22)
+    (set! (-> font color) (font-color default))
+    (format (clear *temp-string*)
+            (if (zero? *wasdoors-rock-catcher-state*)
+                "<PAD_DPAD_LEFT><PAD_DPAD_RIGHT> MOVE  <PAD_DPAD_DOWN> DROP  <PAD_X> ROTATE  <PAD_CIRCLE> EXIT"
+                "<PAD_X> RESTART     <PAD_CIRCLE> EXIT"))
     (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
     (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
     )
+  (none)
+  )
+
+(defun wasdoors-rock-catcher-enqueue! ((index int) (material int) (tail int))
+  (if (and (>= index 0)
+           (< index 72)
+           (zero? (-> *wasdoors-rock-catcher-visited* index))
+           (= (-> *wasdoors-rock-catcher-grid* index) material))
+      (begin
+        (set! (-> *wasdoors-rock-catcher-visited* index) 1)
+        (set! (-> *wasdoors-rock-catcher-queue* tail) index)
+        (+ tail 1))
+      tail)
+  )
+
+(defun wasdoors-rock-catcher-apply-gravity! ()
+  (dotimes (x 6)
+    (let ((write-y 0))
+      (dotimes (y 12)
+        (let* ((source (+ x (* y 6)))
+               (material (-> *wasdoors-rock-catcher-grid* source)))
+          (when (> material 0)
+            (let ((dest (+ x (* write-y 6))))
+              (when (!= dest source)
+                (set! (-> *wasdoors-rock-catcher-grid* dest) material)
+                (set! (-> *wasdoors-rock-catcher-grid* source) 0)
+                )
+              )
+            (1+! write-y)
+            )
+          )
+        )
+      )
+    )
+  (none)
+  )
+
+(defun wasdoors-rock-catcher-clear-matches! ((chain int))
+  (dotimes (index 72)
+    (set! (-> *wasdoors-rock-catcher-visited* index) 0)
+    (set! (-> *wasdoors-rock-catcher-clear* index) 0)
+    )
+  (dotimes (start 72)
+    (let ((material (-> *wasdoors-rock-catcher-grid* start)))
+      (when (and (> material 0)
+                 (zero? (-> *wasdoors-rock-catcher-visited* start)))
+        (let ((head 0)
+              (tail 1))
+          (set! (-> *wasdoors-rock-catcher-visited* start) 1)
+          (set! (-> *wasdoors-rock-catcher-queue* 0) start)
+          (while (< head tail)
+            (let* ((cell (-> *wasdoors-rock-catcher-queue* head))
+                   (x (mod cell 6))
+                   (y (/ cell 6)))
+              (1+! head)
+              (when (> x 0)
+                (set! tail (wasdoors-rock-catcher-enqueue! (- cell 1) material tail)))
+              (when (< x 5)
+                (set! tail (wasdoors-rock-catcher-enqueue! (+ cell 1) material tail)))
+              (when (> y 0)
+                (set! tail (wasdoors-rock-catcher-enqueue! (- cell 6) material tail)))
+              (when (< y 11)
+                (set! tail (wasdoors-rock-catcher-enqueue! (+ cell 6) material tail)))
+              )
+            )
+          (when (>= tail 4)
+            (dotimes (member tail)
+              (set! (-> *wasdoors-rock-catcher-clear*
+                        (-> *wasdoors-rock-catcher-queue* member)) 1)
+              )
+            )
+          )
+        )
+      )
+    )
+  (let ((cleared 0))
+    (dotimes (index 72)
+      (when (!= (-> *wasdoors-rock-catcher-clear* index) 0)
+        (let ((material (-> *wasdoors-rock-catcher-grid* index)))
+          (when (> material 0)
+            (1+! (-> *wasdoors-rock-catcher-collected* (- material 1)))
+            (1+! cleared)
+            )
+          )
+        (set! (-> *wasdoors-rock-catcher-grid* index) 0)
+        )
+      )
+    (when (> cleared 0)
+      (+! *wasdoors-rock-catcher-score* (* cleared 10 chain))
+      (wasdoors-rock-catcher-apply-gravity!)
+      )
+    (> cleared 0)
+    )
+  )
+
+(defun wasdoors-rock-catcher-lock-pair! ()
+  (let ((bx (wasdoors-rock-catcher-pair-b-x
+              *wasdoors-rock-catcher-pair-x* *wasdoors-rock-catcher-pair-rotation*))
+        (by (wasdoors-rock-catcher-pair-b-y
+              *wasdoors-rock-catcher-pair-y* *wasdoors-rock-catcher-pair-rotation*)))
+    (if (or (>= *wasdoors-rock-catcher-pair-y* 12) (>= by 12))
+        (set! *wasdoors-rock-catcher-state* 2)
+        (begin
+          (set! (-> *wasdoors-rock-catcher-grid*
+                    (+ *wasdoors-rock-catcher-pair-x* (* *wasdoors-rock-catcher-pair-y* 6)))
+                *wasdoors-rock-catcher-pair-a*)
+          (set! (-> *wasdoors-rock-catcher-grid* (+ bx (* by 6)))
+                *wasdoors-rock-catcher-pair-b*)
+          (let ((chain 1))
+            (while (wasdoors-rock-catcher-clear-matches! chain)
+              (1+! chain)
+              )
+            (set! *wasdoors-rock-catcher-last-chain* (- chain 1))
+            )
+          (if (>= (+ (-> *wasdoors-rock-catcher-collected* 0)
+                       (-> *wasdoors-rock-catcher-collected* 1)
+                       (-> *wasdoors-rock-catcher-collected* 2)
+                       (-> *wasdoors-rock-catcher-collected* 3))
+                  *wasdoors-rock-catcher-goal*)
+              (set! *wasdoors-rock-catcher-state* 1)
+              (wasdoors-rock-catcher-spawn-pair!))
+          )
+        )
+    )
+  (none)
+  )
+
+(defun wasdoors-rock-catcher-drop! ()
+  (if (wasdoors-rock-catcher-pair-fits?
+        *wasdoors-rock-catcher-pair-x*
+        (- *wasdoors-rock-catcher-pair-y* 1)
+        *wasdoors-rock-catcher-pair-rotation*)
+      (1-! *wasdoors-rock-catcher-pair-y*)
+      (wasdoors-rock-catcher-lock-pair!))
   (none)
   )
 
@@ -116,43 +412,59 @@
      (wasdoors-close-rock-catcher)
      )
     (*wasdoors-rock-catcher-open?*
-     (when (cpad-hold? 0 left l-analog-left)
-       (set! *wasdoors-rock-catcher-cursor-x*
-             (fmax 92.0 (- *wasdoors-rock-catcher-cursor-x* 3.5)))
-       )
-     (when (cpad-hold? 0 right l-analog-right)
-       (set! *wasdoors-rock-catcher-cursor-x*
-             (fmin 420.0 (+ *wasdoors-rock-catcher-cursor-x* 3.5)))
-       )
-     (dotimes (index 3)
-       (+! (-> *wasdoors-rock-catcher-rock-y* index) 2.6)
-       (when (> (-> *wasdoors-rock-catcher-rock-y* index) 352.0)
-         (set! (-> *wasdoors-rock-catcher-rock-y* index) -28.0)
-         )
-       )
-     (when (cpad-pressed? 0 x)
-       (let ((caught? #f))
-         (dotimes (index 3)
-           (when (and (< (fabs (- (-> *wasdoors-rock-catcher-rock-x* index)
-                                  *wasdoors-rock-catcher-cursor-x*))
-                             22.0)
-                      (> (-> *wasdoors-rock-catcher-rock-y* index) 316.0)
-                      (< (-> *wasdoors-rock-catcher-rock-y* index) 348.0))
-             (set! (-> *wasdoors-rock-catcher-rock-y* index) -28.0)
-             (1+! *wasdoors-rock-catcher-score*)
-             (set! caught? #t)
-             )
+     (when (and (zero? *wasdoors-rock-catcher-state*)
+                (cpad-pressed? 0 left right))
+       (let ((new-x (+ *wasdoors-rock-catcher-pair-x*
+                       (if (cpad-pressed? 0 left) -1 1))))
+         (when (wasdoors-rock-catcher-pair-fits?
+                 new-x *wasdoors-rock-catcher-pair-y*
+                 *wasdoors-rock-catcher-pair-rotation*)
+           (set! *wasdoors-rock-catcher-pair-x* new-x)
+           (sound-play "menu-pick")
            )
-         (if caught?
-             (sound-play "menu-pick")
-             (sound-play "menu-back")
-             )
+         )
+       (cpad-clear! 0 left right)
+       )
+     (when (and (zero? *wasdoors-rock-catcher-state*)
+                (cpad-pressed? 0 x))
+       (let ((new-rotation (mod (+ *wasdoors-rock-catcher-pair-rotation* 1) 4)))
+         (cond
+           ((wasdoors-rock-catcher-pair-fits?
+              *wasdoors-rock-catcher-pair-x* *wasdoors-rock-catcher-pair-y* new-rotation)
+            (set! *wasdoors-rock-catcher-pair-rotation* new-rotation)
+            (sound-play "menu-pick"))
+           ((wasdoors-rock-catcher-pair-fits?
+              (- *wasdoors-rock-catcher-pair-x* 1) *wasdoors-rock-catcher-pair-y* new-rotation)
+            (1-! *wasdoors-rock-catcher-pair-x*)
+            (set! *wasdoors-rock-catcher-pair-rotation* new-rotation)
+            (sound-play "menu-pick"))
+           ((wasdoors-rock-catcher-pair-fits?
+              (+ *wasdoors-rock-catcher-pair-x* 1) *wasdoors-rock-catcher-pair-y* new-rotation)
+            (1+! *wasdoors-rock-catcher-pair-x*)
+            (set! *wasdoors-rock-catcher-pair-rotation* new-rotation)
+            (sound-play "menu-pick"))
+           (else (sound-play "menu-back"))
+           )
          )
        (cpad-clear! 0 x)
        )
-     (when (cpad-pressed? 0 triangle)
+     (when (and (!= *wasdoors-rock-catcher-state* 0)
+                (cpad-pressed? 0 x))
+       (wasdoors-reset-rock-catcher)
+       (sound-play "menu-pick")
+       (cpad-clear! 0 x)
+       )
+     (when (zero? *wasdoors-rock-catcher-state*)
+       (1+! *wasdoors-rock-catcher-drop-tick*)
+       (when (>= *wasdoors-rock-catcher-drop-tick*
+                 (if (cpad-hold? 0 down l-analog-down) 3 20))
+         (set! *wasdoors-rock-catcher-drop-tick* 0)
+         (wasdoors-rock-catcher-drop!)
+         )
+       )
+     (when (cpad-pressed? 0 circle triangle)
        (wasdoors-close-rock-catcher)
-       (cpad-clear! 0 triangle)
+       (cpad-clear! 0 circle triangle)
        )
      (wasdoors-draw-rock-catcher)
      )
@@ -168,7 +480,7 @@
        (set-width! font 400)
        (set-height! font 80)
        (set-scale! font 0.7)
-       (format (clear *temp-string*) "Press <PAD_X> to test Rock Catcher")
+       (format (clear *temp-string*) "Press <PAD_X> to collect resources")
        (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
        (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
        )
@@ -188,97 +500,6 @@
   (task-node-open? (game-task-node desert-course-race-resolution))
   )
 
-(defun wasdoors-close-bbush-shop ()
-  (when *wasdoors-bbush-shop-open?*
-    (set! *wasdoors-bbush-shop-open?* #f)
-    (set! *popup-menu-open* #f)
-    (set-master-mode 'game)
-    )
-  (none)
-  )
-
-(defun wasdoors-draw-bbush-shop ()
-  (let ((font (new 'stack 'font-context *font-default-matrix* 56 65 0.0
-                   (font-color default)
-                   (font-flags shadow kerning)
-                   )))
-    (set! (-> font flags) (font-flags shadow kerning large))
-    (set-width! font 420)
-    (set-height! font 55)
-    (set-scale! font 0.48)
-    (set! (-> font color) (font-color cyan))
-    (format (clear *temp-string*) "Burning Bush Shop")
-    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-    (set! (-> font origin y) 145.0)
-    (set-scale! font 0.38)
-    (set! (-> font color) (font-color default))
-    (format (clear *temp-string*) "> Trade 1 Orb for 2 Orbs")
-    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-    (set! (-> font origin y) 210.0)
-    (set-scale! font 0.30)
-    (format (clear *temp-string*) "Orbs: ~D" (the int (-> *game-info* money)))
-    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-    (set! (-> font origin y) 285.0)
-    (format (clear *temp-string*) "<PAD_X> Buy     <PAD_CIRCLE> Exit")
-    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-    )
-  (none)
-  )
-
-(defun wasdoors-update-bbush-shop ()
-  (cond
-    (*wasdoors-bbush-shop-open?*
-     (wasdoors-draw-bbush-shop)
-     (cond
-       ((cpad-pressed? 0 x)
-        (if (>= (-> *game-info* money) 1.0)
-            (begin
-              ;; This changes only the spendable balance, not the lifetime orb total.
-              (-! (-> *game-info* money) 1.0)
-              (+! (-> *game-info* money) 2.0)
-              (sound-play "menu-pick")
-              )
-            (sound-play "menu-back")
-            )
-        (cpad-clear! 0 x)
-        )
-       ((cpad-pressed? 0 triangle circle select)
-        (wasdoors-close-bbush-shop)
-        )
-       )
-     )
-    ((and *target*
-          (not (focus-test? *target* pilot-riding))
-          (< (vector-vector-distance-squared (target-pos 0) *wasdoors-bbush-shop-pos*)
-             (square 8192.0)
-             ))
-     (let ((font (new 'stack 'font-context *font-default-matrix* 56 370 0.0
-                      (font-color default)
-                      (font-flags shadow kerning)
-                      )))
-       (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
-       (set-width! font 400)
-       (set-height! font 80)
-       (set-scale! font 0.7)
-       (format (clear *temp-string*) "Press <PAD_X> to open shop")
-       (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-       (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-       )
-     (when (cpad-pressed? 0 x)
-       (set! *wasdoors-bbush-shop-open?* #t)
-       (set! *popup-menu-open* #t)
-       (set-master-mode 'menu)
-       (cpad-clear! 0 x)
-       )
-     )
-    )
-  (none)
-  )
-
 (defun wasdoors-draw-v-turtle-loadout-option-line ((font font-context) (text string) (y float) (selected? symbol) (equipped? symbol))
   (set! (-> font origin y) y)
   (set! (-> font color) (cond
@@ -289,6 +510,70 @@
   (format (clear *temp-string*) text)
   (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
   (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+  (none)
+  )
+
+(defun wasdoors-v-turtle-tuning-parameter-name ((index int))
+  (case index
+    ((0) "ENGINE POWER")
+    ((1) "REV RESPONSE")
+    ((2) "Steering Response")
+    ((3) "Front Grip")
+    ((4) "Rear Grip")
+    ((5) "Brake Strength")
+    ((6) "Front Suspension Stiffness")
+    ((7) "Rear Suspension Stiffness")
+    ((8) "Suspension Damping")
+    ((9) "ENGINE DRAG")
+    (else "POWERBAND")
+    )
+  )
+
+(defun wasdoors-v-turtle-tuning-category-name ()
+  (case *v-turtle-tuning-category*
+    ((0) "ENGINE")
+    ((1) "HANDLING")
+    (else "SUSPENSION")
+    )
+  )
+
+(defun wasdoors-draw-v-turtle-tuning-bar ((index int) (y int))
+  "Draw the applied tune as a filled bar and the pending tune as an orange marker."
+  (let* ((min-value (v-turtle-tuning-min-value index))
+         (max-value (v-turtle-tuning-max-value index))
+         (value-range (- max-value min-value))
+         ;; Rev response is intentionally inverse: less inertia means a fuller
+         ;; response bar and moving Right always improves the displayed stat.
+         (current-ratio (if (> value-range 0.0)
+                            (fmin 1.0
+                                  (fmax 0.0
+                                        (/ (if (= index 1)
+                                               (- max-value (v-turtle-tuning-value index #f))
+                                               (- (v-turtle-tuning-value index #f) min-value))
+                                           value-range)))
+                            0.0))
+         (proposed-ratio (if (> value-range 0.0)
+                             (fmin 1.0
+                                   (fmax 0.0
+                                         (/ (if (= index 1)
+                                                (- max-value (v-turtle-tuning-value index #t))
+                                                (- (v-turtle-tuning-value index #t) min-value))
+                                            value-range)))
+                             0.0))
+         (bar-x 76)
+         (bar-width 340)
+         (fill-width (the int (* current-ratio (the float bar-width))))
+         (marker-x (+ bar-x (the int (* proposed-ratio (the float bar-width)))))
+         )
+    (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                  (bucket-id hud-draw-hud-alpha))
+      (draw-sprite2d-xy buf bar-x y bar-width 8
+                        (new 'static 'rgba :r 18 :g 24 :b 30 :a 210) #x3fffff)
+      (draw-sprite2d-xy buf (+ bar-x 2) (+ y 2) (max 0 (- fill-width 4)) 4
+                        (new 'static 'rgba :r 48 :g 196 :b 244 :a 255) #x3fffff)
+      (draw-sprite2d-xy buf (- marker-x 2) (- y 2) 4 12
+                        (new 'static 'rgba :r 255 :g 160 :b 32 :a 255) #x3fffff))
+    )
   (none)
   )
 
@@ -308,12 +593,25 @@
       ((0) (format (clear *temp-string*) "Tough Puppy Loadout"))
       ((1) (format (clear *temp-string*) "Weapons"))
       ((2) (format (clear *temp-string*) "Abilities"))
-      (else (format (clear *temp-string*) "Defense"))
+      ((3) (format (clear *temp-string*) "Defense"))
+      (else (format (clear *temp-string*) "VEHICLE TUNING"))
       )
     (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
     (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
 
     (set-scale! font 0.4)
+    (when (= *v-turtle-loadout-menu-page* 4)
+      (set-scale! font 0.23)
+      (format (clear *temp-string*)
+              "TURTLE     BALANCE: ~D ORBS"
+              (the int (-> *game-info* money)))
+      (wasdoors-draw-v-turtle-loadout-option-line
+        font
+        *temp-string*
+        92.0
+        #f
+        #f)
+      (set-scale! font 0.4))
     (case *v-turtle-loadout-menu-page*
       ((0)
        (wasdoors-draw-v-turtle-loadout-option-line
@@ -335,6 +633,13 @@
          (if (= *v-turtle-loadout-menu-selection* 2) "> Defense" "  Defense")
          235.0
          (= *v-turtle-loadout-menu-selection* 2)
+         #f
+         )
+       (wasdoors-draw-v-turtle-loadout-option-line
+         font
+         (if (= *v-turtle-loadout-menu-selection* 3) "> Tuning" "  Tuning")
+         285.0
+         (= *v-turtle-loadout-menu-selection* 3)
          #f
          )
        )
@@ -397,7 +702,7 @@
          (= *v-turtle-ability-loadout* 7)
          )
       )
-      (else
+      ((3)
         (wasdoors-draw-v-turtle-loadout-option-line
           font
           (if (= *v-turtle-loadout-menu-selection* 0) "> None" "  None")
@@ -427,22 +732,81 @@
           (= *v-turtle-defense-loadout* 8)
           )
         )
+      (else
+        ;; Submit the bars first so all labels render clearly over them.
+        (dotimes (row (v-turtle-tuning-category-count *v-turtle-tuning-category*))
+          (let ((index (v-turtle-tuning-index-at *v-turtle-tuning-category* row))
+                (y (+ 128.0 (* (the float row) 43.0))))
+            (wasdoors-draw-v-turtle-tuning-bar index (the int (+ y 19.0)))))
+        (set-scale! font 0.22)
+        (format (clear *temp-string*)
+                "CATEGORY: ~A"
+                (wasdoors-v-turtle-tuning-category-name))
+        (wasdoors-draw-v-turtle-loadout-option-line
+          font
+          *temp-string*
+          108.0
+          #f
+          #f)
+        (set-scale! font 0.28)
+        (dotimes (row (v-turtle-tuning-category-count *v-turtle-tuning-category*))
+          (let ((index (v-turtle-tuning-index-at *v-turtle-tuning-category* row))
+                (y (+ 128.0 (* (the float row) 43.0))))
+            (format (clear *temp-string*)
+                    "~A~A     PRICE ~D/STEP"
+                    (if (= row *v-turtle-loadout-menu-selection*) "> " "  ")
+                    (wasdoors-v-turtle-tuning-parameter-name index)
+                    (turtle-tuning-parameter-price index))
+            (wasdoors-draw-v-turtle-loadout-option-line
+              font
+              *temp-string*
+              y
+              (= row *v-turtle-loadout-menu-selection*)
+              #f)
+            (set-scale! font 0.17)
+            (if (= index 0)
+                (format (clear *temp-string*) "MIN ~D     CURRENT ~D     PROPOSED ~D     MAX ~D"
+                        (the int (v-turtle-tuning-min-value index))
+                        (the int (v-turtle-tuning-value index #f))
+                        (the int (v-turtle-tuning-value index #t))
+                        (the int (v-turtle-tuning-max-value index)))
+                (format (clear *temp-string*) "MIN ~F     CURRENT ~F     PROPOSED ~F     MAX ~F"
+                        (v-turtle-tuning-min-value index)
+                        (v-turtle-tuning-value index #f)
+                        (v-turtle-tuning-value index #t)
+                        (v-turtle-tuning-max-value index)))
+            (wasdoors-draw-v-turtle-loadout-option-line
+              font *temp-string* (+ y 30.0) #f #f)
+            (set-scale! font 0.28)
+            )
+          )
+        (set-scale! font 0.25)
+        (format (clear *temp-string*) "TOTAL PREVIEW COST: ~D ORBS" (turtle-tuning-total-cost))
+        (wasdoors-draw-v-turtle-loadout-option-line font *temp-string* 310.0 #f #f)
+        )
       )
 
     ;; Use one combined D-pad glyph for menu navigation.
     (set-scale! font 0.3)
+    (when (!= *v-turtle-loadout-menu-page* 4)
+      (wasdoors-draw-v-turtle-loadout-option-line
+        font
+        "<PAD_DPAD_DOWN>  Move"
+        305.0
+        #f
+        #f
+        ))
     (wasdoors-draw-v-turtle-loadout-option-line
       font
-      "<PAD_DPAD_DOWN>  Move"
-      305.0
-      #f
-      #f
-      )
-    (wasdoors-draw-v-turtle-loadout-option-line
-      font
-      (if (= *v-turtle-loadout-menu-page* 0)
-          "<PAD_X>  Select     <PAD_TRIANGLE>  Exit"
-          "<PAD_X>  Equip     <PAD_CIRCLE>  Back     <PAD_TRIANGLE>  Exit")
+      (cond
+        ((= *v-turtle-loadout-menu-page* 0)
+         "<PAD_X>  Select     <PAD_TRIANGLE>  Exit")
+        ((= *v-turtle-loadout-menu-page* 4)
+         (if *v-turtle-tuning-confirm?*
+             "PREVIEW: <PAD_X> Confirm Temporary Tune  <PAD_CIRCLE> Back"
+             "<PAD_X> Review  <PAD_CIRCLE> Cancel  <PAD_TRIANGLE> Stock  <PAD_L1><PAD_R1> Category"))
+        (else
+          "<PAD_X>  Equip     <PAD_CIRCLE>  Back     <PAD_TRIANGLE>  Exit"))
       345.0
       #f
       #f
@@ -454,12 +818,26 @@
 (defun wasdoors-update-v-turtle-loadout-menu ()
   (wasdoors-draw-v-turtle-loadout-menu)
   (let ((last-selection (cond
-                          ((= *v-turtle-loadout-menu-page* 0) 2)
+                          ((= *v-turtle-loadout-menu-page* 0) 3)
                           ((= *v-turtle-loadout-menu-page* 2) 4)
                           ((= *v-turtle-loadout-menu-page* 3) 3)
+                          ((= *v-turtle-loadout-menu-page* 4)
+                           (- (v-turtle-tuning-category-count *v-turtle-tuning-category*) 1))
                           (else 1)
                           )))
     (cond
+      ((and (= *v-turtle-loadout-menu-page* 4) *v-turtle-tuning-confirm?*)
+       (cond
+         ((cpad-pressed? 0 x)
+          ;; Development preview: apply temporary values without charging Orbs.
+          (set! *v-turtle-tuning-confirm?* #f)
+          (v-turtle-tuning-apply!)
+          (set! *v-turtle-loadout-menu-selection* 3)
+          (set! *v-turtle-loadout-menu-page* 0)
+          (sound-play "menu-pick"))
+         ((cpad-pressed? 0 circle)
+          (set! *v-turtle-tuning-confirm?* #f)
+          (sound-play "menu-back"))))
       ((cpad-pressed? 0 up)
        (dec! *v-turtle-loadout-menu-selection*)
        (when (< *v-turtle-loadout-menu-selection* 0)
@@ -472,6 +850,28 @@
        (when (> *v-turtle-loadout-menu-selection* last-selection)
          (set! *v-turtle-loadout-menu-selection* 0)
          )
+       (sound-play "menu-pick")
+       )
+      ((and (= *v-turtle-loadout-menu-page* 4)
+            (cpad-pressed? 0 l1 r1))
+       (set! *v-turtle-tuning-category*
+             (mod (+ *v-turtle-tuning-category*
+                     (if (cpad-pressed? 0 l1) 2 1))
+                  3))
+       (set! *v-turtle-loadout-menu-selection* 0)
+       (set! *v-turtle-tuning-selection* 0)
+       (sound-play "menu-pick")
+       )
+      ((and (= *v-turtle-loadout-menu-page* 4)
+            (cpad-pressed? 0 left right))
+       (v-turtle-tuning-adjust!
+         (v-turtle-tuning-index-at *v-turtle-tuning-category* *v-turtle-loadout-menu-selection*)
+         (if (cpad-pressed? 0 left) -1 1))
+       (sound-play "menu-pick")
+       )
+      ((and (= *v-turtle-loadout-menu-page* 4)
+            (cpad-pressed? 0 r2))
+       (v-turtle-tuning-reset-all!)
        (sound-play "menu-pick")
        )
       ((cpad-pressed? 0 x)
@@ -490,13 +890,18 @@
                              ((7) 4)
                              (else 0)
                              ))))
-            (else (set! *v-turtle-loadout-menu-selection*
+            ((3) (set! *v-turtle-loadout-menu-selection*
                         (case *v-turtle-defense-loadout*
                           ((4) 1)
                           ((5) 2)
                           ((8) 3)
                           (else 0)
                           )))
+            (else
+              (v-turtle-tuning-open!)
+              (set! *v-turtle-loadout-menu-selection* 0)
+              (set! *v-turtle-tuning-selection* 0)
+              )
             )
          )
          ((1)
@@ -518,7 +923,7 @@
                   (else 7)
                   )))
           )
-         (else
+         ((3)
            (set-v-turtle-defense-loadout!
              (case *v-turtle-loadout-menu-selection*
                ((0) 0)
@@ -527,13 +932,24 @@
                (else 8)
                ))
            )
+         (else
+           (set! *v-turtle-tuning-confirm?* #t)
+           )
          )
        )
       ((cpad-pressed? 0 triangle)
-       (close-v-turtle-loadout-menu)
+       (if (= *v-turtle-loadout-menu-page* 4)
+           (begin
+             (v-turtle-tuning-reset-selected!
+               (v-turtle-tuning-index-at *v-turtle-tuning-category* *v-turtle-loadout-menu-selection*))
+             (sound-play "menu-pick"))
+           (close-v-turtle-loadout-menu))
        )
       ((cpad-pressed? 0 circle)
        (when (!= *v-turtle-loadout-menu-page* 0)
+         (when (= *v-turtle-loadout-menu-page* 4)
+           (set! *v-turtle-tuning-confirm?* #f)
+           (v-turtle-tuning-close!))
          (set! *v-turtle-loadout-menu-selection* (- *v-turtle-loadout-menu-page* 1))
          (set! *v-turtle-loadout-menu-page* 0)
          (sound-play "menu-pick")
@@ -836,8 +1252,6 @@
      (repair-vehicles self)
      (wasdoors-update-v-turtle-loadout-trigger)
      (wasdoors-update-v-snake-loadout-trigger)
-     (wasdoors-update-bbush-shop)
-     (wasdoors-update-rock-catcher)
     )
   :code sleep-code
   )
@@ -861,7 +1275,6 @@
 (defun wasdoors-manager-kill ()
   (close-v-turtle-loadout-menu)
   (close-v-snake-loadout-menu)
-  (wasdoors-close-bbush-shop)
   (wasdoors-close-rock-catcher)
   (kill-by-type wasdoors-manager *active-pool*)
   (set! *wasdoors-manager* (the-as (pointer wasdoors-manager) #f))

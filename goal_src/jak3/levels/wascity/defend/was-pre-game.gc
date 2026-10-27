@@ -1462,6 +1462,126 @@
                      )
         )
 
+(define *pre-game-hero* (new 'static 'was-pre-game-game
+                          :point-win 100.0
+                          :miss-max 3.0
+                          :wave (new 'static 'inline-array was-pre-game-wave 9
+                            (new 'static 'was-pre-game-wave
+                              :bubble-count-min 1
+                              :bubble-count-max 1
+                              :event-interval (seconds 0.85)
+                              :delay (seconds 2)
+                              :gravity-min (meters 0.005859375)
+                              :gravity-max (meters 0.005859375)
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            (new 'static 'was-pre-game-wave
+                              :event-count-min 6
+                              :event-count-max 6
+                              :bubble-count-min 1
+                              :bubble-count-max 1
+                              :event-interval (seconds 0.85)
+                              :delay (seconds 1.25)
+                              :gravity-min (meters 0.005859375)
+                              :gravity-max (meters 0.005859375)
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            (new 'static 'was-pre-game-wave
+                              :event-count-min 6
+                              :event-count-max 6
+                              :bubble-count-min 2
+                              :bubble-count-max 2
+                              :event-interval (seconds 0.85)
+                              :delay (seconds 1.25)
+                              :gravity-min (meters 0.008789063)
+                              :gravity-max (meters 0.008789063)
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            (new 'static 'was-pre-game-wave
+                              :event-count-min 8
+                              :event-count-max 8
+                              :bubble-count-min 2
+                              :bubble-count-max 2
+                              :event-interval (seconds 1.105)
+                              :delay (seconds 1.25)
+                              :gravity-min (meters 0.008789063)
+                              :gravity-max (meters 0.008789063)
+                              :beam-offset-max 12.5
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            (new 'static 'was-pre-game-wave
+                              :event-count-min 8
+                              :event-count-max 8
+                              :bubble-count-min 2
+                              :bubble-count-max 2
+                              :event-interval (seconds 1.02)
+                              :delay (seconds 1.25)
+                              :gravity-min (meters 0.01171875)
+                              :gravity-max (meters 0.01171875)
+                              :beam-offset-max 12.5
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            (new 'static 'was-pre-game-wave
+                              :event-count-min 8
+                              :event-count-max 8
+                              :bubble-count-min 2
+                              :bubble-count-max 2
+                              :event-interval (seconds 0.85)
+                              :delay (seconds 1.25)
+                              :gravity-min (meters 0.005859375)
+                              :gravity-max (meters 0.005859375)
+                              :beam-offset-max 12.5
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            (new 'static 'was-pre-game-wave
+                              :event-count-min 15
+                              :event-count-max 15
+                              :bubble-count-min 2
+                              :bubble-count-max 3
+                              :event-interval (seconds 0.6375)
+                              :delay (seconds 1.25)
+                              :gravity-min (meters 0.014648438)
+                              :gravity-max (meters 0.014648438)
+                              :beam-offset-max 24.1
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            (new 'static 'was-pre-game-wave
+                              :event-count-min 20
+                              :event-count-max 20
+                              :bubble-count-min 2
+                              :bubble-count-max 3
+                              :event-interval (seconds 0.425)
+                              :delay (seconds 1.25)
+                              :gravity-min (meters 0.008789063)
+                              :gravity-max (meters 0.008789063)
+                              :beam-offset-max 24.1
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            (new 'static 'was-pre-game-wave
+                              :event-count-min -1
+                              :event-count-max 10
+                              :bubble-count-min 2
+                              :bubble-count-max 3
+                              :event-interval (seconds 0.85)
+                              :delay (seconds 1.25)
+                              :gravity-min (meters 0.005859375)
+                              :gravity-max (meters 0.005859375)
+                              :beam-offset-max 24.1
+                              :beam-size-min 0.2
+                              :beam-size-max 0.2
+                              )
+                            )
+                          )
+        )
+
 (define *pre-game-fun* (new 'static 'was-pre-game-game
                          :point-win -1.0
                          :miss-max 5.0
@@ -2316,19 +2436,20 @@
                              )
                            )
                          )
+                  (f0-0 (rand-vu-float-range (- (-> s5-2 beam-offset-max)) (-> s5-2 beam-offset-max)))
                   )
               (cond
                 ((zero? v1-50)
-                 (set-vector! s2-0 0.0 90.0 0.0 1.0)
+                 (set-vector! s2-0 f0-0 90.0 0.0 1.0)
                  )
                 ((= v1-50 1)
-                 (set-vector! s2-0 90.0 0.0 0.0 1.0)
+                 (set-vector! s2-0 90.0 f0-0 0.0 1.0)
                  )
                 ((= v1-50 2)
-                 (set-vector! s2-0 0.0 -90.0 0.0 1.0)
+                 (set-vector! s2-0 f0-0 -90.0 0.0 1.0)
                  )
                 ((= v1-50 3)
-                 (set-vector! s2-0 -90.0 0.0 0.0 1.0)
+                 (set-vector! s2-0 -90.0 f0-0 0.0 1.0)
                  )
                 )
               )
@@ -3005,7 +3126,10 @@
   (set! (-> this screen-scale y) 20.48)
   (let ((v1-43 (-> this task actor)))
     (set! (-> this game) (if (= v1-43 (game-task-actor was-pre-game-wascityb))
-                             *pre-game*
+                             (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                 *pre-game-hero*
+                                 *pre-game*
+                                 )
                              *pre-game-fun*
                              )
           )

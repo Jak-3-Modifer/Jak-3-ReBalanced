@@ -249,6 +249,12 @@
    (gspot-normal  vector            :inline)
    (my-up-vector  vector            :inline)
    (jump          mantis-jump-info  :inline)
+   (hero-weapon-family  pickup-type)
+   (hero-tactic-timer   time-frame)
+   (hero-evade-timer    time-frame)
+   (hero-threat-timer   time-frame)
+   (hero-threat-pending? symbol)
+   (hero-roll-timer     time-frame)
    )
   (:state-methods
     crawl
@@ -666,6 +672,207 @@
 
 (set! (-> *mantis-nav-enemy-info* fact-defaults) *fact-info-mantis-defaults*)
 
+(defun mantis-hero-mode? ((self mantis))
+  (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+  )
+
+(defun mantis-attack-cooldown ((self mantis))
+  (if (mantis-hero-mode? self)
+      (seconds 1.5)
+      (seconds 5)
+      )
+  )
+
+(defun mantis-attack-ready? ((self mantis))
+  (time-elapsed? (-> self attack-timer) (mantis-attack-cooldown self))
+  )
+
+(defun mantis-hero-weapon-family! ((self mantis) (opponent process-focusable))
+  ;; gun-type is the weapon actually in use. using-gun-type may already hold
+  ;; a pending switch, and game-info.gun-type also survives putting the gun away.
+  (cond
+    ((or (!= opponent *target*) (not (focus-test? opponent gun)))
+     (set! (-> self hero-weapon-family) (pickup-type none)))
+    ((time-elapsed? (-> self hero-tactic-timer) (seconds 0.75))
+     (set-time! (-> self hero-tactic-timer))
+     (let ((family (gun->ammo (-> *target* gun gun-type))))
+       (set! (-> self hero-weapon-family)
+             (if (or (= family (pickup-type ammo-red))
+                     (= family (pickup-type ammo-yellow)))
+                 family
+                 (pickup-type none))))))
+  (-> self hero-weapon-family))
+
+(defun mantis-hero-armed-trans! ((self mantis) (opponent process-focusable) (opponent-pos vector))
+  (let* ((distance (vector-vector-xz-distance (-> self root trans) opponent-pos))
+         (close-gun? (= (-> self hero-weapon-family) (pickup-type ammo-red)))
+         (ready? (mantis-attack-ready? self))
+         ;; A completed right roll can be followed by a safe approach hop if
+         ;; its full sideways travel leaves Jak outside attack1's existing range.
+         (followup? (not (time-elapsed? (-> self hero-roll-timer) (seconds 2.5))))
+         (evade? #f)
+         (delta (new 'stack-no-clear 'vector)))
+    ;; Use current separation for the preferred spacing, rather than the
+    ;; standard helper's velocity prediction, which may point past the Mantis.
+    (vector-! delta opponent-pos (-> self root trans))
+    ;; Consume each firing notification once. Events during committed actions
+    ;; never change state and expire rather than causing a delayed forced dodge.
+    (when (-> self hero-threat-pending?)
+      (set! (-> self hero-threat-pending?) #f)
+      (when (and (not (time-elapsed? (-> self hero-threat-timer) (seconds 0.3)))
+                 (time-elapsed? (-> self hero-evade-timer) (seconds 1.5)))
+        (set-time! (-> self hero-evade-timer))
+        (set! evade? (rnd-chance? self 0.35))))
+    (cond
+      ((not (= (-> self focus aware) (enemy-aware hostile)))
+       (when (and (>= distance (meters 20)) (mantis-method-206 self))
+         (go-virtual crawl)))
+      ;; Completed roll follow-through and close attacks outrank defensive moves.
+      ((and ready? followup? (> distance (meters 5)) (< distance (meters 8)))
+       (if (pointing-toward? self opponent-pos 8192.0)
+           (begin
+             (set! (-> self hero-roll-timer) 0)
+             (go-virtual attack1))
+           (seek-to-point-toward-point! (-> self root) opponent-pos
+                                       (-> self nav max-rotation-rate) (seconds 0.02))))
+      ((and ready? (<= distance (meters 5)))
+       (if (pointing-toward? self opponent-pos 8192.0)
+           (begin
+             (set! (-> self hero-roll-timer) 0)
+             (go-virtual attack0))
+           (seek-to-point-toward-point! (-> self root) opponent-pos
+                                       (-> self nav max-rotation-rate) (seconds 0.02))))
+      (else
+        ;; Only an actual targeted shot can request this defensive retreat.
+        ;; Keep it short; the original tracked retreat travels 15-22 meters.
+        (when (and evade? close-gun? (< distance (meters 3))
+                   (< (fabs (deg-diff
+                              (quaternion-y-angle (get-quat opponent 0))
+                              (vector-y-angle
+                                (vector-! (new 'stack-no-clear 'vector)
+                                          (-> self root trans) opponent-pos))))
+                      8192.0))
+          (mantis-method-203 self opponent delta)
+          (vector-! delta opponent-pos (-> self root trans)))
+        ;; Existing right-roll/left-hop selection checks both routes for mesh,
+        ;; obstruction and collision safety. Blocked moves fall through to approach.
+        (when (or evade?
+                  (and (not followup?)
+                       (or (and ready? (< distance (meters 8)))
+                           (and close-gun? (< distance (meters 10))))
+                       (time-elapsed? (-> self hero-evade-timer) (seconds 1.5))))
+          (set-time! (-> self hero-evade-timer))
+          (when (pointing-toward? self opponent-pos 10922.667)
+            (mantis-method-199 self)))
+        ;; Red-gun positioning stops around 7m before committing. Yellow-gun
+        ;; approaches retain the existing 5m destination and retreat less often.
+        (when (> distance (meters 5))
+          (when (and followup? (>= distance (meters 8)))
+            ;; The existing approach helper stops 5m short of its input vector.
+            ;; Stop at 6m here so the completed roll leads into attack1's range.
+            (vector-normalize! delta (- (vector-length delta) (meters 1))))
+          (when (and close-gun? (not followup?) (> distance (meters 10)))
+            (vector-normalize! delta (- (vector-length delta) (meters 2))))
+          (mantis-method-202 self opponent delta))
+        (seek-to-point-toward-point! (-> self root) opponent-pos
+                                    (-> self nav max-rotation-rate) (seconds 0.02)))))
+  (none))
+
+(defun mantis-hero-hostile-trans! ((self mantis) (target process-focusable) (target-pos vector) (target-delta vector) (target-distance float))
+  ;; Keep the normal attack states intact.  This only decides which of those
+  ;; existing states to use while Hero Mode is active.
+  (if (!= (mantis-hero-weapon-family! self target) (pickup-type none))
+      (mantis-hero-armed-trans! self target target-pos)
+  (cond
+    ;; Do not launch attacks through lost awareness.  go-stare/crawl retain the
+    ;; focused position and use the existing navigation recovery behavior.
+    ((not (= (-> self focus aware) (enemy-aware hostile)))
+     (when (and (>= target-distance 81920.0) (mantis-method-206 self))
+       (go-virtual crawl)
+       )
+     )
+    ;; 0-5 m: an available close attack takes priority over evasion.  If the
+    ;; Mantis is not facing Jak yet, turn immediately instead of retreating.
+    ((< target-distance 20480.0)
+     (if (mantis-attack-ready? self)
+         (if (pointing-toward? self target-pos 8192.0)
+             (go-virtual attack0)
+             (seek-to-point-toward-point!
+               (-> self root)
+               target-pos
+               (-> self nav max-rotation-rate)
+               (seconds 0.02)
+               )
+             )
+         (cond
+           ((and (logtest? (-> self flags) (mantis-flag tracked))
+                 (focus-test? target gun)
+                 (mantis-method-206 self))
+            (mantis-method-204 self target target-delta)
+            )
+           ((mantis-method-206 self)
+            (mantis-method-203 self target target-delta)
+            )
+           )
+         )
+     )
+    ;; 5-8 m: a safe right roll unlocks attack1.  Its completion returns here,
+    ;; where attack1 is selected immediately if the target remains valid.
+    ((< target-distance 32768.0)
+     (if (and (mantis-attack-ready? self)
+              (logtest? (-> self flags) (mantis-flag attack1-enabled)))
+         (if (pointing-toward? self target-pos 8192.0)
+             (go-virtual attack1)
+             (seek-to-point-toward-point!
+               (-> self root)
+               target-pos
+               (-> self nav max-rotation-rate)
+               (seconds 0.02)
+               )
+             )
+         (cond
+           ((and (logtest? (-> self flags) (mantis-flag tracked))
+                 (focus-test? target gun)
+                 (mantis-method-206 self))
+            (mantis-method-204 self target target-delta)
+            )
+           ((pointing-toward? self target-pos 10922.667)
+            (mantis-method-199 self)
+            )
+           (else
+             (seek-to-point-toward-point!
+               (-> self root)
+               target-pos
+               (-> self nav max-rotation-rate)
+               (seconds 0.02)
+               )
+             )
+           )
+         )
+     )
+    ;; Outside attack range, retain the existing gun-threat evasion behavior.
+    ((and (logtest? (-> self flags) (mantis-flag tracked))
+          (focus-test? target gun)
+          (mantis-method-206 self))
+     (mantis-method-204 self target target-delta)
+     )
+    ;; 8-20 m: use the existing collision-validated forward approach hop.
+    ((< target-distance 81920.0)
+     (mantis-method-202 self target target-delta)
+     )
+    ;; Beyond 20 m: switch to the alternate crawl navigation if it exists;
+    ;; otherwise the safe approach-hop remains the fallback.
+    ((mantis-method-206 self)
+     (go-virtual crawl)
+     )
+    (else
+      (mantis-method-202 self target target-delta)
+      )
+    )
+    )
+  (none)
+  )
+
 (defstate active (mantis)
   :virtual #t
   :trans (behavior ()
@@ -920,42 +1127,50 @@
             (vector+*! s5-1 s5-1 s2-1 (* 2.0 (vector-length (get-transv (the-as process-focusable gp-0)))))
             )
           (let ((f30-1 (vector-length s5-1)))
-            (when (not (logtest? (-> self flags) (mantis-flag tracked)))
-              (cond
-                ((not (time-elapsed? (-> self attack-timer) (seconds 5)))
-                 (if (and (< 73728.0 f30-1) (mantis-method-206 self))
-                     (go-virtual crawl)
-                     )
-                 )
-                ((< 40960.0 f30-1)
-                 (mantis-method-202 self (the-as process-focusable gp-0) s5-1)
-                 )
-                )
-              )
-            (when (and (and gp-0
-                            (not (logtest? (-> (the-as process-focusable gp-0) focus-status) (focus-status disable dead ignore grabbed)))
-                            )
-                       (and (time-elapsed? (-> self attack-timer) (seconds 5)) (pointing-toward? self s4-0 8192.0) (< f30-1 32768.0))
+            (if (mantis-hero-mode? self)
+                (when (not (logtest? (-> (the-as process-focusable gp-0) focus-status) (focus-status disable dead ignore grabbed)))
+                  (mantis-hero-hostile-trans! self (the-as process-focusable gp-0) s4-0 s5-1 f30-1)
+                  )
+                ;; Preserve the original Normal Mode combat choices exactly.
+                (when #t
+                  (when (not (logtest? (-> self flags) (mantis-flag tracked)))
+                    (cond
+                      ((not (time-elapsed? (-> self attack-timer) (seconds 5)))
+                       (if (and (< 73728.0 f30-1) (mantis-method-206 self))
+                           (go-virtual crawl)
+                           )
                        )
-              (cond
-                ((< 24576.0 f30-1)
-                 (if (logtest? (-> self flags) (mantis-flag attack1-enabled))
-                     (go-virtual attack1)
-                     )
-                 )
-                ((< 16384.0 f30-1)
-                 (go-virtual attack0)
-                 )
+                      ((< 40960.0 f30-1)
+                       (mantis-method-202 self (the-as process-focusable gp-0) s5-1)
+                       )
+                      )
+                    )
+                  (when (and (and gp-0
+                                  (not (logtest? (-> (the-as process-focusable gp-0) focus-status) (focus-status disable dead ignore grabbed)))
+                                  )
+                             (and (time-elapsed? (-> self attack-timer) (seconds 5)) (pointing-toward? self s4-0 8192.0) (< f30-1 32768.0))
+                             )
+                    (cond
+                      ((< 24576.0 f30-1)
+                       (if (logtest? (-> self flags) (mantis-flag attack1-enabled))
+                           (go-virtual attack1)
+                           )
+                       )
+                      ((< 16384.0 f30-1)
+                       (go-virtual attack0)
+                       )
+                      )
+                    )
+                  (if (pointing-toward? self s4-0 10922.667)
+                      (mantis-method-199 self)
+                      )
+                  (if (logtest? (-> self flags) (mantis-flag tracked))
+                      (mantis-method-204 self (the-as process-focusable gp-0) s5-1)
+                      (mantis-method-203 self (the-as process-focusable gp-0) s5-1)
+                      )
+                  )
                 )
-              )
             )
-          (if (pointing-toward? self s4-0 10922.667)
-              (mantis-method-199 self)
-              )
-          (if (logtest? (-> self flags) (mantis-flag tracked))
-              (mantis-method-204 self (the-as process-focusable gp-0) s5-1)
-              (mantis-method-203 self (the-as process-focusable gp-0) s5-1)
-              )
           )
         )
       )
@@ -1080,7 +1295,7 @@
           (suspend)
           (ja :num! (seek!))
           )
-        (if (and (time-elapsed? (-> self attack-timer) (seconds 5)) (< 1 (the-as int (-> self focus aware))))
+        (if (and (mantis-attack-ready? self) (< 1 (the-as int (-> self focus aware))))
             (go-virtual hostile)
             )
         (if (< (vector-vector-xz-distance (-> self root trans) (-> self move-dest)) 13107.2)
@@ -1268,6 +1483,8 @@
       (ja :num! (seek!))
       )
     (logior! (-> self flags) (mantis-flag attack1-enabled))
+    (when (mantis-hero-mode? self)
+      (set-time! (-> self hero-roll-timer)))
     (go-hostile self)
     )
   :post mantis-roll-post
@@ -1416,6 +1633,16 @@
        (set! (-> this track-timer) (the-as time-frame v0-0))
        v0-0
        )
+     )
+    (('tracked-fire)
+     ;; target-gun-fire sends this only after can-fire and ammo checks succeed.
+     ;; Record the threat; never interrupt attack, emergence or recovery here.
+     (when (and (mantis-hero-mode? this)
+                (= arg0 *target*)
+                (= arg0 (handle->process (-> this focus handle))))
+       (set-time! (-> this hero-threat-timer))
+       (set! (-> this hero-threat-pending?) #t))
+     (call-parent-method this arg0 arg1 arg2 arg3)
      )
     (('hit 'hit-knocked)
      (logclear! (-> this mask) (process-mask actor-pause))
@@ -2033,8 +2260,19 @@
   (vector-copy! (-> this my-up-vector) *y-vector*)
   (vector-copy! (-> this gspot-normal) *y-vector*)
   (set! (-> this gspot-timer) 0)
-  (set! (-> this attack-timer) (+ (current-time) (seconds -5)))
+  (if (mantis-hero-mode? this)
+      ;; A newly emerged Hero Mode Mantis gets a short 0.4-second reaction
+      ;; window before its first attack, independent of the recurring cooldown.
+      (set! (-> this attack-timer) (+ (current-time) (seconds -1.1)))
+      (set! (-> this attack-timer) (+ (current-time) (seconds -5)))
+      )
   (set! (-> this track-timer) 0)
+  (set! (-> this hero-weapon-family) (pickup-type none))
+  (set! (-> this hero-tactic-timer) 0)
+  (set! (-> this hero-evade-timer) 0)
+  (set! (-> this hero-threat-timer) 0)
+  (set! (-> this hero-threat-pending?) #f)
+  (set! (-> this hero-roll-timer) 0)
   (set! (-> this draw light-index) (the-as uint 30))
   (none)
   )

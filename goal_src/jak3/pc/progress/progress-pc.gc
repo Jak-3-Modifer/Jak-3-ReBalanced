@@ -29,16 +29,21 @@
 ;; temporary step data; vehicle code reads it only while the player drives the
 ;; Turtle. Nothing here is serialized or mutates shared vehicle constants.
 (define *v-turtle-tuning-stock-steps*
-  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 3))
+  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 6))
 (define *v-turtle-tuning-max-steps*
-  (new 'static 'array int 11 12 10 8 10 11 12 30 40 32 10 6))
+  (new 'static 'array int 11 12 8 8 10 11 12 30 40 32 12 14))
 (define *v-turtle-tuning-applied-steps*
-  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 3))
+  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 6))
 (define *v-turtle-tuning-proposed-steps*
-  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 3))
+  (new 'static 'array int 11 4 4 3 4 5 6 15 20 12 4 6))
+;; Development preview prices in Precursor Orbs.  These are deliberately kept
+;; separate from the tuning data until permanent purchases are approved.
+(define *v-turtle-tuning-price-per-step*
+  (new 'static 'array int 11 2 2 1 1 1 1 2 2 2 2 2))
 (define *v-turtle-tuning-menu-open?* #f)
 (define *v-turtle-tuning-category* 0)
 (define *v-turtle-tuning-selection* 0)
+(define *v-turtle-tuning-confirm?* #f)
 
 (define-extern v-turtle-tuning-category-count (function int int))
 (define-extern v-turtle-tuning-index-at (function int int int))
@@ -64,8 +69,8 @@
 
 (defun turtle-tuning-parameter-name ((index int))
   (case index
-    ((0) "Engine Torque")
-    ((1) "Final Drive")
+    ((0) "ENGINE POWER")
+    ((1) "REV RESPONSE")
     ((2) "Steering Response")
     ((3) "Front Grip")
     ((4) "Rear Grip")
@@ -73,15 +78,29 @@
     ((6) "Front Suspension Stiffness")
     ((7) "Rear Suspension Stiffness")
     ((8) "Suspension Damping")
-    ((9) "Turbo Strength")
-    (else "Turbo Duration"))
+    ((9) "ENGINE DRAG")
+    (else "POWERBAND"))
   )
 
 (defun turtle-tuning-category-name ((category int))
   (case category
-    ((0) "ENGINE & TURBO")
+    ((0) "ENGINE")
     ((1) "HANDLING")
     (else "SUSPENSION"))
+  )
+
+(defun turtle-tuning-parameter-price ((index int))
+  (-> *v-turtle-tuning-price-per-step* index)
+  )
+
+(defun turtle-tuning-total-cost ()
+  (let ((cost 0))
+    (dotimes (index 11)
+      (+! cost
+          (* (abs (- (-> *v-turtle-tuning-proposed-steps* index)
+                     (-> *v-turtle-tuning-applied-steps* index)))
+             (turtle-tuning-parameter-price index))))
+    cost)
   )
 
 (defun turtle-tuning-print-line ((font font-context) (text string) (x float) (y float) (scale float) (center? symbol))
@@ -130,6 +149,18 @@
         (hide-progress-screen))
       (let ((count (v-turtle-tuning-category-count *v-turtle-tuning-category*)))
         (cond
+          (*v-turtle-tuning-confirm?*
+           (cond
+             ((cpad-pressed? 0 x)
+              ;; Preview milestone: apply temporary values, but do not deduct
+              ;; the displayed Orb cost until persistence is implemented.
+              (set! *v-turtle-tuning-confirm?* #f)
+              (v-turtle-tuning-apply!)
+              (hide-progress-screen)
+              (sound-play "menu-pick"))
+             ((cpad-pressed? 0 circle)
+              (set! *v-turtle-tuning-confirm?* #f)
+              (sound-play "menu-back"))))
           ((cpad-pressed? 0 up)
            (set! *v-turtle-tuning-selection*
                  (mod (+ *v-turtle-tuning-selection* (- count 1)) count))
@@ -159,10 +190,10 @@
            (v-turtle-tuning-reset-all!)
            (sound-play "menu-pick"))
           ((cpad-pressed? 0 x)
-           (v-turtle-tuning-apply!)
-           (hide-progress-screen)
+           (set! *v-turtle-tuning-confirm?* #t)
            (sound-play "menu-pick"))
           ((cpad-pressed? 0 circle)
+           (set! *v-turtle-tuning-confirm?* #f)
            (v-turtle-tuning-close!)
            (hide-progress-screen)
            (sound-play "menu-back")))
@@ -178,14 +209,18 @@
     (if *v-turtle-tuning-menu-open?*
         (begin
           (set! (-> font color) (font-color cyan))
-          (turtle-tuning-print-line font "TURTLE TUNING TEST" 256.0 48.0 0.48 #t)
+          (turtle-tuning-print-line font "VEHICLE TUNING" 256.0 38.0 0.46 #t)
+          (set! (-> font color) (font-color white))
+          (turtle-tuning-print-line font "VEHICLE: TURTLE" 30.0 64.0 0.27 #f)
+          (format (clear *temp-string*) "BALANCE: ~D ORBS" (the int (-> *game-info* money)))
+          (turtle-tuning-print-line font *temp-string* 350.0 64.0 0.27 #f)
           (set! (-> font color) (font-color yellow))
           (turtle-tuning-print-line font
                                     (turtle-tuning-category-name *v-turtle-tuning-category*)
-                                    256.0 76.0 0.34 #t)
+                                    256.0 87.0 0.31 #t)
           (dotimes (row (v-turtle-tuning-category-count *v-turtle-tuning-category*))
             (let ((index (v-turtle-tuning-index-at *v-turtle-tuning-category* row))
-                  (y (+ 104.0 (* (the float row) 61.0))))
+                  (y (+ 111.0 (* (the float row) 52.0))))
               (set! (-> font color)
                     (if (= row *v-turtle-tuning-selection*)
                         (font-color yellow)
@@ -193,19 +228,35 @@
               (format (clear *temp-string*) "~A~A"
                       (if (= row *v-turtle-tuning-selection*) "> " "  ")
                       (turtle-tuning-parameter-name index))
-              (turtle-tuning-print-line font *temp-string* 34.0 y 0.31 #f)
+              (turtle-tuning-print-line font *temp-string* 28.0 y 0.29 #f)
               (set! (-> font color) (font-color white))
-              (+! (-> font origin y) 17.0)
-              (turtle-tuning-format-value-line! index #t)
-              (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
-              (+! (-> font origin y) 17.0)
-              (turtle-tuning-format-value-line! index #f)
-              (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))))
+              (if (= index 0)
+                  (format (clear *temp-string*) "MIN ~D  CUR ~D  NEW ~D  MAX ~D  PRICE ~D/STEP"
+                          (the int (v-turtle-tuning-min-value index))
+                          (the int (v-turtle-tuning-value index #f))
+                          (the int (v-turtle-tuning-value index #t))
+                          (the int (v-turtle-tuning-max-value index))
+                          (turtle-tuning-parameter-price index))
+                  (format (clear *temp-string*) "MIN ~F  CUR ~F  NEW ~F  MAX ~F  PRICE ~D/STEP"
+                          (v-turtle-tuning-min-value index)
+                          (v-turtle-tuning-value index #f)
+                          (v-turtle-tuning-value index #t)
+                          (v-turtle-tuning-max-value index)
+                          (turtle-tuning-parameter-price index)))
+              (turtle-tuning-print-line font *temp-string* 32.0 (+ y 20.0) 0.19 #f)))
+          (format (clear *temp-string*) "TOTAL PREVIEW COST: ~D ORBS" (turtle-tuning-total-cost))
+          (set! (-> font color) (font-color yellow))
+          (turtle-tuning-print-line font *temp-string* 256.0 326.0 0.29 #t)
           (set! (-> font color) (font-color cyan))
-          (turtle-tuning-print-line font "<PAD_L1><PAD_R1> Category   <PAD_DPAD_UP><PAD_DPAD_DOWN> Select   <PAD_DPAD_LEFT><PAD_DPAD_RIGHT> Adjust"
-                                    256.0 355.0 0.22 #t)
-          (turtle-tuning-print-line font "<PAD_X> Apply   <PAD_TRIANGLE> Stock Selected   <PAD_R2> Stock All   <PAD_CIRCLE> Cancel"
-                                    256.0 378.0 0.22 #t))
+          (if *v-turtle-tuning-confirm?*
+              (begin
+                (turtle-tuning-print-line font "PREVIEW ONLY - NO ORBS WILL BE CHARGED" 256.0 352.0 0.24 #t)
+                (turtle-tuning-print-line font "<PAD_X> Confirm Temporary Tune   <PAD_CIRCLE> Back" 256.0 378.0 0.24 #t))
+              (begin
+                (turtle-tuning-print-line font "<PAD_L1><PAD_R1> Category  <PAD_DPAD_UP><PAD_DPAD_DOWN> Select  <PAD_DPAD_LEFT><PAD_DPAD_RIGHT> Adjust"
+                                          256.0 352.0 0.20 #t)
+                (turtle-tuning-print-line font "<PAD_X> Review  <PAD_TRIANGLE> Stock Selected  <PAD_CIRCLE> Cancel"
+                                          256.0 378.0 0.21 #t))))
         (none)))
   (none)
   )

@@ -7,6 +7,99 @@
 
 ;; DECOMP BEGINS
 
+(define *volcano-indax-1-earthquake-time* (the-as time-frame 0))
+(define *volcano-indax-1-earthquake-active?* #f)
+(define *volcano-indax-1-earthquake-heavy?* #f)
+(define *volcano-indax-1-earthquake-cooldown* (the-as time-frame (seconds 2)))
+(define *volcano-indax-1-earthquake-warning-finished?* #f)
+(define *volcano-indax-1-earthquake-warning-to-heavy-delay* (the-as time-frame (seconds 1)))
+
+(defun volcano-indax-1-earthquake-drop? ((this target))
+  (if (and (task-node-open? (game-task-node volcano-darkeco-indax-1))
+           (not (task-node-closed? (game-task-node volcano-darkeco-indax-1))))
+      (begin
+        ;; Start a one-second minimal warning shake after the previous cooldown.
+        (when (and (not *volcano-indax-1-earthquake-active?*)
+                   (not *volcano-indax-1-earthquake-heavy?*)
+                   (time-elapsed? *volcano-indax-1-earthquake-time*
+                                  *volcano-indax-1-earthquake-cooldown*))
+          (set-time! *volcano-indax-1-earthquake-time*)
+          (set! *volcano-indax-1-earthquake-active?* #t)
+          (set! *volcano-indax-1-earthquake-warning-finished?* #f)
+          (activate! *camera-smush-control* 204.8 30 60 1.0 0.9 (-> *display* camera-clock))
+          (play-sound-file
+            "sfx/warning_sfx.flac"
+            (the int (* 100.0 (-> *setting-control* user-current sfx-volume)))
+            )
+          )
+        ;; After one full warning second, wait a randomized 0.1-2.0 seconds
+        ;; before the heavy shake begins.
+        (when (and *volcano-indax-1-earthquake-active?*
+                   (not *volcano-indax-1-earthquake-warning-finished?*)
+                   (time-elapsed? *volcano-indax-1-earthquake-time* (seconds 1)))
+          (set! *volcano-indax-1-earthquake-warning-finished?* #t)
+          (set-time! *volcano-indax-1-earthquake-time*)
+          (set! *volcano-indax-1-earthquake-warning-to-heavy-delay*
+                (the-as time-frame
+                  (the int (+ (seconds 0.1) (* (rand-vu) (the float (seconds 1.9)))))))
+          )
+        (when (and *volcano-indax-1-earthquake-active?*
+                   *volcano-indax-1-earthquake-warning-finished?*
+                   (time-elapsed? *volcano-indax-1-earthquake-time*
+                                  *volcano-indax-1-earthquake-warning-to-heavy-delay*))
+          (set! *volcano-indax-1-earthquake-active?* #f)
+          (set! *volcano-indax-1-earthquake-warning-finished?* #f)
+          (set! *volcano-indax-1-earthquake-heavy?* #t)
+          (set-time! *volcano-indax-1-earthquake-time*)
+          (activate! *camera-smush-control* 1638.4 15 60 1.0 0.9 (-> *display* camera-clock))
+          (play-sound-file
+            "sfx/intense_shake_sfx.flac"
+            (the int (* 100.0 (-> *setting-control* user-current sfx-volume)))
+            )
+          )
+        ;; L1 must remain held through the first 0.4 seconds of the intense
+        ;; shake. Checking every frame catches a release within that window.
+        (when (and *volcano-indax-1-earthquake-heavy?*
+                   (not (time-elapsed? *volcano-indax-1-earthquake-time* (seconds 0.4)))
+                   (not (cpad-hold? (-> this control cpad number) l1)))
+          ;; Give the scripted release a downward gravity-axis velocity so
+          ;; the hanging collision cannot immediately attach Daxter again.
+          (let ((release-velocity (new-stack-vector0))
+                (gravity-velocity
+                  (vector-dot (-> this control dynam gravity-normal) (-> this control transv))
+                  )
+                )
+            (vector+!
+              (-> this control transv)
+              (-> this control transv)
+              (vector-float*!
+                release-velocity
+                (-> this control dynam gravity-normal)
+                (- -8192.0 gravity-velocity)
+                )
+              )
+            )
+          (return #t)
+          )
+        ;; Pick the next 1.0-2.0 second cooldown only after the heavy shake finishes.
+        (when (and *volcano-indax-1-earthquake-heavy?*
+                   (time-elapsed? *volcano-indax-1-earthquake-time* (seconds 1)))
+          (set! *volcano-indax-1-earthquake-heavy?* #f)
+          (set-time! *volcano-indax-1-earthquake-time*)
+          (set! *volcano-indax-1-earthquake-cooldown*
+                (the-as time-frame
+                  (the int (+ (seconds 1.0) (* (rand-vu) (the float (seconds 1.0)))))))
+          )
+        )
+      (begin
+        (set! *volcano-indax-1-earthquake-active?* #f)
+        (set! *volcano-indax-1-earthquake-heavy?* #f)
+        (set! *volcano-indax-1-earthquake-warning-finished?* #f)
+        )
+      )
+  #f
+  )
+
 (define *indax-hang-walk-mods* (new 'static 'surface
                                  :name 'run
                                  :turnv 131072.0
@@ -81,6 +174,16 @@
     (set! (-> self control dynam gravity-length) (- (-> self control standard-dynamics gravity-length)))
     (when (not (logtest? (target-flags tf27) (-> self target-flags)))
       (set-time! (-> self indax indax-hang-start-time))
+      (when (and (task-node-open? (game-task-node volcano-darkeco-indax-1))
+                 (not (task-node-closed? (game-task-node volcano-darkeco-indax-1))))
+        (set-time! *volcano-indax-1-earthquake-time*)
+        (set! *volcano-indax-1-earthquake-active?* #f)
+        (set! *volcano-indax-1-earthquake-heavy?* #f)
+        (set! *volcano-indax-1-earthquake-warning-finished?* #f)
+        (set! *volcano-indax-1-earthquake-cooldown*
+              (the-as time-frame
+                (the int (+ (seconds 1.0) (* (rand-vu) (the float (seconds 1.0)))))))
+        )
       (set-setting! 'string-max-length 'low (meters 4) 0)
       (set-setting! 'string-min-length 'low (meters 4) 0)
       (let ((a0-4 (-> self current-level)))
@@ -179,6 +282,9 @@
     (set! (-> self control mod-surface) *indax-hang-walk-mods*)
     )
   :trans (behavior ()
+    (when (volcano-indax-1-earthquake-drop? self)
+      (go target-indax-falling #f)
+      )
     ;; og:preserve-this - High FPS Fix
     (if (and (recently-pressed? x)
              (not (logtest? (-> self control current-surface flags) (surface-flag no-jump)))
@@ -258,6 +364,9 @@
   :parent target-indax-hang
   :enter (-> target-indax-hang-stance enter)
   :trans (behavior ()
+    (when (volcano-indax-1-earthquake-drop? self)
+      (go target-indax-falling #f)
+      )
     ;; og:preserve-this - High FPS Fix
     (if (and (recently-pressed? x)
              (not (logtest? (-> self control current-surface flags) (surface-flag no-jump)))
@@ -328,6 +437,9 @@
     (set! (-> self control mod-surface) *indax-hang-dodge-mods*)
     )
   :trans (behavior ()
+    (when (volcano-indax-1-earthquake-drop? self)
+      (go target-indax-falling #f)
+      )
     ;; og:preserve-this - High FPS Fix
     (if (and (recently-pressed? x)
              (not (logtest? (-> self control current-surface flags) (surface-flag no-jump)))
@@ -392,6 +504,9 @@
       )
     )
   :trans (behavior ()
+    (when (volcano-indax-1-earthquake-drop? self)
+      (go target-indax-falling #f)
+      )
      ;; og:preserve-this - High FPS Fix
     (if (and (recently-pressed? x)
              (not (logtest? (-> self control current-surface flags) (surface-flag no-jump)))
@@ -451,6 +566,9 @@
       )
     )
   :trans (behavior ()
+    (when (volcano-indax-1-earthquake-drop? self)
+      (go target-indax-falling #f)
+      )
     ;; og:preserve-this - High FPS Fix
     (if (and (recently-pressed? x)
              (not (logtest? (-> self control current-surface flags) (surface-flag no-jump)))

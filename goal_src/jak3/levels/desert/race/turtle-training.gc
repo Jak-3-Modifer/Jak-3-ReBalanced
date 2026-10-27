@@ -391,7 +391,7 @@
         (sound-play "special-pickup")
         (suspend-for (seconds 0.35))
 
-        ;; 3. Let the player identify to not redline the engine or they will die a fiery death HAHHAHA!!!!!!!!
+        ;; #3 Let the player identify to not redline the engine or they will die a fiery death HAHHAHA!!!!!!!!
         (until (and vehicle
                     (>= (-> vehicle engine-rpm) (* 0.75 (-> vehicle info engine max-rpm)))
                     (< (-> vehicle engine-rpm) (* 0.9 (-> vehicle info engine max-rpm))))

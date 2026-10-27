@@ -96,6 +96,8 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
         (rescue-node (-> *game-info* sub-task-list (game-task-node desert-rescue-rescue)))
         (catch-lizards-vehicle-node
           (-> *game-info* sub-task-list (game-task-node desert-catch-lizards-restrict-to-snake)))
+        (catch-lizards-corral-node
+          (-> *game-info* sub-task-list (game-task-node desert-catch-lizards-get-to-corral)))
         (catch-lizards-continue-1 (get-continue-by-name *game-info* "desert-lizard-corral"))
         (catch-lizards-continue-2 (get-continue-by-name *game-info* "desert-lizard-corral-snake-1"))
         (catch-lizards-continue-3 (get-continue-by-name *game-info* "desert-lizard-corral-snake-2"))
@@ -129,7 +131,13 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
           (set! (-> rescue-node reset death-info fail continue) "wasdoors-desert")
           ;; Allow any unlocked desert vehicle for Catch Lizards. The mission
           ;; manager preserves the selected type through its capture scenes.
+          ;; Before reaching the corral, use the current-vehicle continuation
+          ;; so deaths also restore the vehicle selected at the garage.
           (set! (-> catch-lizards-vehicle-node manager index) -1)
+          (set! (-> catch-lizards-corral-node reset restart-info fail continue) "desert-start-any")
+          (set! (-> catch-lizards-corral-node reset quit-info fail continue) "desert-start-any")
+          (set! (-> catch-lizards-corral-node reset fail-info fail continue) "desert-start-any")
+          (set! (-> catch-lizards-corral-node reset death-info fail continue) "desert-start-any")
           (set! (-> leaper-intro parent-node 0) (game-task-node temple-oracle-resolution))
           (set! (-> gun-game-intro parent-node 0) (game-task-node city-power-game-resolution))
           ;; Hero Mode makes Arena 3 available immediately after Desert Rescue.
@@ -150,6 +158,10 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
           (set! (-> rescue-node reset fail-info fail continue) "wasdoors-desert-snake")
           (set! (-> rescue-node reset death-info fail continue) "wasdoors-desert-snake")
           (set! (-> catch-lizards-vehicle-node manager index) 1)
+          (set! (-> catch-lizards-corral-node reset restart-info fail continue) "desert-start-turtle")
+          (set! (-> catch-lizards-corral-node reset quit-info fail continue) "desert-start-turtle")
+          (set! (-> catch-lizards-corral-node reset fail-info fail continue) "desert-start-turtle")
+          (set! (-> catch-lizards-corral-node reset death-info fail continue) "desert-start-turtle")
           (set! (-> catch-lizards-continue-1 vehicle-type) (the-as uint (vehicle-type-u8 v-turtle)))
           (set! (-> catch-lizards-continue-2 vehicle-type) (the-as uint (vehicle-type-u8 v-turtle)))
           (set! (-> catch-lizards-continue-3 vehicle-type) (the-as uint (vehicle-type-u8 v-turtle)))
@@ -204,6 +216,7 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
                                        lightjak-regen
                                        lightjak-freeze
                                        lightjak-shield
+                                       armor0
                                        armor1
                                        armor2
                                        armor3
@@ -1527,32 +1540,23 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
       (((game-task-node-command add-armor-0))
        (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
            (begin
-             ;; Artifact Race 1 awards access to the Hero Mode NPC-shop item,
-             ;; not the armor itself.  The blueprint is permanent and is not
-             ;; consumed when Protection I is purchased.
+             ;; Hero Mode keeps its full armor, while this mission reward
+             ;; unlocks the persistent Protection I trade.
              (logior! (-> *hero-npc-shop-info* blueprints) 1)
-             (set! *hero-blueprint-notice* 5.0)
-             (when (not (logtest? (-> *hero-npc-shop-info* purchases) 1))
-               (logclear! (-> *game-info* features) (game-feature armor0)))
-             )
-           (set! (-> *game-info* features)
-                 (the-as game-feature (logior (game-feature armor0) (-> *game-info* features))))
-           )
+             (set! *hero-blueprint-notice* 5.0))
+           (logior! (-> *game-info* features) (game-feature armor0)))
        )
       (((game-task-node-command add-armor-1))
-       (set! (-> *game-info* features)
-             (the-as game-feature (logior (game-feature armor1) (-> *game-info* features)))
-             )
+       (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+         (logior! (-> *game-info* features) (game-feature armor1)))
        )
       (((game-task-node-command add-armor-2))
-       (set! (-> *game-info* features)
-             (the-as game-feature (logior (game-feature armor2) (-> *game-info* features)))
-             )
+       (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+         (logior! (-> *game-info* features) (game-feature armor2)))
        )
       (((game-task-node-command add-armor-3))
-       (set! (-> *game-info* features)
-             (the-as game-feature (logior (game-feature armor3) (-> *game-info* features)))
-             )
+       (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+         (logior! (-> *game-info* features) (game-feature armor3)))
        )
       (((game-task-node-command add-artifact-invis))
        (set! (-> *game-info* features)

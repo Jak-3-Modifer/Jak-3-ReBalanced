@@ -60,6 +60,14 @@
                            )
         )
 
+;; Hero Mode keeps the realistic handling prototype separate from the stock
+;; Leaper surface used by Normal Mode.
+(define *flut-walk-hero-mods* (copy *flut-walk-mods* 'global))
+(set! (-> *flut-walk-hero-mods* transv-max) 151552.0)
+(set! (-> *flut-walk-hero-mods* slip-factor) 0.5)
+(set! (-> *flut-walk-hero-mods* slide-factor) 0.5)
+(set! (-> *flut-walk-hero-mods* slope-change-preserve) 0.75)
+
 (define *flut-run-racer-mods* (new 'static 'surface
                                 :name 'run
                                 :turnv 54613.332
@@ -1291,15 +1299,24 @@
        (set! (-> self control mod-surface) *flut-run-racer-mods*)
        )
       (else
-        (set! (-> self control mod-surface) *flut-walk-mods*)
+        (set! (-> self control mod-surface)
+              (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                  *flut-walk-hero-mods*
+                  *flut-walk-mods*
+                  )
+              )
         )
       )
     (set! (-> self control unknown-word04) (the-as uint (-> self control mod-surface turnv)))
     (set! (-> self control did-move-to-pole-or-max-jump-height) (-> self control mod-surface target-speed))
+    (set! (-> self flut stick-lock)
+          (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode)) 'walk #f)
+          )
     )
   :exit (behavior ()
     (set! (-> self control mod-surface turnv) (the-as float (-> self control unknown-word04)))
     (set! (-> self control mod-surface target-speed) (-> self control did-move-to-pole-or-max-jump-height))
+    (set! (-> self flut stick-lock) #f)
     (logclear! (-> self target-flags) (target-flags lleg-no-ik rleg-no-ik))
     (let ((v1-9 (-> self skel effect)))
       (set! (-> v1-9 channel-offset) 0)
@@ -1311,7 +1328,14 @@
     (if (= (-> self flut mode) 'wild)
         (go target-flut-run-wild)
         )
-    (if (not (move-legs?))
+    ;; Hero Mode keeps ridden Fluts in the movement state while they coast.
+    ;; Normal Mode and Racer mode retain the original instant transition.
+    (if (and (not (move-legs?))
+             (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+                 (= (-> self flut mode) 'racer)
+                 (< (-> self control ctrl-xz-vel) 4096.0)
+                 )
+             )
         (go target-flut-stance)
         )
     ;; og:preserve-this - High FPS Fix
@@ -1330,24 +1354,160 @@
              )
         (go target-flut-falling #f)
         )
-    (let ((f30-0 (fabs (deg-diff (quaternion-y-angle (-> self control dir-targ)) (y-angle (-> self control))))))
-      (set! (-> self control mod-surface turnv) (lerp-scale
-                                                  (the-as float (-> self control unknown-word04))
-                                                  (* 4.0 (the-as float (-> self control unknown-word04)))
-                                                  f30-0
-                                                  8192.0
-                                                  21845.334
-                                                  )
-            )
-      (if (and (= (-> self control surf name) '*tar-surface*) (< 8192.0 f30-0))
-          (seek! (-> self control mod-surface target-speed) 4096.0 (* 245760.0 (seconds-per-frame)))
-          (seek!
-            (-> self control mod-surface target-speed)
-            (-> self control did-move-to-pole-or-max-jump-height)
-            (* 81920.0 (seconds-per-frame))
-            )
+    ;; Gaits now follow actual speed instead of analog-stick pressure.  Any
+    ;; movement input requests full speed, while these thresholds preserve the
+    ;; gradual walk/trot/canter/gallop presentation during acceleration.
+    (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (!= (-> self flut mode) 'racer)
+               (move-legs?)
+               )
+      (case (-> self flut stick-lock)
+        (('walk)
+         (when (> (-> self control ctrl-xz-vel) 28672.0)
+           (set! (-> self flut stick-lock) 'trot)
+           )
+         )
+        (('trot)
+         (cond
+           ((< (-> self control ctrl-xz-vel) 24576.0) (set! (-> self flut stick-lock) 'walk))
+           ((> (-> self control ctrl-xz-vel) 53248.0) (set! (-> self flut stick-lock) 'canter))
+           )
+         )
+        (('canter)
+         (cond
+           ((< (-> self control ctrl-xz-vel) 49152.0) (set! (-> self flut stick-lock) 'trot))
+           ((> (-> self control ctrl-xz-vel) 77824.0) (set! (-> self flut stick-lock) 'gallop))
+           )
+         )
+        (('gallop)
+         (when (< (-> self control ctrl-xz-vel) 73728.0)
+           (set! (-> self flut stick-lock) 'canter)
+           )
+         )
+        (else
+          (set! (-> self flut stick-lock) 'walk)
           )
+        )
       )
+    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (let* ((turn-angle (fabs (deg-diff (quaternion-y-angle (-> self control dir-targ)) (y-angle (-> self control)))))
+           (speed (-> self control ctrl-xz-vel))
+           (material-factor
+             (case (-> self control ground-pat material)
+               (((pat-material ice)) 0.55)
+               (((pat-material quicksand) (pat-material swamp) (pat-material mhswamp)) 0.70)
+               (((pat-material sand)) 0.88)
+               (((pat-material gravel) (pat-material dirt)) 0.92)
+               (((pat-material grass) (pat-material forest)) 0.96)
+               (else 1.0)
+               )
+             )
+           (slope (-> self control local-slope-z))
+           (slope-factor
+             (if (< slope 0.0)
+                 (lerp-scale 1.0 1.48 (fmin 0.5 (- slope)) 0.0 0.5)
+                 (lerp-scale 1.0 0.72 (fmin 0.5 slope) 0.0 0.5)
+                 )
+             )
+           ;; Analog magnitude no longer caps the requested gait.  Every valid
+           ;; movement input accelerates toward the normal ridden maximum.
+           (gait-speed (-> self control did-move-to-pole-or-max-jump-height))
+           ;; 102400 maximum speed / 3 seconds.  The locomotion animation is
+           ;; driven by ctrl-xz-vel below and follows this same ramp.
+           (gait-accel 34133.332)
+           (speed-steer
+             (cond
+               ((< speed 4096.0) 0.40)
+               ((< speed 32768.0) (lerp-scale 0.40 1.0 speed 4096.0 32768.0))
+               (else (lerp-scale 1.0 0.55 (fmin speed 102400.0) 32768.0 102400.0))
+               )
+             )
+           (turn-slow
+             (lerp-scale 1.0
+                         0.30
+                         (fmin 21845.334 (fmax 4096.0 turn-angle))
+                         4096.0
+                         21845.334
+                         )
+             )
+           (turn-speed-factor
+             (lerp-scale 1.0 turn-slow (fmin 102400.0 (fmax 32768.0 speed)) 32768.0 102400.0)
+             )
+           (desired-turn
+             (* (lerp-scale
+                  (the-as float (-> self control unknown-word04))
+                  (* 4.0 (the-as float (-> self control unknown-word04)))
+                  turn-angle
+                  8192.0
+                  21845.334
+                  )
+                (if (= (-> self flut mode) 'racer) 1.0 (* speed-steer material-factor))
+                )
+             )
+           (desired-speed (* gait-speed material-factor slope-factor turn-speed-factor))
+           )
+      ;; Seeking the turn rate adds a small steering response delay and lets
+      ;; the body settle instead of snapping to each new direction.
+      (seek! (-> self control mod-surface turnv)
+             desired-turn
+             (* (if (= (-> self flut mode) 'racer) 524288.0 196608.0) (seconds-per-frame))
+             )
+      (cond
+        ((= (-> self flut mode) 'racer)
+         (if (and (= (-> self control surf name) '*tar-surface*) (< 8192.0 turn-angle))
+             (seek! (-> self control mod-surface target-speed) 4096.0 (* 245760.0 (seconds-per-frame)))
+             (seek! (-> self control mod-surface target-speed)
+                    (-> self control did-move-to-pole-or-max-jump-height)
+                    (* 81920.0 (seconds-per-frame))
+                    )
+             )
+         )
+        ;; Circle is a deliberate emergency stop; normal stick release uses
+        ;; the longer, speed-dependent stopping distance below.
+        ((cpad-hold? (-> self control cpad number) circle)
+         (seek! (-> self control mod-surface target-speed) 0.0 (* 98304.0 (seconds-per-frame)))
+         )
+        ((not (move-legs?))
+         (seek! (-> self control mod-surface target-speed)
+                0.0
+                (* (if (< slope 0.0) 16384.0 24576.0) material-factor (seconds-per-frame))
+                )
+         )
+        (else
+          (seek! (-> self control mod-surface target-speed)
+                 desired-speed
+                 (* (if (< desired-speed (-> self control mod-surface target-speed))
+                        32768.0
+                        gait-accel
+                        )
+                    material-factor
+                    (if (> slope 0.0) slope-factor 1.0)
+                    (seconds-per-frame)
+                    )
+                 )
+          )
+        )
+          )
+        ;; Original Normal Mode handling.
+        (let ((turn-angle (fabs (deg-diff (quaternion-y-angle (-> self control dir-targ)) (y-angle (-> self control))))))
+          (set! (-> self control mod-surface turnv)
+                (lerp-scale
+                  (the-as float (-> self control unknown-word04))
+                  (* 4.0 (the-as float (-> self control unknown-word04)))
+                  turn-angle
+                  8192.0
+                  21845.334
+                  )
+                )
+          (if (and (= (-> self control surf name) '*tar-surface*) (< 8192.0 turn-angle))
+              (seek! (-> self control mod-surface target-speed) 4096.0 (* 245760.0 (seconds-per-frame)))
+              (seek! (-> self control mod-surface target-speed)
+                     (-> self control did-move-to-pole-or-max-jump-height)
+                     (* 81920.0 (seconds-per-frame))
+                     )
+              )
+          )
+        )
     (if (and (or (cpad-pressed? (-> self control cpad number) triangle) (not (-> *setting-control* user-current pilot)))
              (target-flut-get-off?)
              )

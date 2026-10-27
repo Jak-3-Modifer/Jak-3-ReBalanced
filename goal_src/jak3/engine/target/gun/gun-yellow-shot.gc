@@ -1807,7 +1807,7 @@
           (if (>= (-> this enemy-hit-count) 1)
               (set! (-> this damage)
                     (if (logtest? (game-secrets gun-upgrade-yellow-2) (-> *game-info* secrets))
-                        0.5
+                        1.5
                         1.0
                         ))
               )

@@ -9810,7 +9810,7 @@
                        :want-sound (new 'static 'array symbol 3 'wascity1 'wascity2 'wascity3)
                        )
                      )
-                   :callback-list '()
+                   :callback-list '((36 . hero-burning-bush-trader-price-deactivate))
                    :borrow #f
                    :bottom-height (meters -150)
                    :fog-height (meters 80)
@@ -14028,8 +14028,8 @@
                      :want-sound (new 'static 'array symbol 3 'wasall1 'desert1 'desert2)
                      )
                    )
-                 :callback-list '((36 . desert-with-flut-deactivate)
-                                  (35 . desert-with-flut-activate)
+                 :callback-list '((36 . desert-with-flut-and-resource-match-deactivate)
+                                  (35 . desert-with-flut-and-resource-match-activate)
                                   (12 . *hfrag-texture-anim-array*))
                  :borrow #f
                  :bottom-height (meters -100)

@@ -470,6 +470,9 @@
 ;; cosmetic unlocks.  Its contents are serialized by the existing save marker.
 (define-extern *hero-npc-shop-info* hero-npc-shop-info)
 
+;; Packed runtime offer for the Wascity B Burning Bush; never serialized.
+(define-extern *hero-burning-bush-trader-price* uint)
+
 
 (defmethod get-next-attack-id! ((this game-info))
   (let ((v0-0 (+ (-> this attack-id) 1)))

@@ -179,6 +179,11 @@
   (none)
   )
 
+(define *temple-climb-ocean-trigger-pos*
+  (new 'static 'vector :x 12481290.0 :y 110469.12 :z 15904522.0 :w 1.0))
+(define *temple-climb-ocean-rise-start* (the-as time-frame 0))
+(define *temple-climb-ocean-start-height* 0.0)
+
 (deftype task-manager-temple-climb (task-manager-temple)
   ()
   )
@@ -209,6 +214,24 @@
   (let ((t9-0 (method-of-type task-manager task-manager-method-26)))
     (t9-0 this)
     )
+  ;; Entering the 20-meter trigger starts a one-shot, 100-second rise from the
+  ;; current Desert ocean height to 50 meters.
+  (when *target*
+    (when (and (zero? *temple-climb-ocean-rise-start*)
+               (< (vector-vector-distance (target-pos 0) *temple-climb-ocean-trigger-pos*) 81920.0))
+      (set! *temple-climb-ocean-start-height* (-> (lookup-level-info 'desert) ocean-height))
+      (set-time! *temple-climb-ocean-rise-start*))
+    (when (nonzero? *temple-climb-ocean-rise-start*)
+      (let* ((progress (fmin
+                         1.0
+                         (/ (the float (- (current-time) *temple-climb-ocean-rise-start*))
+                            (the float (seconds 115)))))
+             (ocean-height
+               (+ *temple-climb-ocean-start-height*
+                  (* (- 204800.0 *temple-climb-ocean-start-height*) progress))))
+        (set! (-> (lookup-level-info 'desert) ocean-height) ocean-height)
+        (when *ocean-map*
+          (set-height! *ocean-map* ocean-height)))))
   (if (or (and (task-node-closed? (game-task-node desert-rescue-introduction))
                (not (task-node-closed? (game-task-node desert-rescue-resolution)))
                )
@@ -240,6 +263,19 @@
           )
       )
     )
+  (none)
+  )
+
+(defmethod task-manager-method-25 ((this task-manager-temple-climb))
+  ;; Restore the normal 9-meter Desert ocean whenever Temple Climb ends,
+  ;; fails, or unloads.
+  (set! *temple-climb-ocean-rise-start* (the-as time-frame 0))
+  (set! *temple-climb-ocean-start-height* 0.0)
+  (set! (-> (lookup-level-info 'desert) ocean-height) 36864.0)
+  (when *ocean-map*
+    (set-height! *ocean-map* 36864.0))
+  (task-manager-temple-method-33 this)
+  ((method-of-type task-manager task-manager-method-25) this)
   (none)
   )
 
@@ -592,6 +628,12 @@
   (let ((t9-0 (method-of-type task-manager task-manager-method-26)))
     (t9-0 this)
     )
+  ;; Keep the Desert ocean at 17 meters only while Hero Mode's
+  ;; desert-catch-lizards-get-to-corral task is active.
+  (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+    (set! (-> (lookup-level-info 'desert) ocean-height) 69632.0)
+    (when *ocean-map*
+      (set-height! *ocean-map* 69632.0)))
   (when (and *target*
              (begin (set! v1-4 (level-get *level* 'desertg)) v1-4)
              (= (-> v1-4 status) 'active)
@@ -603,6 +645,15 @@
           )
       )
     )
+  (none)
+  )
+
+(defmethod task-manager-method-25 ((this task-manager-get-to-corral))
+  (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+    (set! (-> (lookup-level-info 'desert) ocean-height) 36864.0)
+    (when *ocean-map*
+      (set-height! *ocean-map* 36864.0)))
+  ((method-of-type task-manager task-manager-method-25) this)
   (none)
   )
 

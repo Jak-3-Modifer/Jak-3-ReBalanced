@@ -2335,6 +2335,9 @@
     (logclear! (-> this purchase-secrets)
                (game-secrets endless-ammo invulnerable endless-dark endless-light vehicle-hit-points))
     )
+  ;; Invalidate after restoration: level activation can run before load-game.
+  ;; Legacy saved NPC prices remain readable, but cannot lock the Bush offer.
+  (set! *hero-burning-bush-trader-price* (the-as uint 0))
   arg0
   )
 

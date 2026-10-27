@@ -45,6 +45,8 @@
 
 (define-extern *v-turtle-tuning-menu-open?* symbol)
 (define-extern v-turtle-tuning-open! (function none))
+(define-extern v-turtle-tuning-close! (function none))
+(define-extern open-v-turtle-loadout-menu (function none))
 
 (defun configure-v-turtle-tuning-trigger! ((x float) (y float) (z float))
   "Configure and enable the temporary Turtle tuning location."
@@ -88,10 +90,12 @@
       (pc-encode-utf8-string "<PAD_L3> - TUNE VEHICLE" *pc-encoded-temp-string*)
       (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
     (when (cpad-pressed? 0 l3)
+      (open-v-turtle-loadout-menu)
       (v-turtle-tuning-open!)
+      (set! *v-turtle-loadout-menu-page* 4)
+      (set! *v-turtle-loadout-menu-selection* 0)
       (cpad-clear! 0 l3)
-      (sound-play "menu-pick")
-      (set-master-mode 'progress)))
+      ))
   (none)
   )
 
@@ -126,6 +130,8 @@
   )
 
 (defun close-v-turtle-loadout-menu ()
+  (when *v-turtle-tuning-menu-open?*
+    (v-turtle-tuning-close!))
   (set-master-mode 'game)
   (set! *v-turtle-loadout-menu-open?* #f)
   (set! *popup-menu-open* #f)

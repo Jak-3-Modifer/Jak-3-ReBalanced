@@ -598,6 +598,7 @@
    )
   (:state-methods
     stopped
+    hero-disabled
     die-and-respawn
     )
   )
@@ -629,6 +630,16 @@
       :attack-force-scale 10.0
       )
     :name '*vol-stone-lid-rigid-body-constants*
+    )
+  )
+
+(define *vol-stone-lid-rider-tilt-scale* 90.0)
+
+(defun vol-stone-lid-rider-tilt? ((this vol-stone-lid))
+  (let ((extra-id (res-lump-value (-> this entity) 'extra-id uint :time -1000000000.0)))
+    (or (= extra-id 1)
+        (= extra-id 6)
+        )
     )
   )
 
@@ -717,6 +728,38 @@
       (set! (-> s5-0 backup-collide-with) (-> v1-35 prim-core collide-with))
       )
     (set! (-> this root) s5-0)
+    )
+  0
+  (none)
+  )
+
+(defmethod rigid-body-object-method-53 ((this vol-stone-lid) (arg0 float))
+  (when (logtest? (-> this flags) (rigid-body-object-flag player-impulse-force player-contact-force))
+    (let* ((landing? (logtest? (-> this flags) (rigid-body-object-flag player-impulse-force)))
+           (tilt? (and (not landing?) (vol-stone-lid-rider-tilt? this)))
+           (force-scale (if tilt? *vol-stone-lid-rider-tilt-scale* 1.0))
+           (rider-force (new-stack-vector0))
+           )
+      (when landing?
+        (logclear! (-> this flags) (rigid-body-object-flag player-impulse-force))
+        (vector-float*! (-> this player-force) (-> this player-force) (/ 1.0 arg0))
+        )
+      (vector-float*! rider-force (-> this player-force) force-scale)
+      (apply-impact! (-> this rbody) (-> this player-force-position) rider-force)
+      (when tilt?
+        ;; Preserve Jak's normal downward weight while amplifying only the
+        ;; off-center torque produced by where he stands on the lid.
+        (apply-impact!
+          (-> this rbody)
+          (-> this rbody position)
+          (vector-normalize-copy!
+            (new 'stack-no-clear 'vector)
+            *y-vector*
+            (* (- force-scale 1.0) (vector-length (-> this player-force)))
+            )
+          )
+        )
+      )
     )
   0
   (none)
@@ -852,6 +895,10 @@
       )
     (set! (-> self player-force y) (/ (-> self player-force y) 10))
     (if (and (logtest? (-> self rbody flags) (rigid-body-flag enable-physics))
+             (not (and (vol-stone-lid-rider-tilt? self)
+                       (logtest? (-> self flags) (rigid-body-object-flag player-standing-on player-contact-force))
+                       )
+                  )
              (< (vector-length (-> self root transv)) 4096.0)
              (< (* (vector-length (-> self rbody lin-momentum)) (-> self info info inv-mass)) 2457.6)
              (< 12288.0 (-> self hole-dist-xz))
@@ -873,6 +920,33 @@
       (('touched)
        (go-virtual active)
        )
+      )
+    )
+  :code sleep-code
+  )
+
+(defun hero-volcano-darkeco-remove-stone-lid? ((lid vol-stone-lid))
+  (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+       (string= (-> lid name) "vol-stone-lid-2")
+       (task-node-closed? (game-task-node volcano-darkeco-introduction))
+       (not (task-node-closed? (game-task-node volcano-darkeco-resolution)))
+       )
+  )
+
+(defstate hero-disabled (vol-stone-lid)
+  :virtual #t
+  :enter (behavior ()
+    (disable-physics! self)
+    (rigid-body-object-method-43 self)
+    (logior! (-> self draw status) (draw-control-status no-draw))
+    )
+  :exit (behavior ()
+    (rigid-body-object-method-42 self)
+    (logclear! (-> self draw status) (draw-control-status no-draw))
+    )
+  :trans (behavior ()
+    (when (not (hero-volcano-darkeco-remove-stone-lid? self))
+      (go-virtual idle)
       )
     )
   :code sleep-code
@@ -925,6 +999,9 @@
     0
     )
   ((method-of-type rigid-body-object apply-gravity!) this arg0)
+  (when (vol-stone-lid-rider-tilt? this)
+    (rigid-body-object-method-53 this arg0)
+    )
   (none)
   )
 
@@ -966,6 +1043,15 @@
 (defmethod rbody-event-handler ((this vol-stone-lid) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
   (with-pp
     (case arg2
+      (('ridden)
+       ((method-of-type rigid-body-object rbody-event-handler) this arg0 arg1 arg2 arg3)
+       (when (and (vol-stone-lid-rider-tilt? this)
+                  (logtest? (-> this flags) (rigid-body-object-flag player-standing-on player-contact-force))
+                  (not (logtest? (-> this rbody flags) (rigid-body-flag enable-physics)))
+                  )
+         (impulse-handler this)
+         )
+       )
       (('attack)
        (let ((s5-0 (the-as object (-> arg3 param 1))))
          (when (!= (-> (the-as attack-info s5-0) id) (-> this incoming-attack-id))
@@ -1126,6 +1212,9 @@
   (process-drawable-from-entity! self arg0)
   (+! (-> self root trans y) 61440.0)
   (init-rbody-control! self)
-  (go-idle self)
+  (if (hero-volcano-darkeco-remove-stone-lid? self)
+      (go-virtual hero-disabled)
+      (go-idle self)
+      )
   self
   )

@@ -445,6 +445,21 @@
   :post rider-post
   )
 
+(defun hero-temple-climb-remove-stone-break? ((platform tpl-stone-break))
+  (let ((name (-> platform name)))
+    (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+         (or (string= name "tpl-stone-break-1")
+             (string= name "tpl-stone-break-2")
+             (string= name "tpl-stone-break-3")
+             (string= name "tpl-stone-break-4")
+             (string= name "tpl-stone-break-5")
+             (string= name "tpl-stone-break-16")
+             (string= name "tpl-stone-break-18")
+             )
+         )
+    )
+  )
+
 (defmethod init-from-entity! ((this tpl-stone-break) (arg0 entity-actor))
   "Set up a newly created process from the entity that created it."
   (let ((s4-0 (new 'process 'collide-shape-moving this (collide-list-enum usually-hit-by-player))))
@@ -617,7 +632,9 @@
     (the-as skeleton-group (art-group-get-by-name *level* "skel-tpl-stone-break" (the-as (pointer level) #f)))
     (the-as pair 0)
     )
-  (if (task-node-closed? (game-task-node volcano-darkeco-introduction))
+  (if (or (task-node-closed? (game-task-node volcano-darkeco-introduction))
+          (hero-temple-climb-remove-stone-break? this)
+          )
       (cleanup-for-death this)
       (go (method-of-object this idle))
       )

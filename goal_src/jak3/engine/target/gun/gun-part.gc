@@ -58,6 +58,30 @@ gun
     (set! (-> sprite r-g-b-a z) 88.0))
   (none))
 
+;; The authored laser particles are red.  Swap their red and blue channels
+;; only while the purchased shop option is enabled, preserving each particle's
+;; original intensity variation and fade behavior.
+(defun apply-blue-gun-laser-toggle! ((sprite sprite-vec-data-3d))
+  (when (and (logtest? (-> *game-info* secrets) (game-secrets gs63))
+             (> (-> sprite r-g-b-a x) (-> sprite r-g-b-a z)))
+    (let ((red (-> sprite r-g-b-a x)))
+      (set! (-> sprite r-g-b-a x) (-> sprite r-g-b-a z))
+      (set! (-> sprite r-g-b-a z) red)))
+  (none))
+
+(defun spt-func-blue-gun-laser ((system sparticle-system)
+                               (particle sparticle-cpuinfo)
+                               (sprite vector))
+  (apply-blue-gun-laser-toggle! (the-as sprite-vec-data-3d sprite))
+  (none))
+
+(defun spt-func-blue-gun-laser-animate ((system sparticle-system)
+                                       (particle sparticle-cpuinfo)
+                                       (sprite vector))
+  (sparticle-texture-animate system particle sprite)
+  (apply-blue-gun-laser-toggle! (the-as sprite-vec-data-3d sprite))
+  (none))
+
 (defpart 207
   :init-specs ((:texture (lasersmoke-00 level-default-sprite))
     (:birth-func 'birth-func-laser-pointer)
@@ -109,7 +133,7 @@ gun
                        #x403900
                        )
                )
-    (:func 'sparticle-texture-animate)
+    (:func 'spt-func-blue-gun-laser-animate)
     )
   )
 
@@ -150,6 +174,7 @@ gun
     (:timer (seconds 0.017))
     (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3 glow))
     (:userdata 1.0)
+    (:func 'spt-func-blue-gun-laser)
     )
   )
 
@@ -168,6 +193,7 @@ gun
     (:timer (seconds 0.017))
     (:flags (sp-cpuinfo-flag-2 glow))
     (:userdata 1.0)
+    (:func 'spt-func-blue-gun-laser)
     )
   )
 
@@ -185,6 +211,7 @@ gun
     (:timer (seconds 0.017))
     (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-14 glow))
     (:userdata 1.0)
+    (:func 'spt-func-blue-gun-laser)
     )
   )
 
@@ -202,6 +229,7 @@ gun
     (:timer (seconds 0.017))
     (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-14 glow))
     (:userdata 1.0)
+    (:func 'spt-func-blue-gun-laser)
     )
   )
 
@@ -222,6 +250,7 @@ gun
     (:timer (seconds 0.017))
     (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-14 glow))
     (:userdata 1.0)
+    (:func 'spt-func-blue-gun-laser)
     )
   )
 

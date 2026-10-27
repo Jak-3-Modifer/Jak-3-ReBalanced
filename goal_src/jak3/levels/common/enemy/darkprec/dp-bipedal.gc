@@ -1052,14 +1052,24 @@
 
 (defmethod get-damage-from-attack ((this dp-bipedal) (arg0 object) (arg1 event-message-block))
   "Compute hit point damage for an attack message."
-  (when (darkjak-player-gun-attack? (the-as attack-info (-> arg1 param 1)))
-    (return 0.0))
+  (let ((attack (the-as attack-info (-> arg1 param 1))))
+    (when (and (= arg0 *target*)
+               (nonzero? (-> *target* darkjak))
+               (focus-test? *target* dark)
+               (logtest? (penetrate dark-punch) (-> attack penetrate-using)))
+      (return 0.0))
+    )
   (let ((damage (if (type? arg0 guard-shot)
                     0.5
                     ((method-of-type nav-enemy get-damage-from-attack) this arg0 arg1))))
-    (if (lightjak-player-gun-attack? (the-as attack-info (-> arg1 param 1)))
-        (* damage 2.0)
+    (cond
+      ((lightjak-player-gun-attack? (the-as attack-info (-> arg1 param 1)))
+       (* damage 2.0))
+      ((darkjak-player-gun-attack? (the-as attack-info (-> arg1 param 1)))
+       (* damage 0.25))
+      (else
         damage)
+      )
     )
   )
 
@@ -1082,6 +1092,43 @@
     (logtest? (penetrate dark-punch dark-bomb dark-smack jak-dark-shot)
               (-> attack penetrate-using))
     )
+  )
+
+(defun dp-bipedal-darkjak-melee-attack? ((arg0 process) (arg1 event-message-block))
+  "True only for melee delivered directly by active Dark Jak."
+  (let ((attack (the-as attack-info (-> arg1 param 1))))
+    (and (= arg0 *target*)
+         (nonzero? (-> *target* darkjak))
+         (focus-test? *target* dark)
+         (logtest? (penetrate dark-punch) (-> attack penetrate-using)))
+    )
+  )
+
+(defun dp-bipedal-shove-darkjak-back! ((this dp-bipedal) (arg0 process))
+  "Knock Dark Jak five meters away from this Bipedal without dealing damage."
+  (let ((direction (new 'stack-no-clear 'vector)))
+    ;; target-hit interprets this vector as pointing from the recipient toward
+    ;; the attacker, then applies shove-back in the opposite direction.
+    (vector-! direction (-> this root trans) (get-trans (the-as process-focusable arg0) 0))
+    (set! (-> direction y) 0.0)
+    (vector-normalize! direction 1.0)
+    (send-event
+      arg0
+      'shove
+      #f
+      (static-attack-info :mask (vehicle-impulse-factor) ((id (new-attack-id))
+                                                          (damage 0.0)
+                                                          (vehicle-damage-factor 0.0)
+                                                          (vehicle-impulse-factor 0.0)
+                                                          (shove-back (meters 5))
+                                                          (shove-up 0.0)
+                                                          (vector direction)
+                                                          (angle 'shove)
+                                                          )
+                          )
+      )
+    )
+  (none)
   )
 
 (defun dp-bipedal-gun-dark-3-attack? ((arg0 event-message-block))
@@ -1114,18 +1161,28 @@
   "Keep regular Jak melee and non-Dark Morph-Gun knockback within a compact range."
   ((method-of-type enemy knocked-handler) this arg0)
   (let ((penetrate-using (-> this incoming penetrate-using)))
-    (when (and (= (handle->process (-> this incoming attacker-handle)) *target*)
-               (or (logtest? (penetrate jak-yellow-shot jak-red-shot jak-blue-shot jak-red-shockwave)
-                             penetrate-using)
-                   (and (not (focus-test? *target* light))
-                        (not (focus-test? *target* dark))
-                        (logtest? (penetrate generic-attack lunge flop punch spin roll uppercut bonk tube)
-                                  penetrate-using))))
-      (let ((amount (rnd-float-range this 0.0 1.0)))
+    (cond
+      ((and (= (handle->process (-> this incoming attacker-handle)) *target*)
+            (nonzero? (-> *target* darkjak))
+            (focus-test? *target* dark)
+            (logtest? (penetrate dark-punch) penetrate-using))
+       (set! (-> arg0 y) 0.0)
+       (vector-normalize! arg0 (meters 3))
+       (set! (-> arg0 y) 0.0)
+       )
+      ((and (= (handle->process (-> this incoming attacker-handle)) *target*)
+            (or (logtest? (penetrate jak-yellow-shot jak-red-shot jak-blue-shot jak-red-shockwave)
+                          penetrate-using)
+                (and (not (focus-test? *target* light))
+                     (not (focus-test? *target* dark))
+                     (logtest? (penetrate generic-attack lunge flop punch spin roll uppercut bonk tube)
+                               penetrate-using))))
+       (let ((amount (rnd-float-range this 0.0 1.0)))
         (set! (-> arg0 y) 0.0)
         (vector-normalize! arg0 (lerp (meters 3.5) (meters 5.3) amount))
         (set! (-> arg0 y) (lerp (meters 4) (meters 6) amount))
         )
+      )
       )
     )
   (none)
@@ -3115,11 +3172,30 @@
           ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
           )
         )
+       ;; Morph-Gun projectiles fired during Dark Jak use the normal enemy hit
+       ;; path so get-damage-from-attack can apply their 25-percent damage.
+       ((darkjak-player-gun-attack? (the-as attack-info (-> arg3 param 1)))
+        ;; Dark Gun projectiles that previously triggered growth retain that
+        ;; effect while also dealing their reduced projectile damage.
+        (when (dp-bipedal-growth-attack? arg3)
+          (let ((scale (fmin 1.95 (+ (-> this root scale x) 0.01))))
+            (set-vector! (-> this root scale) scale scale scale 1.0)
+            )
+          )
+        ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
+        )
        ((dp-bipedal-growth-attack? arg3)
          ;; These attacks remain non-damaging, but each accepted hit increases
-         ;; the Dark Bipedal's uniform scale by 0.1.
-         (let ((scale (+ (-> this root scale x) 0.001)))
+         ;; the Dark Bipedal's uniform scale by 0.01, capped at 1.5 times its
+         ;; stock 1.3 scale.
+         (let ((scale (fmin 1.95 (+ (-> this root scale x) 0.01))))
            (set-vector! (-> this root scale) scale scale scale 1.0)
+           )
+         ;; Direct Dark Jak melee keeps the attack non-damaging, but uses the
+         ;; normal enemy hit path and knocks Dark Jak five meters backward.
+         (when (dp-bipedal-darkjak-melee-attack? arg0 arg3)
+           ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
+           (dp-bipedal-shove-darkjak-back! this arg0)
            )
          )
        ((not (dp-bipedal-gun-dark-3-attack? arg3))

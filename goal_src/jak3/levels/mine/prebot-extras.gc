@@ -1037,30 +1037,49 @@
      )
     (('attack)
      (when (and (-> self vulnerable) (type? arg0 prebot-gun-shot))
-       (let ((a1-12 (new 'stack 'debris-tuning (the-as uint 1))))
-         (set! (-> a1-12 hit-xz-reaction) 0.95)
-         (set! (-> a1-12 hit-y-reaction) 0.6)
-         (vector-copy! (-> a1-12 fountain-rand-transv-lo) (-> self root trans))
-         (+! (-> a1-12 fountain-rand-transv-lo z) 4096.0)
-         (debris-spawn
-           (the-as process-drawable (ppointer->process (-> self parent)))
-           a1-12
-           *prebot-eco-pillar-debris-params*
-           self
+       (let* ((parent (ppointer->process (-> self parent)))
+              (hero-stage-one? (and parent
+                                    (type? parent prebot)
+                                    (= (-> (the-as prebot parent) stage) 1)
+                                    (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                    (logtest? (-> (the-as prebot parent) flags) (prebot-flag pf7))
+                                    )
+                               )
+              )
+         (when hero-stage-one?
+           (+! (-> (the-as prebot parent) num-attacks) 1)
+           )
+         ;; Vanilla pillars still shatter on their first boss projectile.  The
+         ;; Hero Stage 1 pillar shatters only when the fifth impact is received.
+         (when (or (not hero-stage-one?)
+                   (>= (-> (the-as prebot parent) num-attacks) (the-as uint 5))
+                   )
+           (let ((a1-12 (new 'stack 'debris-tuning (the-as uint 1))))
+             (set! (-> a1-12 hit-xz-reaction) 0.95)
+             (set! (-> a1-12 hit-y-reaction) 0.6)
+             (vector-copy! (-> a1-12 fountain-rand-transv-lo) (-> self root trans))
+             (+! (-> a1-12 fountain-rand-transv-lo z) 4096.0)
+             (debris-spawn
+               (the-as process-drawable parent)
+               a1-12
+               *prebot-eco-pillar-debris-params*
+               self
+               )
+             )
+           (sound-play "columns-break" :position (-> self root trans))
+           (cond
+             ((logtest? (-> group-prebot-pillar-shatter flags) (sp-group-flag sp13))
+              (vector-copy! (-> *launch-matrix* trans) (-> self root trans))
+              (part-tracker-spawn part-tracker-subsampler :to *entity-pool* :group group-prebot-pillar-shatter)
+              )
+             (else
+               (vector-copy! (-> *launch-matrix* trans) (-> self root trans))
+               (part-tracker-spawn part-tracker :to *entity-pool* :group group-prebot-pillar-shatter)
+               )
+             )
+           (go-virtual wait-to-die)
            )
          )
-       (sound-play "columns-break" :position (-> self root trans))
-       (cond
-         ((logtest? (-> group-prebot-pillar-shatter flags) (sp-group-flag sp13))
-          (vector-copy! (-> *launch-matrix* trans) (-> self root trans))
-          (part-tracker-spawn part-tracker-subsampler :to *entity-pool* :group group-prebot-pillar-shatter)
-          )
-         (else
-           (vector-copy! (-> *launch-matrix* trans) (-> self root trans))
-           (part-tracker-spawn part-tracker :to *entity-pool* :group group-prebot-pillar-shatter)
-           )
-         )
-       (go-virtual wait-to-die)
        )
      #f
      )

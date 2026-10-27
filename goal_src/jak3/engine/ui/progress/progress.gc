@@ -3246,6 +3246,25 @@
   0
   )
 
+(defun progress-jak-off! ((arg0 progress))
+  ;; Keep this as a repeatable action rather than a persistent toggle.
+  (logclear! (-> *game-info* secrets) (game-secrets gs21))
+  (set! (-> *game-info* mode) 'play)
+  (when (and *target* (not (focus-test? *target* dead teleporting)))
+    (send-event
+      *target*
+      'attack
+      #f
+      (static-attack-info
+        :mask (vehicle-impulse-factor)
+        ((id (new-attack-id)) (damage 2.0) (vehicle-damage-factor 1.0) (vehicle-impulse-factor 1.0) (mode 'death))
+        )
+      )
+    )
+  (set-next-state arg0 'go-away 0)
+  (none)
+  )
+
 (defmethod respond-progress ((this menu-secret-option) (arg0 progress) (arg1 symbol))
   (let ((gp-0 #f))
     (the float (+ (-> *menu-secrets-array* length) -1))
@@ -3290,6 +3309,9 @@
                (set! (-> *game-info* skill) (- (-> *game-info* skill) (the float (-> s3-0 cost))))
                (sound-play "upgrade-buy")
                (set! (-> this buy-menu) #f)
+               (when (= (-> s3-0 secret) (game-secrets gs21))
+                 (progress-jak-off! arg0)
+                 )
                (cond
                  ((= (-> s3-0 secret) (game-secrets hero-mode))
                   (set-next-state arg0 'select-save-hero 0)
@@ -3407,6 +3429,9 @@
                            (logclear (logxor (-> *game-info* secrets) (the-as uint (-> s3-0 secret))) (-> s3-0 mask-secrets))
                            )
                      (sound-play "generic-beep")
+                     (when (= (-> s3-0 secret) (game-secrets gs21))
+                       (progress-jak-off! arg0)
+                       )
                      ;; The Jak 2 model is selected while the player target is
                      ;; created, so reload the current mission after this toggle.
                      (when (= (-> s3-0 secret) (game-secrets jak-is-jak2))

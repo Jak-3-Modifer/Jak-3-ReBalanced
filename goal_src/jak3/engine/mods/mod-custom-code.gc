@@ -1007,29 +1007,30 @@
                    (fmax 0.0 (- *desert-artifact-hud-remaining* (seconds-per-frame))))))))
       (none))
 
-    (defun draw-hero-blueprint-notice! ()
-      ;; Mission rewards can be granted outside Wascity, so keep this notice in
-      ;; the global HUD path instead of the NPC-shop level process.
-      (when (and (> *hero-blueprint-notice* 0.0)
-                 *display*
+    (defun draw-death-counter! ()
+      (when (and *display*
+                 *target*
+                 (logtest? (-> *game-info* secrets) (game-secrets statistics))
+                 (not (focus-test? *target* gun))
                  (not (paused?))
                  (not (movie?)))
-        (let ((font (new 'stack 'font-context *font-default-matrix* 56 300 0.0
-                         (font-color default) (font-flags shadow kerning))))
-          (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
-          (set-width! font 480)
-          (set-height! font 70)
-          (set-scale! font 0.68)
-          (format (clear *temp-string*) "Received Protection I Blueprint")
-          (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
-          (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
-        (set! *hero-blueprint-notice*
-              (fmax 0.0 (- *hero-blueprint-notice* (seconds-per-frame)))))
+        (let ((font (new 'stack 'font-context *font-default-matrix* 500 18 0.0
+                         (font-color default) (font-flags shadow kerning right large))))
+          (set-width! font 150)
+          (set-height! font 28)
+          (set-scale! font 0.45)
+          (format (clear *temp-string*) "Deaths: ~D" (-> *game-info* total-deaths))
+          (print-game-text *temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
+        )
       (none))
 
     (defun runs-every-frame ()
-      (draw-hero-blueprint-notice!)
+      ;; Full armor is standard in Hero Mode, including existing saves. The
+      ;; normal target update supplies its four +2 HP bonuses and model pieces.
+      (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+        (logior! (-> *game-info* features) (game-feature armor0 armor1 armor2 armor3)))
       (draw-desert-artifact-stash!)
+      (draw-death-counter!)
       ;; Bank only after Jak actually enters a safe area, never from preloading.
       (let ((inside (hero-artifact-gameplay-level)))
         (when inside

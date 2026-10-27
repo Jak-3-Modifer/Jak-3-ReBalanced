@@ -193,11 +193,13 @@
   (v-turtle-tuning-copy-applied-to-proposed!)
   (set! *v-turtle-tuning-category* 0)
   (set! *v-turtle-tuning-selection* 0)
+  (set! *v-turtle-tuning-confirm?* #f)
   (set! *v-turtle-tuning-menu-open?* #t)
   (none)
   )
 
 (defun v-turtle-tuning-close! ()
+  (set! *v-turtle-tuning-confirm?* #f)
   (set! *v-turtle-tuning-menu-open?* #f)
   (none)
   )
@@ -241,7 +243,7 @@
   (let ((step (-> *v-turtle-tuning-stock-steps* index)))
     (case index
       ((0) (+ 67108864.0 (* (the float step) 4194304.0)))
-      ((1) (+ 7.0 (* (the float step) 0.5)))
+      ((1) (- 12288.0 (* (the float step) 1024.0)))
       ((2) (+ 28672.0 (* (the float step) 2048.0)))
       ((3) (+ 0.8 (* (the float step) 0.05)))
       ((4) (+ 0.9 (* (the float step) 0.05)))
@@ -249,8 +251,8 @@
       ((6) (+ 0.45 (* (the float step) 0.01)))
       ((7) (+ 0.5 (* (the float step) 0.01)))
       ((8) (+ 0.28 (* (the float step) 0.01)))
-      ((9) (+ 0.5 (* (the float step) 0.05)))
-      (else (+ 2.0 (* (the float step) 0.5))))
+      ((9) (+ 0.1 (* (the float step) 0.025)))
+      (else (+ 2500.0 (* (the float step) 250.0))))
     )
   )
 
@@ -258,7 +260,7 @@
   (let ((step (v-turtle-tuning-step index proposed?)))
     (case index
       ((0) (+ 67108864.0 (* (the float step) 4194304.0)))
-      ((1) (+ 7.0 (* (the float step) 0.5)))
+      ((1) (- 12288.0 (* (the float step) 1024.0)))
       ((2) (+ 28672.0 (* (the float step) 2048.0)))
       ((3) (+ 0.8 (* (the float step) 0.05)))
       ((4) (+ 0.9 (* (the float step) 0.05)))
@@ -266,15 +268,15 @@
       ((6) (+ 0.45 (* (the float step) 0.01)))
       ((7) (+ 0.5 (* (the float step) 0.01)))
       ((8) (+ 0.28 (* (the float step) 0.01)))
-      ((9) (+ 0.5 (* (the float step) 0.05)))
-      (else (+ 2.0 (* (the float step) 0.5))))
+      ((9) (+ 0.1 (* (the float step) 0.025)))
+      (else (+ 2500.0 (* (the float step) 250.0))))
     )
   )
 
 (defun v-turtle-tuning-min-value ((index int))
   (case index
     ((0) 67108864.0)
-    ((1) 7.0)
+    ((1) 4096.0)
     ((2) 28672.0)
     ((3) 0.8)
     ((4) 0.9)
@@ -282,15 +284,15 @@
     ((6) 0.45)
     ((7) 0.5)
     ((8) 0.28)
-    ((9) 0.5)
-    (else 2.0))
+    ((9) 0.1)
+    (else 2500.0))
   )
 
 (defun v-turtle-tuning-max-value ((index int))
   (let ((step (-> *v-turtle-tuning-max-steps* index)))
     (case index
       ((0) (+ 67108864.0 (* (the float step) 4194304.0)))
-      ((1) (+ 7.0 (* (the float step) 0.5)))
+      ((1) 12288.0)
       ((2) (+ 28672.0 (* (the float step) 2048.0)))
       ((3) (+ 0.8 (* (the float step) 0.05)))
       ((4) (+ 0.9 (* (the float step) 0.05)))
@@ -298,8 +300,8 @@
       ((6) (+ 0.45 (* (the float step) 0.01)))
       ((7) (+ 0.5 (* (the float step) 0.01)))
       ((8) (+ 0.28 (* (the float step) 0.01)))
-      ((9) (+ 0.5 (* (the float step) 0.05)))
-      (else (+ 2.0 (* (the float step) 0.5))))
+      ((9) (+ 0.1 (* (the float step) 0.025)))
+      (else (+ 2500.0 (* (the float step) 250.0))))
     )
   )
 
@@ -308,7 +310,19 @@
   )
 
 (defun v-turtle-tuning-final-drive ((this wvehicle) (stock float))
+  stock
+  )
+
+(defun v-turtle-tuning-engine-inertia ((this wvehicle) (stock float))
   (if (v-turtle-tuning-active-for? this) (v-turtle-tuning-value 1 #f) stock)
+  )
+
+(defun v-turtle-tuning-engine-drag ((this wvehicle) (stock float))
+  (if (v-turtle-tuning-active-for? this) (v-turtle-tuning-value 9 #f) stock)
+  )
+
+(defun v-turtle-tuning-powerband ((this wvehicle) (stock float))
+  (if (v-turtle-tuning-active-for? this) (v-turtle-tuning-value 10 #f) stock)
   )
 
 (defun v-turtle-tuning-steering-response ((this wvehicle) (stock float))
@@ -338,13 +352,11 @@
   )
 
 (defun v-turtle-tuning-turbo-strength ((this wvehicle) (stock float))
-  (if (v-turtle-tuning-active-for? this) (v-turtle-tuning-value 9 #f) stock)
+  stock
   )
 
 (defun v-turtle-tuning-turbo-duration ((this wvehicle) (stock uint))
-  (if (v-turtle-tuning-active-for? this)
-      (the uint (+ 600 (* (v-turtle-tuning-step 10 #f) 150)))
-      stock)
+  stock
   )
 
 (defun gila-stomper-fwd-enabled? ((this wvehicle))
@@ -756,17 +768,19 @@
   )
 
 (defmethod wvehicle-method-166 ((this wvehicle) (arg0 float) (arg1 float))
-  (let ((v1-0 (-> this info)))
+  (let* ((v1-0 (-> this info))
+         (engine-drag (v-turtle-tuning-engine-drag this (-> v1-0 engine drag)))
+         (powerband-width (v-turtle-tuning-powerband this (-> v1-0 engine powerband-width-rpm))))
     (* (-> this engine-max-torque)
-       (+ (* (+ 1.0 (-> v1-0 engine drag))
+       (+ (* (+ 1.0 engine-drag)
              (if (< arg0 (-> v1-0 engine max-rpm))
                  1.0
                  0.0
                  )
              (fmax (-> this idle-throttle) arg1)
-             (fmax 0.2 (- 1.0 (square (/ (- arg0 (-> v1-0 engine peak-torque-rpm)) (-> v1-0 engine powerband-width-rpm)))))
+             (fmax 0.2 (- 1.0 (square (/ (- arg0 (-> v1-0 engine peak-torque-rpm)) powerband-width))))
              )
-          (* -1.0 (/ arg0 (-> v1-0 engine peak-torque-rpm)) (-> v1-0 engine drag))
+          (* -1.0 (/ arg0 (-> v1-0 engine peak-torque-rpm)) engine-drag)
           )
        )
     )
@@ -1018,7 +1032,8 @@
         ((cpad-pressed? 0 right)
          (set! *gila-stomper-fwd?* #t)
          )
-        ((cpad-pressed? 0 left)
+        ((and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+              (cpad-pressed? 0 left))
          (set! *gila-stomper-fwd?* #f)
          )
         )
@@ -1592,7 +1607,10 @@
   (if (and (cpad-hold? 0 r1) (-> *setting-control* user-current gun))
       (logior! (-> arg0 flags) (vehicle-controls-flag vcf1))
       )
-  (if (and (cpad-hold? 0 r2) (-> *setting-control* user-current turbo))
+  (if (and (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (cpad-hold? 0 left)
+               (cpad-hold? 0 r2))
+           (-> *setting-control* user-current turbo))
       (logior! (-> arg0 flags) (vehicle-controls-flag vcf2))
       )
   ;; Manual transmission controls. Index 0 remains reverse; forward gears are
@@ -1645,6 +1663,10 @@
       (set! (-> this cam-view) 1)
       )
   (cond
+    ((and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+          (cpad-hold? 0 r2))
+     (set! (-> this cam-view) 1)
+     )
     ((and (not (tough-puppy-manual-gears-active? this)) (cpad-hold? 0 l2))
      (let ((f30-0 (analog-input (the-as int (-> *cpad-list* cpads 0 rightx)) 128.0 48.0 110.0 -1.0))
            (f0-8 (analog-input (the-as int (-> *cpad-list* cpads 0 righty)) 128.0 48.0 110.0 -1.0))

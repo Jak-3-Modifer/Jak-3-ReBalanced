@@ -1243,6 +1243,16 @@
     )
   )
 
+;; Statue 3 permits five Jet Board mounts and the final statue permits one,
+;; each lasting at most six seconds.  Globals preserve the fixed runtime
+;; layouts of the existing mission manager and HUD.
+(define *forest-ring-chase-three-board-active?* #f)
+(define *forest-ring-chase-three-board-uses-left* 5)
+(define *forest-ring-chase-three-board-use-start-time* 0)
+(define *forest-ring-chase-three-board-was-active?* #f)
+(define *forest-ring-chase-three-board-dismount-requested?* #f)
+(define *forest-ring-chase-board-limit-statue* -1)
+
 (deftype hud-forest-ring-chase (hud)
   ()
   )
@@ -1252,6 +1262,21 @@
   (set-hud-piece-position! (-> this sprites 0) (the int (+ 462.0 (* 130.0 (-> this offset)))) 150)
   (format (clear (-> this strings 0 text)) "~D" (-> this values 0 current))
   (set-as-offset-from! (the-as hud-sprite (-> this strings 0 pos)) (-> this sprites 0 pos) 5 55)
+  (if *forest-ring-chase-three-board-active?*
+      (begin
+        (set-hud-piece-position! (-> this sprites 1) (the int (+ 462.0 (* 130.0 (-> this offset)))) 235)
+        (set! (-> this sprites 1 scale-x) 1.0)
+        (set! (-> this sprites 1 scale-y) 1.0)
+        (set! (-> this strings 1 scale) 1.0)
+        (format (clear (-> this strings 1 text)) "~D" *forest-ring-chase-three-board-uses-left*)
+        (set-as-offset-from! (the-as hud-sprite (-> this strings 1 pos)) (-> this sprites 1 pos) 5 55)
+        )
+      (begin
+        (set! (-> this sprites 1 scale-x) 0.0)
+        (set! (-> this sprites 1 scale-y) 0.0)
+        (set! (-> this strings 1 scale) 0.0)
+        )
+      )
   ((method-of-type hud draw) this)
   0
   (none)
@@ -1274,9 +1299,17 @@
   (set! (-> this sprites 0 flags) (hud-sprite-flags hsf2))
   (set! (-> this sprites 0 scale-x) 1.0)
   (set! (-> this sprites 0 scale-y) 1.0)
+  ;; This is the same Jet Board artwork used by High Scores icon array #x35.
+  (set! (-> this sprites 1 tid) (the-as texture-id (get-texture inv-items-jetboard-01 progress-minimap2)))
+  (set! (-> this sprites 1 flags) (hud-sprite-flags hsf2))
+  (set! (-> this sprites 1 scale-x) 0.0)
+  (set! (-> this sprites 1 scale-y) 0.0)
   (alloc-string-if-needed this 0)
   (set! (-> this strings 0 scale) 1.0)
   (set! (-> this strings 0 flags) (font-flags kerning middle large))
+  (alloc-string-if-needed this 1)
+  (set! (-> this strings 1 scale) 0.0)
+  (set! (-> this strings 1 flags) (font-flags kerning middle large))
   0
   (none)
   )
@@ -2008,6 +2041,12 @@
                     )
            (set-time! *forest-ring-chase-one-freeze-start-time*)
            )
+         ;; Statue 4 uses one continuous timer and awards one second per ring.
+         (when (and (= (-> this current-statue) 3)
+                    (logtest? (-> this info mask) (task-manager-mask time-limit))
+                    )
+           (+! (-> this time-limit) (seconds 1))
+           )
          (cond
            ((= (-> this current-ring) (-> this actor-group (+ (-> this current-statue) 2) length))
             (if (< (-> this current-statue) (the-as uint (-> this actor-group 1 length)))
@@ -2046,9 +2085,11 @@
              )
              (set! (-> this found-ring?) #f)
              (when (logtest? (-> this info mask) (task-manager-mask time-limit))
-               ;; Later statue challenges retain their individual ring timers.
-               ;; Ring Chase 1 keeps its one continuous timer.
-               (when (not (zero? (-> this current-statue)))
+               ;; Ring Chases 1 and 4 keep one continuous timer.  The other
+               ;; statue challenges retain their individual ring timers.
+               (when (and (not (zero? (-> this current-statue)))
+                          (!= (-> this current-statue) 3)
+                          )
                  (set-time! (-> this start-time))
                  (set! (-> this time-limit)
                        (the-as time-frame (the int (* 300.0 (-> *for-ring-times* (-> this current-statue) (-> this current-ring)))))
@@ -2140,6 +2181,60 @@
                )
       (go-fail this)
       )
+    ;; Statues 3 and 5 are limited Jet Board challenges.  Count a use only
+    ;; when Jak newly enters board mode, then request the board's normal
+    ;; dismount after six seconds.  Statue 3 allows five uses; Statue 5 one.
+    (set! *forest-ring-chase-three-board-active?*
+          (if (and (or (= (-> this current-statue) 2) (= (-> this current-statue) 4))
+                   (or (and (nonzero? (-> this found-ring?)) (-> this found-ring?))
+                       (and (nonzero? (-> this ring-finder)) (handle->process (-> this ring-finder)))
+                       )
+                   )
+              #t
+              #f
+              )
+          )
+    (if *forest-ring-chase-three-board-active?*
+        (begin
+          (when (!= *forest-ring-chase-board-limit-statue* (the-as int (-> this current-statue)))
+            (set! *forest-ring-chase-board-limit-statue* (the-as int (-> this current-statue)))
+            (set! *forest-ring-chase-three-board-uses-left* (if (= (-> this current-statue) 2) 5 1))
+            (set! *forest-ring-chase-three-board-use-start-time* 0)
+            (set! *forest-ring-chase-three-board-was-active?* #f)
+            (set! *forest-ring-chase-three-board-dismount-requested?* #f)
+            )
+          (if (and *target* (focus-test? *target* board))
+            (begin
+              (when (not *forest-ring-chase-three-board-was-active?*)
+                (if (zero? *forest-ring-chase-three-board-uses-left*)
+                    (go-fail this)
+                    (begin
+                      (-! *forest-ring-chase-three-board-uses-left* 1)
+                      (set-time! *forest-ring-chase-three-board-use-start-time*)
+                      (set! *forest-ring-chase-three-board-dismount-requested?* #f)
+                      )
+                    )
+                )
+              (set! *forest-ring-chase-three-board-was-active?* #t)
+              (when (and (not *forest-ring-chase-three-board-dismount-requested?*)
+                         (time-elapsed? *forest-ring-chase-three-board-use-start-time* (seconds 6)))
+                (send-event *target* 'change-mode 'normal)
+                (set! *forest-ring-chase-three-board-dismount-requested?* #t)
+                )
+              )
+            (begin
+              (set! *forest-ring-chase-three-board-was-active?* #f)
+              (set! *forest-ring-chase-three-board-use-start-time* 0)
+              (set! *forest-ring-chase-three-board-dismount-requested?* #f)
+              )
+            )
+          )
+        (begin
+          (set! *forest-ring-chase-three-board-was-active?* #f)
+          (set! *forest-ring-chase-three-board-use-start-time* 0)
+          (set! *forest-ring-chase-three-board-dismount-requested?* #f)
+          )
+        )
     (when (and (-> this ring-manager-entity)
                (< (-> this current-statue) (the-as uint (-> this actor-group 0 length)))
                (< (-> this current-ring) (the-as uint (-> this actor-group (+ (-> this current-statue) 2) length)))
@@ -2296,11 +2391,20 @@
               (when (not (logtest? (-> this info mask) (task-manager-mask time-limit)))
                 (set-time! (-> this start-time))
                 (set! (-> this time-limit)
-                       (if (zero? (-> this current-statue))
-                           (the-as time-frame (seconds 9))
-                           (the-as time-frame (the int (* 300.0 (-> *for-ring-times* (-> this current-statue) (-> this current-ring)))))
-                           )
-                       )
+                      (cond
+                        ((zero? (-> this current-statue))
+                         (the-as time-frame (seconds 9))
+                         )
+                        ((= (-> this current-statue) 3)
+                         (the-as time-frame (seconds 30))
+                         )
+                        (else
+                          (the-as time-frame
+                                  (the int (* 300.0 (-> *for-ring-times* (-> this current-statue) (-> this current-ring))))
+                                  )
+                          )
+                        )
+                      )
                  (logior! (-> this info mask) (task-manager-mask time-limit))
                  )
                (set! (-> this ring-finder)
@@ -2459,6 +2563,12 @@
   (set! (-> this found-ring?) #f)
   (set! (-> this cam-timer-set?) #f)
   (set! *forest-ring-chase-one-freeze-start-time* 0)
+  (set! *forest-ring-chase-three-board-active?* #f)
+  (set! *forest-ring-chase-three-board-uses-left* 5)
+  (set! *forest-ring-chase-three-board-use-start-time* 0)
+  (set! *forest-ring-chase-three-board-was-active?* #f)
+  (set! *forest-ring-chase-three-board-dismount-requested?* #f)
+  (set! *forest-ring-chase-board-limit-statue* -1)
   (logclear! (-> this info mask) (task-manager-mask time-limit))
   (set! *for-statue-played-hint?* (the-as object #f))
   (none)

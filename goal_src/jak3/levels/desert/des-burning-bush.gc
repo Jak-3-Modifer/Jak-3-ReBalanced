@@ -1,6 +1,11 @@
 ;;-*-Lisp-*-
 (in-package goal)
 
+(define-extern hero-wascity-npc-shop-start (function none))
+;; Handles need 64-bit storage; a symbol value truncates the process ID.
+(define *hero-bush-22-trader-reported* (new 'static 'array handle 1))
+(set! (-> *hero-bush-22-trader-reported* 0) (the-as handle #f))
+
 ;; name: des-burning-bush.gc
 ;; name in dgo: des-burning-bush
 ;; dgos: CTA, WASALL
@@ -242,6 +247,23 @@
           )
         )
       (cond
+        ((and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+              (= (-> self task actor) (game-task-actor burning-bush-wasb-2))
+              (= (-> self entity) (entity-by-name "des-burning-bush-22"))
+              (task-node-closed? (game-task-node wascity-bbush-get-to-23-resolution)))
+         ;; The completed Wascity bush becomes the sole Hero Mode trader.
+         ;; Its original task action is deliberately ignored in this state.
+         (set! s5-0 #t)
+         (setup-masks (-> self draw) 4 2)
+         (when (= (level-status? *level* 'waswide #f) 'active)
+           (hero-wascity-npc-shop-start))
+         (when (!= (-> *hero-bush-22-trader-reported* 0) (process->handle self))
+           (set! (-> *hero-bush-22-trader-reported* 0) (process->handle self))
+           (format #t "[bush-22-trade] active: ~A actor=~D resolution-23 closed; menu manager=~A~%"
+                   (-> self name) (-> self task actor)
+                   (process-by-name "hero-wascity-npc-shop" *active-pool*)))
+         ;; Trading input now belongs to the manager's coordinate areas.
+         )
         (#f
           (set! s5-0 #t)
           )
@@ -382,24 +404,6 @@
         (suspend)
         )
       )
-    (if (= (-> self task current-node) (game-task-node desert-bbush-custom-orbs-introduction))
-        (begin
-          ;; Keep the existing collect-gems state active while the Oracle
-          ;; recording plays. This avoids changing the burning bush type's
-          ;; state-method layout and keeps the mission node from advancing.
-          (add-setting! 'music-volume 'rel (-> *setting-control* user-current music-volume-movie) 0)
-          (set-time! (-> self state-time))
-          (when (play-sound-file
-                  "sfx/orcale.flac"
-                  (the int (* 100.0 (-> *setting-control* user-current dialog-volume)))
-                  )
-            (until (time-elapsed? (-> self state-time) (seconds 17.25))
-              (suspend)
-              )
-            )
-          (remove-setting! 'music-volume)
-          )
-        )
     (des-burning-bush-method-36 self)
     )
   :post (behavior ()
@@ -462,33 +466,46 @@
     (add-setting! 'sfx-volume 'rel (-> *setting-control* user-current sfx-volume-movie) 0)
     (add-setting! 'dialog-volume 'rel (-> *setting-control* user-current dialog-volume-talker) 0)
     (set-time! (-> self state-time))
-    (let* ((v1-21 (get-current-task-event (-> self task)))
-           (gp-0 (add-process *gui-control* self (gui-channel bbush) (gui-action play) (-> v1-21 scene) -99.0 0))
-           )
-      (let ((s5-0 (current-time)))
-        (while (and (nonzero? (get-status *gui-control* gp-0)) (not (time-elapsed? s5-0 (seconds 60))))
-          (set! (-> self time) (* 0.0033333334 (the float (- (current-time) (-> self state-time)))))
-          (suspend)
-          (when (cpad-pressed? 0 triangle)
-            (logclear! (-> *cpad-list* cpads 0 button0-abs 0) (pad-buttons triangle))
-            (logclear! (-> *cpad-list* cpads 0 button0-rel 0) (pad-buttons triangle))
-            (sound-play "inter-burn-bush")
-            (goto cfg-13)
+    (if (= (-> self task current-node) (game-task-node desert-bbush-custom-orbs-introduction))
+        ;; Play the Oracle introduction while the normal Burning Bush camera
+        ;; pans. The file volume remains tied to the speech setting at 50%.
+        (when (play-sound-file
+                "sfx/orcale.flac"
+                (the int (* 30.0 (-> *setting-control* user-current dialog-volume)))
+                )
+          (until (time-elapsed? (-> self state-time) (seconds 17.25))
+            (set! (-> self time) (* 0.0033333334 (the float (- (current-time) (-> self state-time)))))
+            (suspend)
+            )
+          )
+        (let* ((v1-21 (get-current-task-event (-> self task)))
+               (gp-0 (add-process *gui-control* self (gui-channel bbush) (gui-action play) (-> v1-21 scene) -99.0 0))
+               )
+          (let ((s5-0 (current-time)))
+            (while (and (nonzero? (get-status *gui-control* gp-0)) (not (time-elapsed? s5-0 (seconds 60))))
+              (set! (-> self time) (* 0.0033333334 (the float (- (current-time) (-> self state-time)))))
+              (suspend)
+              (when (cpad-pressed? 0 triangle)
+                (logclear! (-> *cpad-list* cpads 0 button0-abs 0) (pad-buttons triangle))
+                (logclear! (-> *cpad-list* cpads 0 button0-rel 0) (pad-buttons triangle))
+                (sound-play "inter-burn-bush")
+                (goto cfg-13)
+                )
+              )
+            )
+          (label cfg-13)
+          (set-action!
+            *gui-control*
+            (gui-action stop)
+            gp-0
+            (gui-channel none)
+            (gui-action none)
+            (the-as string #f)
+            (the-as (function gui-connection symbol) #f)
+            (the-as process #f)
             )
           )
         )
-      (label cfg-13)
-      (set-action!
-        *gui-control*
-        (gui-action stop)
-        gp-0
-        (gui-channel none)
-        (gui-action none)
-        (the-as string #f)
-        (the-as (function gui-connection symbol) #f)
-        (the-as process #f)
-        )
-      )
     (until (process-release? *target*)
       (suspend)
       )
@@ -841,6 +858,31 @@
              (f0-4 (+ f28-0 (* (+ -1.0 (the-as float v1-10)) f30-0)))
              )
         (cond
+          ((or (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                    (= (-> this task actor) (game-task-actor burning-bush-wasb-2))
+                    (= (-> this entity) (entity-by-name "des-burning-bush-22"))
+                    (task-node-closed? (game-task-node wascity-bbush-get-to-23-resolution)))
+               (and (= (-> this task actor) (game-task-actor burning-bush-desc-2))
+                    (= (-> this entity) (entity-by-name "des-burning-bush-6"))
+                    (not (task-node-closed? (game-task-node desert-bbush-custom-orbs-resolution)))
+                    (or (task-node-open? (game-task-node desert-bbush-custom-orbs-introduction))
+                        (task-node-open? (game-task-node desert-bbush-custom-orbs-resolution)))))
+           ;; These entities use the desert eye glow, not the Wascity hologram.
+           ;; Restore the shared colors immediately after launching their eyes.
+           (let ((r (get-field-spec-by-id (-> *part-id-table* 1584) (sp-field-id spt-r)))
+                 (g (get-field-spec-by-id (-> *part-id-table* 1584) (sp-field-id spt-g)))
+                 (b (get-field-spec-by-id (-> *part-id-table* 1584) (sp-field-id spt-b))))
+             (let ((old-r (-> r initial-valuef))
+                   (old-g (-> g initial-valuef))
+                   (old-b (-> b initial-valuef)))
+               (set! (-> r initial-valuef) 64.0)
+               (set! (-> g initial-valuef) 255.0)
+               (set! (-> b initial-valuef) 64.0)
+               (spawn-from-cspace (-> this part-off) (-> this node-list data 4))
+               (spawn-from-cspace (-> this part-off) (-> this node-list data 5))
+               (set! (-> r initial-valuef) old-r)
+               (set! (-> g initial-valuef) old-g)
+               (set! (-> b initial-valuef) old-b))))
           ((or (= (-> s5-0 action) (game-task-action play))
                (= (-> s5-0 action) (game-task-action show))
                (= (-> s5-0 action) (game-task-action menu))

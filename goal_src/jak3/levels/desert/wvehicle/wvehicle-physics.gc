@@ -463,7 +463,7 @@
             )
         )
       )
-    (let* ((f0-71 (-> this info engine inertia))
+    (let* ((f0-71 (v-turtle-tuning-engine-inertia this (-> this info engine inertia)))
            (f1-59 (-> this clutch-grab))
            (f2-29 (-> this clutch-inertia))
            (f3-12 (-> this gear-ratio))

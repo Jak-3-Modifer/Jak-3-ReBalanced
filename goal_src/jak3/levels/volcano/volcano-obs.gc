@@ -529,15 +529,19 @@
   ()
   )
 
-
 (defmethod apply-gravity ((this vol-balance-plat-chain-physics) (arg0 vector) (arg1 int) (arg2 process-drawable))
   (with-pp
     (vector-float*!
       arg0
       (-> this gravity)
-      (* 4096.0 (-> pp clock time-adjust-ratio) (lerp-scale 0.01 0.1 (the float arg1) 0.0 8.0))
+      (* 4096.0 (-> pp clock time-adjust-ratio) (lerp-scale 0.03 0.14 (the float arg1) 0.0 8.0))
       )
-    (vector+float*! arg0 arg0 (the-as vector (+ (the-as uint (-> this chain-joints 0 velocity)) (* arg1 64))) 0.2)
+    (vector+float*!
+      arg0
+      arg0
+      (the-as vector (+ (the-as uint (-> this chain-joints 0 velocity)) (* arg1 64)))
+      (lerp-scale 0.15 0.35 (the float arg1) 0.0 8.0)
+      )
     0
     (none)
     )
@@ -547,14 +551,16 @@
   (vector-float*!
     arg0
     (the-as vector (+ (the-as uint (-> this chain-joints 0 velocity)) (* (+ arg1 1) 64)))
-    0.4
+    (lerp-scale 0.35 0.7 (the float arg1) 0.0 8.0)
     )
   0
   (none)
   )
 
 (defmethod chain-physics-method-16 ((this vol-balance-plat-chain-physics) (arg0 int))
-  1820.4445
+  ;; Preserve a fairly controlled upper chain while allowing the lower links
+  ;; to bend and lag visibly behind the platform.
+  (lerp-scale 2730.6667 8192.0 (the float arg0) 0.0 8.0)
   )
 
 (defmethod gravity-update ((this vol-balance-plat-chain-physics) (arg0 process-drawable))
@@ -576,6 +582,8 @@
    (rope-initialized  symbol)
    )
   )
+
+(define *vol-balance-plat-rider-tilt-scale* 5.0)
 
 
 (defskelgroup skel-vol-balance-plat vol-balance-plat vol-balance-plat-lod0-jg vol-balance-plat-idle-ja
@@ -620,15 +628,30 @@
 
 (defmethod rigid-body-object-method-53 ((this vol-balance-plat) (arg0 float))
   (when (logtest? (-> this flags) (rigid-body-object-flag player-impulse-force player-contact-force))
-    (when (logtest? (-> this flags) (rigid-body-object-flag player-impulse-force))
-      (logclear! (-> this flags) (rigid-body-object-flag player-impulse-force))
-      (vector-float*! (-> this player-force) (-> this player-force) (/ 1.0 arg0))
-      )
-    (apply-impact! (-> this rbody) (-> this player-force-position) (-> this player-force))
-    (apply-impact!
-      (-> this rbody)
-      (-> this init-pos)
-      (vector-normalize-copy! (new 'stack-no-clear 'vector) *y-vector* (vector-length (-> this player-force)))
+    (let ((force-scale
+            (if (logtest? (-> this flags) (rigid-body-object-flag player-impulse-force))
+                1.0
+                *vol-balance-plat-rider-tilt-scale*
+                )
+            )
+          (rider-force (new-stack-vector0))
+          (suspension-pivot (new-stack-vector0))
+          )
+      (when (logtest? (-> this flags) (rigid-body-object-flag player-impulse-force))
+        (logclear! (-> this flags) (rigid-body-object-flag player-impulse-force))
+        (vector-float*! (-> this player-force) (-> this player-force) (/ 1.0 arg0))
+        )
+      (vector-float*! rider-force (-> this player-force) force-scale)
+      (apply-impact! (-> this rbody) (-> this player-force-position) rider-force)
+      ;; Joint 12 is the platform's existing lower suspension/collision point.
+      ;; Applying the matching force there keeps rider weight from translating
+      ;; the platform while giving edge landings a larger, pivoted pitch/roll.
+      (vector<-cspace! suspension-pivot (-> this node-list data 12))
+      (apply-impact!
+        (-> this rbody)
+        suspension-pivot
+        (vector-normalize-copy! (new 'stack-no-clear 'vector) *y-vector* (vector-length rider-force))
+        )
       )
     )
   0
@@ -660,7 +683,7 @@
   (let ((a0-5 (-> this init-pos)))
     (set-vector! (new 'stack-no-clear 'vector) (-> a0-5 x) (+ 163840.0 (-> a0-5 y)) (-> a0-5 z) 1.0)
     )
-  (let* ((f0-7 4.0)
+  (let* ((f0-7 2.5)
          (s4-0 (-> this node-list data 12))
          (f30-0 (sin (* 65536.0 (/ (the float (mod (current-time) (the int (* 300.0 f0-7)))) (* 300.0 f0-7)))))
          (s2-0 (new 'stack-no-clear 'vector))

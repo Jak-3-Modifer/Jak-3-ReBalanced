@@ -7,6 +7,28 @@
 
 (define-extern *was-squad-control-artifact-race-1?* symbol)
 
+(define *hero-artifact-race-1-ocean-rise-start* (the-as time-frame 0))
+
+(defun update-hero-artifact-race-1-ocean! ()
+  (when (nonzero? *hero-artifact-race-1-ocean-rise-start*)
+    (let ((progress (fmin
+                      1.0
+                      (/ (the float (- (current-time) *hero-artifact-race-1-ocean-rise-start*))
+                         (the float (seconds 44.5))
+                         )
+                      )
+                    )
+                  )
+      (let ((ocean-height (+ 49152.0 (* (- 135168.0 49152.0) progress))))
+        (set! (-> (lookup-level-info 'desert) ocean-height) ocean-height)
+        (when *ocean-map*
+          (set-height! *ocean-map* ocean-height))
+        )
+      )
+    )
+  (none)
+  )
+
 ;; +++artifact-type
 (defenum artifact-type
   :type uint8
@@ -119,9 +141,11 @@
       (set! (-> s5-0 w) 4096.0)
       (when (focus-test? v1-0 pilot)
         (let ((a1-4 (handle->process (-> v1-0 pilot vehicle))))
-          (vector-copy!
-            s5-0
-            (-> (the-as collide-shape (-> (the-as process-drawable a1-4) root)) root-prim prim-core world-sphere)
+          (when a1-4
+            (vector-copy!
+              s5-0
+              (-> (the-as collide-shape (-> (the-as process-drawable a1-4) root)) root-prim prim-core world-sphere)
+              )
             )
           )
         )
@@ -357,6 +381,30 @@
     (speech-callback0 (_type_ int) none)
     (speech-callback1 (_type_ int) none)
     )
+  )
+
+(defun reset-hero-artifact-race-1-ocean! ()
+  (set! *hero-artifact-race-1-ocean-rise-start* (the-as time-frame 0))
+  (set! (-> (lookup-level-info 'desert) ocean-height) 49152.0)
+  (when *ocean-map*
+    (set-height! *ocean-map* 49152.0))
+  (none)
+  )
+
+(defun restore-free-roam-desert-ocean! ()
+  (set! *hero-artifact-race-1-ocean-rise-start* (the-as time-frame 0))
+  (set! (-> (lookup-level-info 'desert) ocean-height) 36864.0)
+  (when *ocean-map*
+    (set-height! *ocean-map* 36864.0))
+  (none)
+  )
+
+(defun update-hero-artifact-race-1-rain! ((intensity float))
+  ;; the rain used here is for effect to make the ocean rise more dramatic, and scare the player to clench their buttcheeks
+  (let ((camera-motion (new 'stack-no-clear 'vector)))
+    (set! (-> camera-motion quad) (the-as uint128 0))
+    (update-rain intensity (-> *math-camera* trans) camera-motion))
+  (none)
   )
 
 
@@ -782,6 +830,7 @@
   (set! (-> this dust-end) 0.6)
   (set! (-> this slave) (the-as handle #f))
   (set! (-> this second-last-reward-given?) #f)
+  (set! (-> this intro-time) 0)
   (set! (-> this hit-point-scale) 1.0)
   (set! (-> this start-time) 0)
   (set! (-> this time-limit) (seconds 180))
@@ -861,7 +910,7 @@
                                      ((= s4-0 1) 6.0)
                                      ((= s4-0 2) 13.0)
                                      ((= s4-0 3) 8.0)
-                                     ((= s4-0 4) 8.0)
+                                     ((= s4-0 4) 9.0)
                                      ((= s4-0 5) 14.0)
                                      ((= s4-0 6) 14.0)
                                      ((= s4-0 7) 8.0)
@@ -911,6 +960,9 @@
 (defmethod task-manager-method-25 ((this task-manager-desert-artifact-race))
   (set! (-> *was-squad-control* target-count) 0)
   (set! *was-squad-control-artifact-race-1?* #f)
+  (when (and (= (-> this node-info task) (game-task desert-artifact-race-1))
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+    (restore-free-roam-desert-ocean!))
   0
   ((method-of-type task-manager task-manager-method-25) this)
   (none)
@@ -926,7 +978,41 @@
   (let ((t9-0 (method-of-type task-manager task-manager-method-26)))
     (t9-0 this)
     )
-  (hud-timer-handler this)
+  (when (and (= (-> this node-info task) (game-task desert-artifact-race-1))
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (>= (-> this count) 8))
+    ;; Once the final artifact process is gone, increase particle emission for
+    ;; heavy rain during the return to the finish. The final artifact remains
+    ;; at the normal rain intensity while it is still waiting to be collected.
+    (update-hero-artifact-race-1-rain!
+      (if (and (>= (-> this count) (-> this max-count))
+               (not (handle->process (-> this slave))))
+          2.5
+          1.0)))
+  ;; Hero Mode Artifact Race 1 has no time limit after the final artifact.
+  ;; Keep every collectible timer, and all Normal Mode behavior, unchanged.
+  (unless (and (= (-> this node-info task) (game-task desert-artifact-race-1))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (>= (-> this count) (-> this max-count)))
+    (hud-timer-handler this))
+  (when (and (= (-> this node-info task) (game-task desert-artifact-race-1))
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (nonzero? (-> this intro-time)))
+    (cond
+      ((cpad-pressed? 0 left)
+       (set! (-> this intro-time) 0))
+      ((time-elapsed? (-> this intro-time) (seconds 1))
+       (let ((font-ctx
+               (new 'stack 'font-context *font-default-matrix* 46 285 0.0 (font-color orange) (font-flags shadow kerning))))
+         (set-scale! font-ctx 0.65)
+         (set-width! font-ctx 420)
+         (set-height! font-ctx 60)
+         (set! (-> font-ctx flags) (font-flags shadow kerning middle middle-vert large))
+         (format
+           (clear *temp-string*)
+           "Press ~Y~3L<PAD_PART_DPAD_L>~Z~22L~+17H~-13V<PAD_PART_DPAD_U>~Z~22L~+17H~+14V<PAD_PART_DPAD_D>~Z~22L~+32H<PAD_PART_DPAD_R>~Z~+56H to boost.")
+         (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+         (print-game-text *pc-encoded-temp-string* font-ctx #f 44 (bucket-id hud-draw-hud-alpha))))))
   0
   (none)
   )
@@ -962,6 +1048,10 @@
       )
     (set-setting! 'airlock #f 0.0 0)
     (set! (-> self count) 0)
+    (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (reset-hero-artifact-race-1-ocean!)
+      (set-time! (-> self intro-time)))
     (set-time! (-> self start-time))
     (set-time! (-> self speech-time))
     (was-squad-manager-start self)
@@ -973,6 +1063,9 @@
             (= (-> self node-info task) (game-task desert-artifact-race-1)))
       )
     (until #f
+      (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+        (update-hero-artifact-race-1-ocean!))
       (b! (not (handle->process (-> self slave))) cfg-56 :delay (nop!))
       (if (< (- (-> self time-limit) (- (current-time) (-> self start-time))) (seconds 10))
           (send-event (handle->process (-> self slave)) 'sink)
@@ -992,6 +1085,11 @@
           (give *game-info* 'skill 1.0 (the-as handle #f))
           (set! (-> self second-last-reward-given?) #t)
           )
+        (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+                   (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (= gp-2 10)
+                   (zero? *hero-artifact-race-1-ocean-rise-start*))
+          (set-time! *hero-artifact-race-1-ocean-rise-start*))
         (let ((s5-1 (-> self objs gp-2)))
           (let ((a0-40 (was-artifact-spawn self s5-1)))
             (b! (not a0-40) cfg-65 :delay (empty-form))
@@ -1029,6 +1127,11 @@
     (label cfg-68)
     (open! (-> self node-info) 'event)
     (remove-setting! 'airlock)
+    (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (let ((timer (handle->process (-> self hud-timer))))
+        (when timer
+          (send-event timer 'hide-and-die))))
     (let ((gp-3 (new 'stack-no-clear 'inline-array 'task-arrow-params 1)))
       (vector-copy! (-> gp-3 0 pos) (-> self end-pos))
       (quaternion-identity! (-> gp-3 0 quat))
@@ -1046,6 +1149,9 @@
     (set-time! (-> self speech-time))
     ((-> self speech-callback) self (+ (-> self max-count) -1))
     (until #f
+      (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+        (update-hero-artifact-race-1-ocean!))
       (let ((f0-14 (/ (the float (- (current-time) (-> self start-time))) (the float (-> self time-limit)))))
         (set-fog-interp
           self
@@ -1143,6 +1249,9 @@
   :enter (behavior ((arg0 resetter-params))
     (set! (-> *was-squad-control* target-count) 0)
     (set! *was-squad-control-artifact-race-1?* #f)
+    (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (restore-free-roam-desert-ocean!))
     0
     (kill-all-children self)
     (let* ((t9-1 find-parent-method)
