@@ -404,6 +404,9 @@
                         )
                       (cond
                         ((logtest? (-> *menu-secrets-array* s1-5 flags) (secret-item-option-flags sf0))
+                         (when (or (= sv-208 (text-id text-0043))
+                                   (= sv-208 (text-id text-0042)))
+                           (+! (-> arg1 origin y) 8.0))
                          (set! (-> arg1 origin x) (+ 10.0 (adjust-x-if-needed (-> s3-3 x))))
                          (set! (-> arg1 width) f28-1)
                          (set-color! arg1 (font-color font-color-34))

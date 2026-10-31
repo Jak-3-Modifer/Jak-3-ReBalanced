@@ -35,6 +35,30 @@
 (define *hero-arena-2-platform-3-phase* 0)
 (define *hero-arena-2-platform-4-phase* 0)
 
+(defun hero-arena-2-roll-crate-pickup! ((arg0 fact-info))
+  "Choose Hero Mode Arena Fight 2 crate contents: 60% ammo, 30% Dark Eco, 10% one Light Eco pill."
+  (let ((roll (rand-vu-int-count 100)))
+    (cond
+      ((< roll 60)
+       (set! (-> arg0 pickup-type) (pickup-type ammo-random))
+       )
+      ((< roll 90)
+       (set! (-> arg0 pickup-type) (pickup-type eco-pill-dark))
+       ;; Group the entire crate reward into one physical Dark Eco pill.
+       (set! (-> arg0 pickup-spawn-amount) (-> arg0 pickup-amount))
+       (logior! (-> arg0 options) (actor-option dont-override-fact))
+       )
+      (else
+       (set! (-> arg0 pickup-type) (pickup-type eco-pill-light))
+       (set! (-> arg0 pickup-amount) 1.0)
+       (set! (-> arg0 pickup-spawn-amount) 1.0)
+       (logior! (-> arg0 options) (actor-option dont-override-fact))
+       )
+      )
+    )
+  (none)
+  )
+
 (deftype task-manager-throne-rog (task-manager)
   ((arrow-h  handle)
    )
@@ -147,7 +171,10 @@
     (cond
       ((and (task-node-open? (game-task-node arena-fight-2-fight))
             (not (task-node-closed? (game-task-node arena-fight-2-fight))))
-       (set! (-> s4-0 pickup-type) (pickup-type eco-pill-dark))
+       (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (hero-arena-2-roll-crate-pickup! s4-0)
+           (set! (-> s4-0 pickup-type) (pickup-type eco-pill-dark))
+           )
        )
       ((and (task-node-open? (game-task-node arena-fight-3-fight))
             (not (task-node-closed? (game-task-node arena-fight-3-fight))))
@@ -2750,6 +2777,24 @@
          )
        )
      )
+    ;; Punch, spin, uppercut, and flop may be used for movement in the
+    ;; restricted Hero Mode challenges, but connecting with a Marauder fails.
+    ;; Challenge 3 deliberately permits melee and Challenge 4 permits all
+    ;; attacks, so preserve those existing rules.
+    ((and (= arg2 'arena-2-player-hit)
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+          (< *hero-arena-2-challenge* 2)
+          (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+     (let ((source (if (> arg1 0) (the-as symbol (-> arg3 param 0)) #f)))
+       (when (= source 'arena-melee)
+         (format #t
+                 "[Arena 2 Debug] FAIL prohibited melee contact: challenge=~D source=~A~%"
+                 *hero-arena-2-challenge*
+                 source)
+         (go-fail this)
+         )
+       )
+     )
     ;; Preserve Normal Mode's existing direct-hit failure behavior. Hero Mode
     ;; uses hit-time in Challenge 4 so fully blocked hits do not cause failure.
     ((and (= arg2 'notify)
@@ -2803,6 +2848,11 @@
       )
     ;; Fight 2 uses a raised target for a stable high-angle arena view.
     (set-setting! 'target-height 'abs (meters 4.5) 0)
+    (when (and (= (-> self node-info task) (game-task arena-fight-2))
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (set-setting! 'string-min-length 'abs (meters 15.0) 0)
+      (set-setting! 'string-max-length 'abs (meters 22.5) 0)
+      )
     )
   )
 
@@ -3078,8 +3128,12 @@
                                (not (logtest? penetrate-using (penetrate board)))
                                (logtest? penetrate-using
                                          (penetrate lunge flop punch spin roll uppercut bonk dark-punch dark-smack))))
+           (miss-permitted-melee? (and melee-attack?
+                                        (logtest? penetrate-using (penetrate flop punch spin uppercut))))
            )
-      (when (or (and melee-attack? (!= *hero-arena-2-challenge* 2))
+      (when (or (and melee-attack?
+                     (not miss-permitted-melee?)
+                     (!= *hero-arena-2-challenge* 2))
                 (and board-attack? (!= *hero-arena-2-challenge* 0)))
         (format #t
                 "[Arena 2 Debug] FAIL active attack state: challenge=~D board=~A melee=~A danger-mode=~A penetrate=#x~X~%"
@@ -3371,8 +3425,16 @@
 
 ;; WARN: Return type mismatch symbol vs none.
 (defmethod task-manager-method-25 ((this task-manager-arena-fight-2))
+  (when *arena-2-pickup-debug?*
+    (arena-2-pickup-debug! 'stop this (pickup-type none) 0.0 0 0)
+    (set! *arena-2-pickup-debug?* #f))
   (let ((t9-0 (method-of-type task-manager task-manager-method-25)))
     (t9-0 this)
+    )
+  (when (and (= (-> this node-info task) (game-task arena-fight-2))
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+    (remove-setting! 'string-min-length)
+    (remove-setting! 'string-max-length)
     )
   (when (-> this hud-counter)
     (send-event (handle->process (-> this hud-counter)) 'hide-and-die)
@@ -3389,6 +3451,12 @@
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod set-time-limit ((this task-manager-arena-fight-2))
+  (when (and (= (-> this node-info task) (game-task arena-fight-2))
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+    (set! *arena-2-pickup-debug-events* 0)
+    (set! *arena-2-pickup-debug-failures* 0)
+    (set! *arena-2-pickup-debug?* #t)
+    (arena-2-pickup-debug! 'start this (pickup-type none) 0.0 0 0))
   (let ((t9-0 (method-of-type task-manager set-time-limit)))
     (t9-0 this)
     )
@@ -3536,6 +3604,10 @@
         (let ((a0-73 (handle->process (-> this crate-h v1-54))))
           (set! (-> (the-as crate a0-73) fact pickup-amount) 20.0)
           (set! (-> (the-as crate a0-73) fact pickup-spawn-amount) 10.0)
+          (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+            (set! (-> (the-as crate a0-73) fact options) (actor-option))
+            (hero-arena-2-roll-crate-pickup! (-> (the-as crate a0-73) fact))
+            )
           )
         )
       (go (method-of-object this wait-start))

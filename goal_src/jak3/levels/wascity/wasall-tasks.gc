@@ -214,9 +214,9 @@
   (let ((t9-0 (method-of-type task-manager task-manager-method-26)))
     (t9-0 this)
     )
-  ;; Entering the 20-meter trigger starts a one-shot, 100-second rise from the
-  ;; current Desert ocean height to 50 meters.
-  (when *target*
+  ;; In Hero Mode, the 20-meter trigger starts a one-shot, 115-second rise
+  ;; from the current Desert ocean height to 50 meters.
+  (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode)) *target*)
     (when (and (zero? *temple-climb-ocean-rise-start*)
                (< (vector-vector-distance (target-pos 0) *temple-climb-ocean-trigger-pos*) 81920.0))
       (set! *temple-climb-ocean-start-height* (-> (lookup-level-info 'desert) ocean-height))
@@ -267,13 +267,13 @@
   )
 
 (defmethod task-manager-method-25 ((this task-manager-temple-climb))
-  ;; Restore the normal 9-meter Desert ocean whenever Temple Climb ends,
-  ;; fails, or unloads.
+  ;; Restore the ocean only if this encounter started its Hero Mode rise.
+  (when (nonzero? *temple-climb-ocean-rise-start*)
+    (set! (-> (lookup-level-info 'desert) ocean-height) 36864.0)
+    (when *ocean-map*
+      (set-height! *ocean-map* 36864.0)))
   (set! *temple-climb-ocean-rise-start* (the-as time-frame 0))
   (set! *temple-climb-ocean-start-height* 0.0)
-  (set! (-> (lookup-level-info 'desert) ocean-height) 36864.0)
-  (when *ocean-map*
-    (set-height! *ocean-map* 36864.0))
   (task-manager-temple-method-33 this)
   ((method-of-type task-manager task-manager-method-25) this)
   (none)

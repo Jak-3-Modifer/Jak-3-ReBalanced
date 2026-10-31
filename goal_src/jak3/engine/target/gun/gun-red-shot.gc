@@ -51,6 +51,57 @@
    (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3 glow))
    (:userdata 12288.0)))
 
+;; Light Jak uses private pink Scatter Gun effects.
+(define-darkjak-scatter-particle *lightjak-scatter-flash*
+  ((:texture (hotdot level-default-sprite))
+   (:birth-func 'birth-func-set-quat)
+   (:num 1.0) (:scale-x (meters 8)) (:scale-y (meters 8))
+   (:r 248.0) (:g 209.0) (:b 205.0) (:a 128.0)
+   (:fade-a -2.56) (:timer (seconds 0.167))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-14 left-multiply-quat))))
+
+(define-darkjak-scatter-particle *lightjak-scatter-glow-1*
+  ((:texture (glow level-default-sprite))
+   (:num 1.0) (:scale-x (meters 2.5) (meters 0.5))
+   (:rot-x (degrees 4.5)) (:rot-z (degrees 0) (degrees 3600))
+   (:scale-y :copy scale-x)
+   (:r 248.0) (:g 209.0) (:b 205.0) (:a 96.0)
+   (:scalevel-x (meters 0.053333335)) (:scalevel-y :copy scalevel-x)
+   (:fade-a -2.4) (:timer (seconds 0.135))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3 glow))
+   (:userdata 12288.0)))
+
+(define-darkjak-scatter-particle *lightjak-scatter-glow-2*
+  ((:texture (glow level-default-sprite))
+   (:num 1.0) (:scale-x (meters 2.5) (meters 0.5))
+   (:rot-x (degrees 4.5)) (:rot-z (degrees 0) (degrees 3600))
+   (:scale-y :copy scale-x)
+   (:r 248.0) (:g 209.0) (:b 205.0) (:a 96.0)
+   (:scalevel-x (meters 0.21333334)) (:scalevel-y :copy scalevel-x)
+   (:fade-a -4.8) (:timer (seconds 0.067))
+   (:flags (sp-cpuinfo-flag-2 sp-cpuinfo-flag-3 glow))
+   (:userdata 12288.0)))
+
+;; Private RPG ribbon appearance, selected once when the grenade is fired.
+(define *lightjak-red3-trail* (new 'static 'light-trail-composition))
+(mem-copy! (the-as pointer *lightjak-red3-trail*)
+           (the-as pointer *red-shot-3-trail*) (size-of light-trail-composition))
+;; Source-alpha blending preserves the pink instead of adding the background.
+(set! (-> *lightjak-red3-trail* blend-mode) (the-as uint 0))
+;; Curves use normalized RGB. rgba<-rgbaf supplies the PS2 128 scale and the
+;; generic shader doubles it again; RGB/128 here would overbrighten the trail.
+(define *lightjak-red3-trail-color*
+  (new 'static 'curve-color-fast
+    :xs (new 'static 'vector :y -1.0 :z -2.0 :w -3.0)
+    :ys (new 'static 'inline-array vector 4
+      (new 'static 'vector :x 0.972549 :y 0.81960785 :z 0.8039216 :w 128.0)
+      (new 'static 'vector :x 0.972549 :y 0.81960785 :z 0.8039216 :w 128.0)
+      (new 'static 'vector :x 0.972549 :y 0.81960785 :z 0.8039216 :w 128.0)
+      (new 'static 'vector :x 0.972549 :y 0.81960785 :z 0.8039216 :w 128.0))
+    :one-over-x-deltas (new 'static 'vector :x 1.0 :y 1.0 :z 1.0 :w 1.0)))
+(set! (-> *lightjak-red3-trail* color-curve)
+      (the-as curve-color-piecewise *lightjak-red3-trail-color*))
+
 (deftype gun-red-shot (process-drawable)
   ((parent       (pointer gun)        :override)
    (root         collide-shape-moving :override)
@@ -193,7 +244,8 @@
       light-trail-tracker-projectile
       :to this
       :param-list ((tracked-obj (process->handle this))
-       (appearance *red-shot-3-trail*)
+       (appearance (if (and *target* (focus-test? *target* light))
+                       *lightjak-red3-trail* *red-shot-3-trail*))
        (max-num-crumbs (the int (* 0.5 (the float (-> *red-shot-3-trail* max-age)))))
        (track-immediately? #t)
        )
@@ -1916,6 +1968,9 @@
                 )
               )
           (when s5-4
+            (when (focus-test? self light)
+              (set-vector! (-> (the-as manipy (-> s5-4 0)) draw color-mult)
+                           0.972549 0.81960785 0.8039216 1.0))
             (when (focus-test? self dark)
               (set-vector! (-> (the-as manipy (-> s5-4 0)) draw color-mult)
                            0.5921569 0.11764706 0.34509805 1.0))
@@ -2384,6 +2439,10 @@
   (logclear! (-> self mask) (process-mask enemy))
   (setup-probes self)
   (cpad-set-buzz! (-> *cpad-list* cpads 0) 1 204 (seconds 0.1))
+  (if (and *target* (focus-test? *target* light))
+      (begin
+        (launch-particles *lightjak-scatter-glow-1* (-> self start-pos))
+        (launch-particles *lightjak-scatter-glow-2* (-> self start-pos)))
   (if (and *target* (focus-test? *target* dark))
       (begin
         (launch-particles *darkjak-scatter-glow-1* (-> self start-pos))
@@ -2403,9 +2462,12 @@
     (send-event (ppointer->process v1-39) 'clock self)
     )
     )
-  (draw-beam (if (and *target* (focus-test? *target* dark))
+    )
+  (draw-beam (if (and *target* (focus-test? *target* light))
+                *lightjak-scatter-flash*
+                (if (and *target* (focus-test? *target* dark))
                 *darkjak-scatter-flash*
-                (-> *part-id-table* 213))
+                (-> *part-id-table* 213)))
              (-> self start-pos) (-> self start-dir) #f)
   (sound-play "red-shot-fire")
   ;; og:preserve-this trigger effects

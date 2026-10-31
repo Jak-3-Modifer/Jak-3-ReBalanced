@@ -65,9 +65,7 @@
    (target-last-attacker?  symbol)
    (visible-last           time-frame)
    (arena-2-lethal-source  symbol)
-   ;; Temporary Arena Fight 2 slash diagnostic latch.  This keeps rejected
-   ;; contacts from printing every frame while one leap overlaps Jak.
-   (arena-2-slash-debug-touch? symbol)
+   (arena-2-board-zapped?  symbol)
    (traj                   trajectory       :inline)
    (skip-jump              symbol)
    )
@@ -642,11 +640,17 @@
   )
 
 (defmethod on-dying ((this marauder))
-  (if (or (logtest? (penetrate jak-dark-nuke) (-> this incoming penetrate-using))
-          (and (-> this target-last-attacker?) (< (+ (current-time) (seconds -5)) (-> this visible-last)))
-          )
-      (send-event (ppointer->process (-> this parent)) 'killed (-> this arena-2-lethal-source))
-      )
+  (let ((arena-source
+          (if (-> this arena-2-board-zapped?)
+              'arena-board-active
+              (-> this arena-2-lethal-source))))
+    (if (or (-> this arena-2-board-zapped?)
+            (logtest? (penetrate jak-dark-nuke) (-> this incoming penetrate-using))
+            (and (-> this target-last-attacker?) (< (+ (current-time) (seconds -5)) (-> this visible-last)))
+            )
+        (send-event (ppointer->process (-> this parent)) 'killed arena-source)
+        )
+    )
   ((method-of-type nav-enemy on-dying) this)
   (none)
   )
@@ -673,6 +677,26 @@
        (if (and v1-5 (= (-> v1-5 type) target))
            (begin
              (set! (-> this target-last-attacker?) #t)
+             ;; Arena Fight 2 allows Jak to perform punch, spin, uppercut, and
+             ;; flop attacks in the restricted challenges, but an accepted
+             ;; melee hit still fails. Report contact to the manager; merely
+             ;; entering the attack state is handled separately there.
+             (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                        (task-node-open? (game-task-node arena-fight-2-fight))
+                        (not (task-node-closed? (game-task-node arena-fight-2-fight))))
+               (let* ((arena-attack (the-as attack-info (-> arg3 param 1)))
+                      (arena-source (marauder-arena-2-attack-source arena-attack)))
+                 (when arena-source
+                   (send-event (ppointer->process (-> this parent)) 'arena-2-player-hit arena-source)
+                   (set! (-> this arena-2-lethal-source) arena-source)
+                   )
+                 ;; Zap penetration permanently marks this Marauder for the
+                 ;; current life, so a later fall or impact still credits zap.
+                 (when (= (-> arena-attack mode) 'board-zap)
+                   (set! (-> this arena-2-board-zapped?) #t)
+                   )
+                 )
+               )
              ;; The enemy base handler has already applied this attack's
              ;; damage before dispatching the transformed hit event. Record
              ;; only the hit that actually crossed the lethal threshold.
@@ -744,30 +768,7 @@
   "General handler for when anything touches an enemy (automatic response)."
   (cond
     ((and (-> this next-state) (= (-> this next-state name) 'jump))
-     (let ((entry (the-as touching-shapes-entry (-> arg1 param 0))))
-       (when (and (= arg0 *target*)
-                  (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-                  (task-node-open? (game-task-node arena-fight-2-fight))
-                  (not (task-node-closed? (game-task-node arena-fight-2-fight)))
-                  (not (-> this arena-2-slash-debug-touch?)))
-         (format #t
-                 "[Arena2 Slash] touched Jak marauder=#x~X entry=~A damaging-action=~A target-hit=~A target-flags=#x~X~%"
-                 this
-                 entry
-                 (and entry
-                      ((method-of-type touching-shapes-entry prims-touching-action?)
-                       entry
-                       (-> this root)
-                       (collide-action solid semi-solid deadly)
-                       (collide-action)))
-                 (focus-test? *target* hit)
-                 (-> *target* target-flags))
-         )
-       ((method-of-type nav-enemy enemy-touched-handler) this arg0 arg1)
-       (when (= arg0 *target*)
-         (set! (-> this arena-2-slash-debug-touch?) #t)
-         )
-       )
+     ((method-of-type nav-enemy enemy-touched-handler) this arg0 arg1)
      )
     (else
       (when (!= (-> arg0 type) target)
@@ -1433,7 +1434,6 @@
 (defstate jump (marauder)
   :virtual #t
   :enter (behavior ()
-    (set! (-> self arena-2-slash-debug-touch?) #f)
     (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
                (task-node-open? (game-task-node arena-fight-2-fight))
                (not (task-node-closed? (game-task-node arena-fight-2-fight))))
@@ -1998,6 +1998,7 @@
   (stack-size-set! (-> self main-thread) 512)
   (set! (-> self skip-jump) (-> arg1 skip-jump))
   (set! (-> self arena-2-lethal-source) #f)
+  (set! (-> self arena-2-board-zapped?) #f)
   (set-multi-focus self (-> arg1 multi-focus))
   (enemy-init-by-other arg0 arg1)
   ;; Arena Fight 2 and Arena Fight 3 Marauders drop one Dark Eco pill instead

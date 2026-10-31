@@ -32,6 +32,60 @@
    (:conerot-x (degrees 0) (degrees 3600))
    (:conerot-y (degrees 0) (degrees 3600))))
 
+;; Light Jak Blaster scatter only; all beam, flash and glow effects stay native.
+(define-darkjak-gyro-particle *lightjak-blaster-scatter*
+  ((:texture (hotdot level-default-sprite))
+   (:num 4.0 8.0)
+   (:z (meters 0) (meters -4))
+   (:scale-x (meters 0.25) (meters 0.1))
+   (:scale-y :copy scale-x)
+   (:r 250.0) (:g 242.0) (:b 223.0) (:a 64.0)
+   (:scalevel-x (meters -0.0020833334))
+   (:scalevel-y :copy scalevel-x)
+   (:accel-y (meters -0.000033333334) (meters -0.00033333333))
+   (:timer (seconds 0.535))
+   (:flags (sp-cpuinfo-flag-0 sp-cpuinfo-flag-2 sp-cpuinfo-flag-3))
+   (:rotate-y (degrees 0))))
+
+;; Light Jak wall-impact halo: preserve the native yellow opening and motion,
+;; then fade toward RGB 250/242/223 during its initial expansion.
+;; These two IDs are unused in the Jak 3 particle table.
+(defpart 5498
+  :init-specs ((:texture (glow level-default-sprite))
+    (:num 2.0) (:scale-x (meters 1))
+    (:rot-x (degrees 2.25)) (:rot-z (degrees 0) (degrees 360))
+    (:scale-y :copy scale-x)
+    (:r 255.0) (:g 255.0) (:b 32.0) (:a 24.0)
+    (:scalevel-x (meters 0.12857144))
+    (:rotvel-z (degrees -0.3) (degrees 0.6))
+    (:scalevel-y :copy scalevel-x)
+    (:fade-r (/ -5.0 35.0))
+    (:fade-g (/ -13.0 35.0))
+    (:fade-b (/ 191.0 35.0))
+    (:timer (seconds 1.335))
+    (:flags (sp-cpuinfo-flag-0 sp-cpuinfo-flag-2 glow))
+    (:userdata 4096.0)
+    (:next-time (seconds 0.117)) (:next-launcher 5499)))
+(defpart 5499
+  :init-specs ((:scale-x (meters 4.5)) (:scale-y :copy scale-x)
+    (:r 250.0) (:g 242.0) (:b 223.0)
+    (:scalevel-x (meters -0.010958904)) (:scalevel-y :copy scalevel-x)
+    (:fade-r 0.0) (:fade-g 0.0) (:fade-b 0.0)
+    (:fade-a -0.13150685)))
+
+;; Copy only the wall-impact group and substitute its expanding halo launcher.
+(define *lightjak-blaster-wall-hit* (new 'static 'sparticle-launch-group))
+(mem-copy! (the-as pointer *lightjak-blaster-wall-hit*)
+           (the-as pointer group-gun-yellow-shot-hit) (size-of sparticle-launch-group))
+(set! (-> *lightjak-blaster-wall-hit* launcher)
+      (new 'static 'inline-array sparticle-group-item 64))
+(mem-copy! (the-as pointer (-> *lightjak-blaster-wall-hit* launcher))
+           (the-as pointer (-> group-gun-yellow-shot-hit launcher))
+           (* (-> group-gun-yellow-shot-hit length) (size-of sparticle-group-item)))
+(dotimes (i (-> *lightjak-blaster-wall-hit* length))
+  (when (= (-> *lightjak-blaster-wall-hit* launcher i launcher) 300)
+    (set! (-> *lightjak-blaster-wall-hit* launcher i launcher) 5498)))
+
 (deftype gun-yellow-shot (projectile)
   ((hit-actor?         symbol)
    (tail-pos           vector  :inline)
@@ -1213,6 +1267,11 @@
                  )
                )
              )
+            ((eq? (-> this shot-aim-part) *lightjak-blaster-scatter*)
+             (vector-copy! (-> *launch-matrix* trans) (-> this root trans))
+             (if (logtest? (-> *lightjak-blaster-wall-hit* flags) (sp-group-flag sp13))
+                 (part-tracker-spawn part-tracker-subsampler :to *entity-pool* :group *lightjak-blaster-wall-hit*)
+                 (part-tracker-spawn part-tracker :to *entity-pool* :group *lightjak-blaster-wall-hit*)))
             ((logtest? (-> group-gun-yellow-shot-hit flags) (sp-group-flag sp13))
              (vector-copy! (-> *launch-matrix* trans) (-> this root trans))
              (part-tracker-spawn part-tracker-subsampler :to *entity-pool* :group group-gun-yellow-shot-hit)
@@ -1692,6 +1751,10 @@
   (set! (-> this main-shot-part) (-> *part-id-table* 264))
   (set! (-> this shot-aim-part) (-> *part-id-table* 267))
   (set! (-> this shot-ring-part) (-> *part-id-table* 266))
+  (when (and *target* (focus-test? *target* light)
+             (not (type? this gun-yellow-shot-2))
+             (not (type? this gun-yellow-shot-3)))
+    (set! (-> this shot-aim-part) *lightjak-blaster-scatter*))
   ;; Gekko/metalhead-shot appearance only; retain Blaster gameplay settings.
   ;; Subclasses call this method too, so leave the other yellow guns alone.
   (when (and *target* (focus-test? *target* dark)
@@ -2014,10 +2077,10 @@
         (launch-particles part arg2 :origin-is-matrix #t)
         (set! (-> part init-specs 3 initial-valuef) spread)
         (set! (-> part init-specs 5 initial-valuef) width))
-      (begin
-        (set! (-> *part-id-table* 267 init-specs 3 initial-valuef) (* arg0 arg1))
-        (launch-particles (-> *part-id-table* 267) arg2 :origin-is-matrix #t)
-        (set! (-> *part-id-table* 267 init-specs 3 initial-valuef) arg1)))
+      (let ((part (-> this shot-aim-part)))
+        (set! (-> part init-specs 3 initial-valuef) (* arg0 arg1))
+        (launch-particles part arg2 :origin-is-matrix #t)
+        (set! (-> part init-specs 3 initial-valuef) arg1)))
   0
   (none)
   )

@@ -1024,6 +1024,8 @@
        (talker-spawn-func (-> *talker-speech* 5) *entity-pool* (target-pos 0) (the-as region #f))
        )
       )
+    (arena-2-pickup-debug! 'crate-destroyed self (-> self fact pickup-type)
+                          (-> self fact pickup-amount) 0 0)
     (drop-pickup (-> self fact) #t *entity-pool* (the-as fact-info #f) arg1 #t)
     (process-entity-status! self (entity-perm-status dead) #t)
     (process-entity-status! self (entity-perm-status subtask-complete) #t)
@@ -1127,6 +1129,8 @@
     (set! (-> self fact pickup-amount) (-> arg3 pickup-spawn-amount))
     (set! (-> self fact options) (-> arg3 options))
     )
+  (arena-2-pickup-debug! 'crate-spawn self (-> self fact pickup-type)
+                        (-> self fact pickup-amount) 0 0)
   ;; A supplied fact can overwrite init!'s selection.  Reapply the Tower roll
   ;; for dynamically spawned crates in this level.
   (when (and arg0

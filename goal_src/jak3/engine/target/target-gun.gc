@@ -2784,10 +2784,7 @@
                         )
                     )
                   )
-                (when (> f1-8 0.0)
-                  (ja-channel-push! 1 (seconds 0.15))
-                  (ja :group! jakb-launch-jump-loop-ja :num! min)
-                  )
+                ;; Diagnostic: keep Dark Wave velocity without pushing a launch animation.
                 )
               )
               )

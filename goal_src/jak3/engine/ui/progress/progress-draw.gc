@@ -4000,6 +4000,22 @@
 
 (defmethod secret-item-option-method-12 ((this secret-item-option))
   (cond
+    ((nonzero? (hero-gun-laser-option-index (-> this name)))
+     (cond
+       ((not (hero-gun-laser-option-owned? (-> this name))) 0)
+       ((and (= (hero-gun-laser-color-index)
+                 (hero-gun-laser-option-index (-> this name)))
+             (not (logtest? (-> *game-info* secrets) (game-secrets gs63)))) 1)
+       (else 2)))
+    ;; Protection I bit 0 records ownership.  Bit 1 is an opt-out flag so
+    ;; existing saves (which have bit 1 clear) keep the upgrade enabled.
+    ((= (-> this name) (text-id text-004a))
+     (cond
+       ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))) 4)
+       ((not (logtest? (-> *hero-npc-shop-info* purchases) 1)) 0)
+       ((logtest? (-> *hero-npc-shop-info* purchases) 2) 2)
+       (else 1))
+     )
     ((or (= (-> this name) (text-id text-0040))
          (= (-> this name) (text-id text-0041)))
      (cond
@@ -4049,6 +4065,16 @@
 (defmethod secret-item-option-method-13 ((this secret-item-option))
   (local-vars (v0-1 game-vehicles))
   (when (zero? (secret-item-option-method-12 this))
+    (when (nonzero? (hero-gun-laser-option-index (-> this name)))
+      (hero-gun-laser-option-purchase! (-> this name))
+      (set-hero-gun-laser-color-index! (hero-gun-laser-option-index (-> this name)))
+      (logclear! (-> *game-info* secrets) (game-secrets gs63)))
+    ;; The testing entry purchases the same persistent Protection I ownership
+    ;; and armor feature used by the Wascity trader.
+    (when (= (-> this name) (text-id text-004a))
+      (logior! (-> *hero-npc-shop-info* purchases) 1)
+      (logior! (-> *game-info* features) (game-feature armor0))
+      )
     ;; The existing confirmation flow charges the item's cost exactly once.
     (case (-> this name)
       (((text-id text-0040)) (logior! (-> *game-info* items) (game-items item30)))
@@ -4311,6 +4337,9 @@
                             )
                           (cond
                             ((logtest? (-> s2-6 s1-5 flags) (secret-item-option-flags sf0))
+                             (when (or (= sv-208 (text-id text-0043))
+                                       (= sv-208 (text-id text-0042)))
+                               (+! (-> arg1 origin y) 8.0))
                              (set! (-> arg1 origin x) (+ 10.0 (-> s3-3 x)))
                              (let ((v1-130 arg1))
                                (set! (-> v1-130 width) f28-1)

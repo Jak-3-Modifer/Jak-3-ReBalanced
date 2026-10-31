@@ -973,27 +973,35 @@
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod task-manager-method-26 ((this task-manager-catch-flut))
-  (if (and (time-elapsed? (-> this state-time) (seconds 1)) *target* (focus-test? *target* flut))
+  (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      ;; Hero Mode skips the Flut-catching objective. Completing the existing
+      ;; node preserves normal task progression and makes flut-wild-1 use its
+      ;; existing disappearance cleanup.
       (send-event this 'complete)
-      )
-  (call-parent-method this)
-  (when (time-elapsed? (-> this state-time) (seconds 1))
-    (cond
-      ((-> this flut-entity)
-       (let ((v1-14 (-> this flut-entity)))
-         (if (not (if v1-14
-                      (-> v1-14 extra process)
-                      )
-                  )
-             (send-event this 'fail)
+      (begin
+        (if (and (time-elapsed? (-> this state-time) (seconds 1)) *target* (focus-test? *target* flut))
+            (send-event this 'complete)
+            )
+        (when (time-elapsed? (-> this state-time) (seconds 1))
+          (cond
+            ((-> this flut-entity)
+             (let ((v1-14 (-> this flut-entity)))
+               (if (not (if v1-14
+                            (-> v1-14 extra process)
+                            )
+                        )
+                   (send-event this 'fail)
+                   )
+               )
              )
-         )
-       )
-      (else
-        (set! (-> this flut-entity) (the-as entity-actor (entity-by-name "flut-wild-1")))
+            (else
+              (set! (-> this flut-entity) (the-as entity-actor (entity-by-name "flut-wild-1")))
+              )
+            )
+          )
         )
       )
-    )
+  (call-parent-method this)
   (none)
   )
 

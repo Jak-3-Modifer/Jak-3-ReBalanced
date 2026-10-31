@@ -126,6 +126,61 @@
     )
   )
 
+;; Temporary Arena 2 diagnostics. Enabled by that mission only; never per-frame.
+(define *arena-2-pickup-debug?* #f)
+(define *arena-2-pickup-debug-events* 0)
+(define *arena-2-pickup-debug-failures* 0)
+
+(defun arena-2-pickup-debug! ((event symbol) (source process) (kind pickup-type)
+                            (amount float) (attempted int) (allocated int))
+  (when (and *arena-2-pickup-debug?*
+             (if (= event 'allocation-failed)
+                 (< *arena-2-pickup-debug-failures* 8)
+                 (or (= event 'start) (= event 'stop) (< *arena-2-pickup-debug-events* 160))))
+    (if (= event 'allocation-failed)
+        (+! *arena-2-pickup-debug-failures* 1)
+        (+! *arena-2-pickup-debug-events* 1))
+    (format #t "[Arena2 Pickup v3] ~A source=~A pid=~D kind=~D amount=~F~%"
+            event (-> source type symbol) (-> source pid) kind amount)
+    (when (or (= event 'batch-end) (= event 'allocation-failed))
+      (format #t "[Arena2 Pickup v3] attempts=~D allocated=~D live-eco=~D~%"
+              attempted allocated (-> *game-info* live-eco-pill-count)))
+    (when (or (= event 'batch-end) (= event 'allocation-failed) (= event 'start) (= event 'stop))
+      (format #t "[Arena2 Pickup v3] dark=~F/~F light=~F/~F~%"
+              (-> *game-info* eco-pill-dark) (get-dark-eco-capacity *game-info*)
+              (-> *game-info* eco-pill-light) (get-light-eco-capacity *game-info*))
+      (dotimes (idx 2)
+        (let ((pool (if (zero? idx) *nk-dead-pool* *debug-dead-pool*)))
+          (when pool
+            (let ((rec (-> pool alive-list next))
+                  (dark 0) (light 0) (ammo 0) (crates 0) (other 0) (total 0))
+              (while rec
+                (let ((proc (-> rec process)))
+                  (+! total 1)
+                  (cond
+                    ((= (-> proc type symbol) 'eco-pill)
+                     (if (= (-> (the-as collectable proc) fact pickup-type) (pickup-type eco-pill-dark))
+                         (+! dark 1) (+! light 1)))
+                    ((= (-> proc type symbol) 'ammo-collectable) (+! ammo 1))
+                    ((= (-> proc type symbol) 'crate) (+! crates 1))
+                    (else
+                      (+! other 1)
+                      (when (and (= event 'allocation-failed) (< other 17))
+                        (format #t "[Arena2 Pickup v3] other=~A name=~A bytes=~D~%"
+                                (-> proc type symbol) (-> proc name) (-> proc allocated-length))))))
+                (set! rec (-> rec next)))
+              (format #t "[Arena2 Pickup v3] pool=~A processes=~D dark=~D light-or-green=~D ammo=~D~%"
+                      (-> pool name) total dark light ammo)
+              (format #t "[Arena2 Pickup v3] crates=~D other=~D used=~D free-tail=~D~%"
+                      crates other (memory-used pool) (memory-free pool))))))))
+  (none))
+
+(defmethod deactivate ((this collectable))
+  (when (and *arena-2-pickup-debug?* (-> this fact))
+    (arena-2-pickup-debug! 'deactivate this (-> this fact pickup-type) (-> this fact pickup-amount) 0 0))
+  ((method-of-type process-drawable deactivate) this)
+  (none))
+
 (defmethod initialize-options ((this collectable) (arg0 int) (arg1 float) (arg2 fact-info))
   (logclear! (-> this mask) (process-mask crate enemy platform ambient))
   (logior! (-> this mask) (process-mask collectable))
@@ -159,6 +214,7 @@
     )
   (set! (-> this collect-timeout) (seconds 0.33))
   (set-time! (-> this birth-time))
+  (arena-2-pickup-debug! 'initialized this (-> this fact pickup-type) (-> this fact pickup-amount) 0 0)
   (vector-copy! (-> this base) (-> this root trans))
   (vector-copy! (-> this old-base) (-> this root trans))
   (set! (-> this pickup-handle) (the-as handle #f))
@@ -1013,6 +1069,7 @@
   :virtual #t
   :event collectable-standard-event-handler
   :code (behavior ()
+    (arena-2-pickup-debug! 'fade self (-> self fact pickup-type) (-> self fact pickup-amount) 0 0)
     (logclear! (-> self mask) (process-mask actor-pause))
     (set! (-> self actor-pause) #f)
     (logior! (-> self flags) (collectable-flag do-fadeout))
@@ -1145,6 +1202,7 @@
     )
   :enter (behavior ((arg0 symbol) (arg1 handle))
     (do-pickup self arg1)
+    (arena-2-pickup-debug! 'collected self (-> self fact pickup-type) (-> self fact pickup-amount) 0 0)
     )
   :code (behavior ((arg0 symbol) (arg1 handle))
     (while (-> self child)
@@ -2243,6 +2301,16 @@
                          (= (-> beam next-state) (-> beam state)))))))))
 
 (defmethod common-post ((this ammo-collectable))
+  ;; Tower and Precursor have no Dark Ammo, including placed/spawned pickups.
+  (if (and (= (-> this pickup-type) (pickup-type ammo-dark))
+           (or (= (level-status? *level* 'towera #f) 'active)
+               (= (level-status? *level* 'towerb #f) 'active)
+               (= (level-status? *level* 'precura #f) 'active)
+               (= (level-status? *level* 'precurb #f) 'active)
+               (= (level-status? *level* 'precurc #f) 'active)
+               (= (level-status? *level* 'precurd #f) 'active)))
+      (deactivate this)
+      (begin
   ;; Only attract settled, collectable ammo. Leave weapon upgrades, blocked
   ;; pickups, and pickups already being collected or fading out untouched.
   (when (and (case (-> this pickup-type)
@@ -2268,7 +2336,7 @@
     (format #t "Arc Wielder works like blue eco liike jak1~%" (-> this pickup-type))
     (send-event this 'suck *target*))
   (quaternion-rotate-y! (-> this root quat) (-> this root quat) (* 40049.777 (seconds-per-frame)))
-  ((method-of-type collectable common-post) this)
+  ((method-of-type collectable common-post) this)))
   0
   (none)
   )
@@ -2418,8 +2486,13 @@
     ;; Yellow ammo pickups give 3 ammo, but retain the vanilla 10-ammo
     ;; grouping when calculating how many drops a source creates.
     (sv-80 int)
+    (debug-attempted int)
+    (debug-allocated int)
     )
   (let ((s2-0 (verify-pickup-type arg1)))
+    (set! debug-attempted 0)
+    (set! debug-allocated 0)
+    (arena-2-pickup-debug! 'batch-start self s2-0 arg2 0 0)
     (if (= s2-0 (pickup-type none))
         (return (the-as (pointer process) 0))
         )
@@ -2711,7 +2784,13 @@
           (format 0 "ERROR: unknown type of eco ~d~%" s2-0)
           )
         )
+      (+! debug-attempted 1)
+      (if sv-40
+          (+! debug-allocated 1)
+          (arena-2-pickup-debug! 'allocation-failed self s2-0 (-> sv-56 pickup-spawn-amount)
+                                debug-attempted debug-allocated))
       )
+    (arena-2-pickup-debug! 'batch-end self s2-0 arg2 debug-attempted debug-allocated)
     )
   (the-as (pointer process) sv-40)
   )
@@ -2938,6 +3017,12 @@
          )
        )
       )
+    ;; Filter the final roll, so random ammo cannot give Dark Ammo from a
+    ;; Dark Bipedal. Compare the runtime name without a level-type dependency.
+    (when (and (= sv-16 (pickup-type ammo-dark))
+               (-> this process)
+               (= (-> this process type symbol) 'dp-bipedal))
+      (set! sv-16 (pickup-type none)))
     (if (= sv-16 (pickup-type none))
         (return (the-as (pointer process) #f))
         )

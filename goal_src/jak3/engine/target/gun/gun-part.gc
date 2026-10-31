@@ -58,28 +58,54 @@ gun
     (set! (-> sprite r-g-b-a z) 88.0))
   (none))
 
-;; The authored laser particles are red.  Swap their red and blue channels
-;; only while the purchased shop option is enabled, preserving each particle's
-;; original intensity variation and fade behavior.
-(defun apply-blue-gun-laser-toggle! ((sprite sprite-vec-data-3d))
-  (when (and (logtest? (-> *game-info* secrets) (game-secrets gs63))
-             (> (-> sprite r-g-b-a x) (-> sprite r-g-b-a z)))
-    (let ((red (-> sprite r-g-b-a x)))
-      (set! (-> sprite r-g-b-a x) (-> sprite r-g-b-a z))
-      (set! (-> sprite r-g-b-a z) red)))
+;; Recolor the authored red Morph Gun laser while retaining each particle's
+;; original brightness and alpha. Only one purchased cosmetic color is active.
+(defun apply-gun-laser-color! ((sprite sprite-vec-data-3d))
+  (let ((color (hero-gun-laser-color-index))
+        (intensity (fmax (-> sprite r-g-b-a x)
+                         (fmax (-> sprite r-g-b-a y) (-> sprite r-g-b-a z)))))
+    (cond
+      ((logtest? (-> *game-info* secrets) (game-secrets gs63))
+       (set! (-> sprite r-g-b-a x) 0.0)
+       (set! (-> sprite r-g-b-a y) 0.0)
+       (set! (-> sprite r-g-b-a z) intensity))
+      ((= color 1) ;; Pink
+       (set! (-> sprite r-g-b-a x) intensity)
+       (set! (-> sprite r-g-b-a y) (* intensity 0.078431375))
+       (set! (-> sprite r-g-b-a z) (* intensity 0.5764706)))
+      ((= color 2) ;; Green
+       (set! (-> sprite r-g-b-a x) 0.0)
+       (set! (-> sprite r-g-b-a y) intensity)
+       (set! (-> sprite r-g-b-a z) 0.0))
+      ((= color 3) ;; White
+       (set! (-> sprite r-g-b-a x) intensity)
+       (set! (-> sprite r-g-b-a y) intensity)
+       (set! (-> sprite r-g-b-a z) intensity))
+      ((= color 4) ;; Purple
+       (set! (-> sprite r-g-b-a x) (* intensity 0.6666667))
+       (set! (-> sprite r-g-b-a y) (* intensity 0.13333334))
+       (set! (-> sprite r-g-b-a z) intensity))
+      ((= color 5) ;; Yellow
+       (set! (-> sprite r-g-b-a x) intensity)
+       (set! (-> sprite r-g-b-a y) intensity)
+       (set! (-> sprite r-g-b-a z) 0.0))
+      ((= color 6) ;; Orange
+       (set! (-> sprite r-g-b-a x) intensity)
+       (set! (-> sprite r-g-b-a y) (* intensity 0.25))
+       (set! (-> sprite r-g-b-a z) 0.0))))
   (none))
 
 (defun spt-func-blue-gun-laser ((system sparticle-system)
                                (particle sparticle-cpuinfo)
                                (sprite vector))
-  (apply-blue-gun-laser-toggle! (the-as sprite-vec-data-3d sprite))
+  (apply-gun-laser-color! (the-as sprite-vec-data-3d sprite))
   (none))
 
 (defun spt-func-blue-gun-laser-animate ((system sparticle-system)
                                        (particle sparticle-cpuinfo)
                                        (sprite vector))
   (sparticle-texture-animate system particle sprite)
-  (apply-blue-gun-laser-toggle! (the-as sprite-vec-data-3d sprite))
+  (apply-gun-laser-color! (the-as sprite-vec-data-3d sprite))
   (none))
 
 (defpart 207

@@ -2,6 +2,7 @@
 (in-package goal)
 
 (define-extern hero-wascity-npc-shop-start (function none))
+(define-extern hero-wascity-ring-offer! (function process-focusable none))
 ;; Handles need 64-bit storage; a symbol value truncates the process ID.
 (define *hero-bush-22-trader-reported* (new 'static 'array handle 1))
 (set! (-> *hero-bush-22-trader-reported* 0) (the-as handle #f))
@@ -263,6 +264,8 @@
                    (-> self name) (-> self task actor)
                    (process-by-name "hero-wascity-npc-shop" *active-pool*)))
          ;; Trading input now belongs to the manager's coordinate areas.
+         ;; The original bush separately offers the unlocked, replayable ring route.
+         (hero-wascity-ring-offer! self)
          )
         (#f
           (set! s5-0 #t)

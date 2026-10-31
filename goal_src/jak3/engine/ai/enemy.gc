@@ -613,29 +613,18 @@
 
 (defmethod send-attack-from-tshape ((this enemy) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
   "Send an attack from this enemy to something else."
-  (let ((a0-1 (-> this enemy-info attack-damage))
-        (damage-scale 1.0))
+  (let ((a0-1 (-> this enemy-info attack-damage)))
     (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-      ;; Hero Mode begins at twice the existing Hero Mode enemy damage.
-      ;; Progression rewards then reduce that amplified damage.
-      (set! a0-1 (* a0-1 2))
-      (cond
-        ((task-node-closed? (game-task-node wascity-defend-resolution))
-         (set! damage-scale 0.25))
-        ((task-node-closed? (game-task-node forest-kill-plants-resolution))
-         (set! damage-scale 0.35))
-        ((task-node-closed? (game-task-node mine-explore-resolution))
-         (set! damage-scale 0.5))
-        ((task-node-closed? (game-task-node desert-artifact-race-1-resolution))
-         (set! damage-scale 0.75))
-        )
+      ;; Hero Mode enemy contact attacks always deal five times their normal
+      ;; damage. Mission progression no longer reduces this multiplier.
+      (set! a0-1 (* a0-1 5))
       )
     (when (send-event
             arg0
             'attack
             arg1
             (static-attack-info :mask (vehicle-impulse-factor) ((id arg2)
-                                                                (damage (the float (* a0-1 damage-scale)))
+                                                                (damage (the float a0-1))
                                                                 (vehicle-damage-factor 1.0)
                                                                 (vehicle-impulse-factor 1.0)
                                                                 (shove-back (-> this enemy-info attack-shove-back))

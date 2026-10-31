@@ -101,8 +101,8 @@
                                      )
   )
 
-;; Session-local Hero Mode desert exploration. Each cell covers 32 big-map pixels.
-(define *hero-desert-map-explored* (new 'static 'array uint8 4096))
+;; Session-local Hero Mode desert exploration. Each cell covers 16 big-map pixels.
+(define *hero-desert-map-explored* (new 'static 'array uint8 16384))
 (define *hero-desert-map-fog-color* (new 'static 'rgba :a 128))
 
 (defun hero-desert-map-exploration-active? ()
@@ -119,14 +119,14 @@
            (map-y (the int (* (- (-> pos z) -2301542.5) 0.0000364389)))
            )
       (when (and (>= map-x 0) (< map-x 2048) (>= map-y 0) (< map-y 2048))
-        (let ((cell-x (shr map-x 5))
-              (cell-y (shr map-y 5)))
+        (let ((cell-x (shr map-x 4))
+              (cell-y (shr map-y 4)))
           (dotimes (dy 3)
             (dotimes (dx 3)
               (let ((x (+ cell-x dx -1))
                     (y (+ cell-y dy -1)))
-                (when (and (>= x 0) (< x 64) (>= y 0) (< y 64))
-                  (set! (-> *hero-desert-map-explored* (+ x (* y 64))) (the-as uint8 1))))))))))
+                (when (and (>= x 0) (< x 128) (>= y 0) (< y 128))
+                  (set! (-> *hero-desert-map-explored* (+ x (* y 128))) (the-as uint8 1))))))))))
   (none))
 
 (define *minimap* (new 'static 'minimap

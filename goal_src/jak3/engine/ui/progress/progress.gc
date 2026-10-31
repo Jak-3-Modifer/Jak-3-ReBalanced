@@ -3425,9 +3425,25 @@
                  ((or (= v1-112 1) (= v1-112 2))
                   (cond
                     ((logtest? (-> s3-0 flags) (secret-item-option-flags sf1))
-                     (set! (-> *game-info* secrets)
-                           (logclear (logxor (-> *game-info* secrets) (the-as uint (-> s3-0 secret))) (-> s3-0 mask-secrets))
-                           )
+                     (cond
+                       ((= (-> s3-0 name) (text-id text-004a))
+                        (set! (-> *hero-npc-shop-info* purchases)
+                              (logxor (-> *hero-npc-shop-info* purchases) 2)))
+                       ((nonzero? (hero-gun-laser-option-index (-> s3-0 name)))
+                        (if (= (hero-gun-laser-color-index)
+                               (hero-gun-laser-option-index (-> s3-0 name)))
+                            (set-hero-gun-laser-color-index! 0)
+                            (set-hero-gun-laser-color-index!
+                              (hero-gun-laser-option-index (-> s3-0 name))))
+                        (logclear! (-> *game-info* secrets) (game-secrets gs63)))
+                       (else
+                         (set! (-> *game-info* secrets)
+                               (logclear (logxor (-> *game-info* secrets) (the-as uint (-> s3-0 secret))) (-> s3-0 mask-secrets)))))
+                     ;; Selecting Blue masks any active custom color. Turning
+                     ;; Blue off leaves no color selected, restoring red.
+                     (when (and (= (-> s3-0 secret) (game-secrets gs63))
+                                (logtest? (-> *game-info* secrets) (game-secrets gs63)))
+                       (set-hero-gun-laser-color-index! 0))
                      (sound-play "generic-beep")
                      (when (= (-> s3-0 secret) (game-secrets gs21))
                        (progress-jak-off! arg0)

@@ -15,7 +15,8 @@
 (define *volcano-indax-1-earthquake-warning-to-heavy-delay* (the-as time-frame (seconds 1)))
 
 (defun volcano-indax-1-earthquake-drop? ((this target))
-  (if (and (task-node-open? (game-task-node volcano-darkeco-indax-1))
+  (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (task-node-open? (game-task-node volcano-darkeco-indax-1))
            (not (task-node-closed? (game-task-node volcano-darkeco-indax-1))))
       (begin
         ;; Start a one-second minimal warning shake after the previous cooldown.

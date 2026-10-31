@@ -349,24 +349,14 @@
   (none))
 
 (define *hero-wascity-trade-radius* (meters 3))
+;; Symbol value slots hold only 32 bits; keep the complete 64-bit handle here.
+(define *hero-wascity-trade-arrow-storage* (new 'static 'array handle 1))
+(define *hero-wascity-trade-marker-used?* #f)
+
 (define *hero-wascity-trade-dismount-radius* (meters 5))
 (define *hero-wascity-trade-locations*
-  (new 'static 'inline-array vector 15
-    (new 'static 'vector :x (meters 2230.21) :y (meters 39.14) :z (meters 116.18))
-    (new 'static 'vector :x (meters 2306.82) :y (meters 27.55) :z (meters 78.75))
-    (new 'static 'vector :x (meters 2295.53) :y (meters 34.86) :z (meters 40.92))
-    (new 'static 'vector :x (meters 2270.93) :y (meters 20.77) :z (meters -43.04))
-    (new 'static 'vector :x (meters 2310.27) :y (meters 20.83) :z (meters -46.73))
-    (new 'static 'vector :x (meters 2340.47) :y (meters 9.55) :z (meters -27.98))
-    (new 'static 'vector :x (meters 2367.19) :y (meters 24.37) :z (meters 10.71))
-    (new 'static 'vector :x (meters 2500.95) :y (meters 36.72) :z (meters -41.04))
-    (new 'static 'vector :x (meters 2537.06) :y (meters 42.29) :z (meters -112.19))
-    (new 'static 'vector :x (meters 2530.88) :y (meters 33.92) :z (meters -137.70))
-    (new 'static 'vector :x (meters 2517.65) :y (meters 41.20) :z (meters -195.06))
-    (new 'static 'vector :x (meters 2439.41) :y (meters 32.28) :z (meters -260.31))
-    (new 'static 'vector :x (meters 2412.24) :y (meters 15.99) :z (meters -258.62))
-    (new 'static 'vector :x (meters 2171.14) :y (meters 20.20) :z (meters -278.40))
-    (new 'static 'vector :x (meters 1991.13) :y (meters 44.53) :z (meters -255.93))))
+  (new 'static 'inline-array vector 1
+    (new 'static 'vector :x (meters 1832.19) :y (meters 37.80) :z (meters -465.93))))
 
 (defun hero-wascity-npc-shop-location-at-player ((radius float))
   ;; Spherical ranges include height, so another floor cannot activate one.
@@ -374,7 +364,7 @@
     (when (and *target*
                (or (= (level-status? *level* 'wascitya #f) 'active)
                    (= (level-status? *level* 'wascityb #f) 'active)))
-      (dotimes (index 15)
+      (dotimes (index 1)
         (when (<= (vector-vector-distance-squared (target-pos 0)
                            (-> *hero-wascity-trade-locations* index))
                   (square radius))
@@ -403,6 +393,11 @@
               (if trader (process->handle trader) (the-as handle #f)))
         (set! *hero-wascity-npc-shop-world-trader?* #t)
         (set! *hero-wascity-npc-shop-open?* #t)
+        ;; Opening the shop dismisses its beacon for this Wascity visit.
+        (set! *hero-wascity-trade-marker-used?* #t)
+        (let ((arrow (handle->process (-> *hero-wascity-trade-arrow-storage* 0))))
+          (when arrow (send-event arrow 'leave))
+          (set! (-> *hero-wascity-trade-arrow-storage* 0) (the-as handle #f)))
         (set! *popup-menu-open* #t)
         (set-master-mode 'menu)
         (play-sound-file
@@ -417,6 +412,31 @@
 (defstate idle (hero-wascity-npc-shop-manager)
   :virtual #t
   :trans (behavior ()
+    (if (and (not *hero-wascity-trade-marker-used?*)
+               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (task-node-closed? (game-task-node wascity-bbush-get-to-23-resolution))
+               (or (= (level-status? *level* 'wascitya #f) 'active)
+                   (= (level-status? *level* 'wascityb #f) 'active)))
+      (when (not (handle->process (-> *hero-wascity-trade-arrow-storage* 0)))
+        ;; Same marker and ambient choir as w-parking-spot, without a map icon.
+        ;; Parenting it to the manager preserves normal streaming cleanup.
+        (let ((params (new 'stack 'task-arrow-params)))
+          (vector-copy! (-> params pos) (-> *hero-wascity-trade-locations* 0))
+          (quaternion-identity! (-> params quat))
+          (set! (-> params flags) (task-arrow-flags taf5 taf8))
+          (set! (-> params map-icon) (the-as uint 12))
+          (let ((arrow (task-arrow-spawn params self)))
+            (when arrow
+              (let ((choir (-> (the-as task-arrow arrow) choir-sound)))
+                (when choir
+                  ;; Name-only ambient playback uses the bank's attenuation.
+                  ;; Pass the range to the mixer as well as the ambient cutoff.
+                  (set! (-> choir spec) (static-sound-spec "god-rod" :fo-max 60))
+                  (set-falloff-far! choir (meters 60))))
+              (set! (-> *hero-wascity-trade-arrow-storage* 0) (process->handle arrow))))))
+      (let ((arrow (handle->process (-> *hero-wascity-trade-arrow-storage* 0))))
+        (when arrow (send-event arrow 'leave))
+        (set! (-> *hero-wascity-trade-arrow-storage* 0) (the-as handle #f))))
     (cond
       ((not (hero-wascity-npc-shop-player-ready?))
        (hero-wascity-npc-shop-close!)
@@ -519,6 +539,8 @@
   :code sleep-code)
 
 (defbehavior hero-wascity-npc-shop-manager-init-by-other hero-wascity-npc-shop-manager ()
+  (set! *hero-wascity-trade-marker-used?* #f)
+  (set! (-> *hero-wascity-trade-arrow-storage* 0) (the-as handle #f))
   (process-mask-clear! (-> self mask) menu pause)
   (set! *hero-wascity-npc-shop-manager-handle* (process->handle self))
   (format #t "[npc-trade] manager started (interaction v2)~%")
@@ -545,6 +567,7 @@
   (set! *hero-wascity-npc-shop-candidate* (the-as handle #f))
   (set! *hero-wascity-npc-shop-candidate-distance* (the-as float #x7f800000))
   (kill-by-type hero-wascity-npc-shop-manager *active-pool*)
+  (set! (-> *hero-wascity-trade-arrow-storage* 0) (the-as handle #f))
   (set! *hero-wascity-npc-shop-manager-handle* (the-as handle #f))
   (set! *hero-wascity-npc-shop-registered?* #f)
   (set! *hero-wascity-npc-shop-world-trader?* #f)

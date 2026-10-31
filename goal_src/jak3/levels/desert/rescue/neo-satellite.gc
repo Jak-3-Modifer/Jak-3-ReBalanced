@@ -2755,11 +2755,22 @@
       (= (-> attack mode) 'gravity-end))
   )
 
+(defun neo-sat-normal-darkjak-attack? ((attacker object) (attack attack-info))
+  "Reject all active Dark Jak damage in Normal Mode, including melee and Morph-Gun hits."
+  (and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+       *target*
+       (nonzero? (-> *target* darkjak))
+       (focus-test? *target* dark)
+       (or (= attacker *target*)
+           (darkjak-player-gun-attack? attack)))
+  )
+
 (defmethod get-damage-from-attack ((this neo-sat) (arg0 object) (arg1 event-message-block))
   "Compute hit point damage for an attack message."
   (let ((attack (the-as attack-info (-> arg1 param 1)))
         (v0-1 (the-as number (call-parent-method this arg0 arg1))))
-    (when (or (neo-sat-dark-gun-attack? attack)
+    (when (or (neo-sat-normal-darkjak-attack? arg0 attack)
+              (neo-sat-dark-gun-attack? attack)
               (darkjak-player-gun-attack? attack))
       (return 0.0))
     (if (logtest? (penetrate dark-bomb dark-smack) (-> attack penetrate-using))
@@ -2774,7 +2785,8 @@
 
 (defmethod damage-enemy-from-attack! ((this neo-sat) (arg0 object) (arg1 event-message-block))
   "Given an attack message, apply damage."
-  (when (or (neo-sat-dark-gun-attack? (the-as attack-info (-> arg1 param 1)))
+  (when (or (neo-sat-normal-darkjak-attack? arg0 (the-as attack-info (-> arg1 param 1)))
+            (neo-sat-dark-gun-attack? (the-as attack-info (-> arg1 param 1)))
             (darkjak-player-gun-attack? (the-as attack-info (-> arg1 param 1))))
     (return 0.0))
   (let ((f30-0 (call-parent-method this arg0 arg1)))

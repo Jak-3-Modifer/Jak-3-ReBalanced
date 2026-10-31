@@ -28,6 +28,59 @@
         (else #t)))
   )
 
+;; Color zero is the stock red laser.  Values 1..6 are the extra cosmetic
+;; colors; Blue continues to use its existing gs63 secret bit.
+(defun hero-gun-laser-color-index ()
+  (+ (if (logtest? (-> *game-info* items) (game-items item26)) 1 0)
+     (if (logtest? (-> *game-info* items) (game-items item27)) 2 0)
+     (if (logtest? (-> *game-info* items) (game-items item28)) 4 0))
+  )
+
+(defun set-hero-gun-laser-color-index! ((index int))
+  (let ((items (logclear (-> *game-info* items) (game-items item26 item27 item28))))
+    (when (logtest? index 1)
+      (logior! items (game-items item26)))
+    (when (logtest? index 2)
+      (logior! items (game-items item27)))
+    (when (logtest? index 4)
+      (logior! items (game-items item28)))
+    (set! (-> *game-info* items) items))
+  (none)
+  )
+
+(defun hero-gun-laser-option-index ((name text-id))
+  (case name
+    (((text-id text-004b)) 1) ;; Pink
+    (((text-id text-004c)) 2) ;; Green
+    (((text-id text-004d)) 3) ;; White
+    (((text-id text-0052)) 4) ;; Purple
+    (((text-id text-0053)) 5) ;; Yellow
+    (((text-id text-0055)) 6) ;; Orange
+    (else 0))
+  )
+
+(defun hero-gun-laser-option-owned? ((name text-id))
+  (case name
+    (((text-id text-004b)) (logtest? (-> *game-info* items) (game-items item20)))
+    (((text-id text-004c)) (logtest? (-> *game-info* items) (game-items item21)))
+    (((text-id text-004d)) (logtest? (-> *game-info* items) (game-items item22)))
+    (((text-id text-0052)) (logtest? (-> *game-info* items) (game-items item23)))
+    (((text-id text-0053)) (logtest? (-> *game-info* items) (game-items item24)))
+    (((text-id text-0055)) (logtest? (-> *game-info* items) (game-items item25)))
+    (else #f))
+  )
+
+(defun hero-gun-laser-option-purchase! ((name text-id))
+  (case name
+    (((text-id text-004b)) (logior! (-> *game-info* items) (game-items item20)))
+    (((text-id text-004c)) (logior! (-> *game-info* items) (game-items item21)))
+    (((text-id text-004d)) (logior! (-> *game-info* items) (game-items item22)))
+    (((text-id text-0052)) (logior! (-> *game-info* items) (game-items item23)))
+    (((text-id text-0053)) (logior! (-> *game-info* items) (game-items item24)))
+    (((text-id text-0055)) (logior! (-> *game-info* items) (game-items item25))))
+  (none)
+  )
+
 ;; Session-local mineb hint tracking; survives checkpoint reloads. (AI-assisted)
 (define *mineb-light-freeze-deaths* 0)
 (define *mineb-light-freeze-hint-pending?* #f)

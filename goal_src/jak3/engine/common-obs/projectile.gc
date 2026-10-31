@@ -61,7 +61,17 @@
       (set! (-> v1-1 attacker-velocity quad) (-> this pre-move-transv quad))
       (logior! (-> v1-1 mask) (attack-mask attacker-velocity))
       )
-    (set! (-> v1-1 damage) (-> this damage))
+    ;; Hostile projectiles that reach Jak deal a fixed four damage in Hero
+    ;; Mode. Projectiles striking enemies and other objects retain their
+    ;; configured damage, so Jak's weapon damage is not changed here.
+    (set! (-> v1-1 damage)
+          (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (logtest? (-> arg0 mask) (process-mask target))
+                   )
+              4.0
+              (-> this damage)
+              )
+          )
     (set! (-> v1-1 vehicle-damage-factor) (-> this vehicle-damage-factor))
     (set! (-> v1-1 vehicle-impulse-factor) (-> this vehicle-impulse-factor))
     (logior! (-> v1-1 mask) (attack-mask damage vehicle-damage-factor vehicle-impulse-factor))
