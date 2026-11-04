@@ -58,6 +58,10 @@
     )
   )
 
+(define *hero-nest-eggs-ocean-trigger-pos*
+  (new 'static 'vector :x 9549905.92 :y 77987.84 :z 9420472.32 :w 1.0))
+(define *hero-nest-eggs-ocean-triggered?* #f)
+
 
 (defmethod taskman-event-handler ((this task-manager-nest-cocoons) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
   (case arg2
@@ -90,6 +94,17 @@
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod task-manager-method-26 ((this task-manager-nest-cocoons))
+  ;; Keep the Desert ocean at five meters until Jak reaches the mission trigger,
+  ;; then lower it to minus ten meters for the remainder of Hero Mode Nest Eggs.
+  (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+    (when (and (not *hero-nest-eggs-ocean-triggered?*)
+               *target*
+               (< (vector-vector-distance (target-pos 0) *hero-nest-eggs-ocean-trigger-pos*) 40960.0))
+      (set! *hero-nest-eggs-ocean-triggered?* #t))
+    (let ((ocean-height (if *hero-nest-eggs-ocean-triggered?* -40960.0 20480.0)))
+      (set! (-> (lookup-level-info 'desert) ocean-height) ocean-height)
+      (when *ocean-map*
+        (set-height! *ocean-map* ocean-height))))
   (set-nst-poison! (the-as mood-context 0))
   (cond
     ((= (level-status? *level* 'nstb #f) 'active)
@@ -419,6 +434,11 @@
   )
 
 (defmethod task-manager-method-25 ((this task-manager-nest-cocoons))
+  (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+    (set! (-> (lookup-level-info 'desert) ocean-height) 36864.0)
+    (when *ocean-map*
+      (set-height! *ocean-map* 36864.0)))
+  (set! *hero-nest-eggs-ocean-triggered?* #f)
   (when (and (-> this minimap) (nonzero? (-> this minimap)))
     (logior! (-> this minimap flags) (minimap-flag fade-out))
     (set! (-> this minimap) #f)
@@ -439,6 +459,7 @@
     )
   (set-setting! 'exclusive-task-list (new 'static 'boxed-array :type uint8 #x18 #x7) 0.0 0)
   (set! (-> this vehicle-handle) (the-as handle #f))
+  (set! *hero-nest-eggs-ocean-triggered?* #f)
   (set! (-> this cocoon-manager-entity) #f)
   (set! (-> this cocoon-count) 0)
   (set! (-> this actor-group-count) 0)

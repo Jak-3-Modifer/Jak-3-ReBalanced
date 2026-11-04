@@ -621,6 +621,18 @@
   ()
   )
 
+(defun hero-catch-lizards-remove-corral-gate! ((name string))
+  (let ((gate (the-as entity-actor (entity-by-name name))))
+    (when (and gate
+               (not (logtest? (-> gate extra perm status) (entity-perm-status dead))))
+      (when (-> gate extra process)
+        (kill! gate))
+      (logior! (-> gate extra perm status) (entity-perm-status dead))
+      )
+    )
+  (none)
+  )
+
 
 ;; WARN: Return type mismatch object vs none.
 (defmethod task-manager-method-26 ((this task-manager-get-to-corral))
@@ -639,6 +651,11 @@
              (= (-> v1-4 status) 'active)
              (-> v1-4 display?)
              )
+    (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+      (hero-catch-lizards-remove-corral-gate! "desert-elec-gate-1")
+      (hero-catch-lizards-remove-corral-gate! "desert-elec-gate-2")
+      (hero-catch-lizards-remove-corral-gate! "desert-elec-gate-3")
+      )
     (let ((s4-0 (-> *minimap-class-list* 121)))
       (if (< (vector-vector-distance (target-pos 0) (-> s4-0 default-position)) 1474560.0)
           (send-event this 'complete)

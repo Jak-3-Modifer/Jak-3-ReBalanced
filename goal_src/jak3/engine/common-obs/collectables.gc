@@ -3021,7 +3021,10 @@
     ;; Dark Bipedal. Compare the runtime name without a level-type dependency.
     (when (and (= sv-16 (pickup-type ammo-dark))
                (-> this process)
-               (= (-> this process type symbol) 'dp-bipedal))
+               (or (= (-> this process type symbol) 'dp-bipedal)
+                   (and (type? (-> this process) process-drawable)
+                        (-> (the-as process-drawable (-> this process)) entity)
+                        (= (-> (the-as process-drawable (-> this process)) entity extra level name) 'towera))))
       (set! sv-16 (pickup-type none)))
     (if (= sv-16 (pickup-type none))
         (return (the-as (pointer process) #f))

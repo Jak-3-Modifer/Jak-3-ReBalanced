@@ -2550,7 +2550,7 @@
               )
             :flags (game-task-node-flag auto-close save-on-life act1)
             :parent-node (new 'static 'array game-task-node 4
-              (game-task-node desert-turtle-training-resolution)
+              (game-task-node desert-artifact-race-1-resolution)
               (game-task-node none)
               (game-task-node none)
               (game-task-node none)
@@ -2834,7 +2834,7 @@
               )
             :flags (game-task-node-flag save-on-life act1)
             :parent-node (new 'static 'array game-task-node 4
-              (game-task-node desert-course-race-resolution)
+              (game-task-node desert-hover-resolution)
               (game-task-node none)
               (game-task-node none)
               (game-task-node none)
@@ -3142,7 +3142,7 @@
               )
             :flags (game-task-node-flag save-on-life act1)
             :parent-node (new 'static 'array game-task-node 4
-              (game-task-node wascity-leaper-race-resolution)
+              (game-task-node desert-catch-lizards-resolution)
               (game-task-node none)
               (game-task-node none)
               (game-task-node none)
@@ -3280,7 +3280,7 @@
               )
             :flags (game-task-node-flag save-on-life act1)
             :parent-node (new 'static 'array game-task-node 4
-              (game-task-node desert-hover-resolution)
+              (game-task-node wascity-pre-game-resolution)
               (game-task-node none)
               (game-task-node none)
               (game-task-node none)
@@ -3492,7 +3492,7 @@
               )
             :flags (game-task-node-flag save-on-life act1)
             :parent-node (new 'static 'array game-task-node 4
-              (game-task-node arena-fight-2-resolution)
+              (game-task-node desert-turtle-training-resolution)
               (game-task-node none)
               (game-task-node none)
               (game-task-node none)
@@ -3715,8 +3715,8 @@
               )
             :flags (game-task-node-flag save-on-life act1)
             :parent-node (new 'static 'array game-task-node 4
-              (game-task-node desert-catch-lizards-resolution)
-              (game-task-node none)
+              (game-task-node desert-course-race-resolution)
+              (game-task-node arena-fight-2-resolution)
               (game-task-node none)
               (game-task-node none)
               )
@@ -4846,8 +4846,8 @@
             :when-open (new 'static 'boxed-array :type game-task-event)
             :flags (game-task-node-flag save-on-life act1)
             :parent-node (new 'static 'array game-task-node 4
-              (game-task-node desert-catch-lizards-resolution)
-              (game-task-node none)
+              (game-task-node desert-course-race-resolution)
+              (game-task-node arena-fight-2-resolution)
               (game-task-node none)
               (game-task-node none)
               )

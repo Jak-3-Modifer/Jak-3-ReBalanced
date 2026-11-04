@@ -85,11 +85,13 @@
   )
 
 (defun configure-hero-mode-desert-race-progression! ()
-  "Hero Mode runs Turtle Training before Artifact Race 1, which unlocks Course Race.
+  "Hero Mode runs Catch Lizards and Hover between Turtle Training and Artifact Race 1.
 Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
   (let ((course-intro (-> *game-info* sub-task-list (game-task-node desert-course-race-introduction)))
         (artifact-intro (-> *game-info* sub-task-list (game-task-node desert-artifact-race-1-introduction)))
         (hover-intro (-> *game-info* sub-task-list (game-task-node desert-hover-introduction)))
+        (catch-lizards-intro
+          (-> *game-info* sub-task-list (game-task-node desert-catch-lizards-introduction)))
         (hover-task (-> *game-info* play-list (game-task desert-hover)))
         (rescue-task (-> *game-info* play-list (game-task desert-rescue)))
         (rescue-vehicle-node (-> *game-info* sub-task-list (game-task-node desert-rescue-get-vehicle)))
@@ -107,11 +109,12 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
         )
     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
         (begin
-          ;; Turtle Training -> Artifact Race 1 -> Course Race.
+          ;; Turtle Training -> Catch Lizards -> Hover -> Artifact Race 1 -> Course Race.
           ;; Leaper Race becomes available after the Temple Oracle mission.
-          (set! (-> artifact-intro parent-node 0) (game-task-node desert-turtle-training-resolution))
+          (set! (-> catch-lizards-intro parent-node 0) (game-task-node desert-turtle-training-resolution))
+          (set! (-> hover-intro parent-node 0) (game-task-node desert-catch-lizards-resolution))
+          (set! (-> artifact-intro parent-node 0) (game-task-node desert-hover-resolution))
           (set! (-> course-intro parent-node 0) (game-task-node desert-artifact-race-1-resolution))
-          (set! (-> hover-intro parent-node 0) (game-task-node desert-course-race-resolution))
           (set! (-> hover-intro manager index) -1)
           ;; Begin Hero Mode Desert Hover in the Turtle, but do not apply the
           ;; normal-mode vehicle lock; the garage may still select any vehicle
