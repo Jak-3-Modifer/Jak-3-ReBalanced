@@ -4000,6 +4000,22 @@
 
 (defmethod secret-item-option-method-12 ((this secret-item-option))
   (cond
+    ;; Jak Off is a free repeatable action, not a purchased or persistent
+    ;; toggle.  Report it as owned-but-off so confirm executes it immediately.
+    ((= (-> this secret) (game-secrets gs21))
+     2
+     )
+    ;; Laser colors use custom ownership storage, so enforce their mission
+    ;; unlock before the custom purchase/toggle state bypasses the normal gate.
+    ;; Already purchased colors remain usable when carried into a new game.
+    ((and (or (= (-> this name) (text-id text-0061))
+              (nonzero? (hero-gun-laser-option-index (-> this name))))
+          (not (task-node-closed? (-> this avail-after)))
+          (if (= (-> this name) (text-id text-0061))
+              (not (logtest? (-> *game-info* purchase-secrets) (game-secrets gs63)))
+              (not (hero-gun-laser-option-owned? (-> this name)))))
+     4
+     )
     ((nonzero? (hero-gun-laser-option-index (-> this name)))
      (cond
        ((not (hero-gun-laser-option-owned? (-> this name))) 0)

@@ -328,7 +328,13 @@
   (local-vars (v0-1 object))
   (case arg2
     (('trigger-on)
-     (task-node-close! (game-task-node temple-oracle-introduction) 'event)
+     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+         (begin
+           (set! *hero-templex-oracle-wave-start?* #t)
+           (format *stdcon* "[temple-oracle-waves] watcher trigger-on~%")
+           )
+         (task-node-close! (game-task-node temple-oracle-introduction) 'event)
+         )
      (set! v0-1 #t)
      (set! (-> self within-outer-ring) (the-as symbol v0-1))
      v0-1

@@ -362,21 +362,216 @@
   (none)
   )
 
-(deftype task-manager-temple-oracle (task-manager)
-  ()
+;; Hero Mode Temple Oracle combat prototype.  Each wave uses four parallel
+;; spawn lanes.  One Tomb Baby Spider is created at every lane once per second
+;; for five cycles, producing 20 enemies per wave without unbounded spawning.
+(define *hero-templex-oracle-spawn-points*
+  (new 'static 'boxed-array :type vector
+    (new 'static 'vector :x (meters 4214.39) :y (meters 119.32) :z (meters 4130.96) :w 1.0)
+    (new 'static 'vector :x (meters 4200.84) :y (meters 119.32) :z (meters 4096.46) :w 1.0)
+    (new 'static 'vector :x (meters 4150.55) :y (meters 119.28) :z (meters 4091.44) :w 1.0)
+    (new 'static 'vector :x (meters 4160.31) :y (meters 119.32) :z (meters 4174.49) :w 1.0)
+    )
   )
 
+;; The existing watcher volume sets this when Jak enters the Oracle arena.
+;; Keeping activation on that event prevents the mission manager from starting
+;; the encounter while Jak is still travelling through the Temple.
+(define *hero-templex-oracle-wave-start?* #f)
+
+(deftype task-manager-temple-oracle (task-manager)
+  ((spider-handles handle 20)
+   (spawned-count int32)
+   (door-locked? symbol)
+   (spider-nav-mesh nav-mesh)
+   )
+  )
+
+(defun hero-templex-oracle-clear-spider-handles! ((this task-manager-temple-oracle))
+  (dotimes (i 20)
+    (set! (-> this spider-handles i) (the-as handle #f))
+    )
+  (set! (-> this spawned-count) 0)
+  (none)
+  )
+
+(defun hero-templex-oracle-find-nav-mesh ((this task-manager-temple-oracle))
+  ;; This existing Temple A spider uses nav mesh 60266, which covers the upper
+  ;; Templex/Temple A transition area containing all four supplied positions.
+  (let ((template-entity (entity-by-name "tomb-baby-spider-49")))
+    (if template-entity
+        (nav-mesh-from-res-tag template-entity 'nav-mesh-actor 0)
+        (the-as nav-mesh #f)
+        )
+    )
+  )
+
+(defun hero-templex-oracle-spawn-spider ((this task-manager-temple-oracle) (point vector))
+  (let ((params (new 'stack-no-clear 'enemy-init-by-other-params))
+        (old-nav-mesh (-> *tomb-baby-spider-nav-enemy-info* nav-mesh))
+        (spawned-h (the-as handle #f))
+        )
+    (vector-copy! (-> params trans) point)
+    (quaternion-identity! (-> params quat))
+    (set! (-> params entity) #f)
+    (set! (-> params directed?) #f)
+    (set! (-> params no-initial-move-to-ground?) #f)
+    (set! (-> params art-level) 'templea)
+
+    ;; enemy-init-by-other normally obtains its nav mesh from an entity.  These
+    ;; runtime wave enemies deliberately have no entity, so provide the loaded
+    ;; Temple mesh only for their synchronous initialization, then restore the
+    ;; shared spider defaults immediately.
+    (set! (-> *tomb-baby-spider-nav-enemy-info* nav-mesh) (-> this spider-nav-mesh))
+    (set! spawned-h
+          (ppointer->handle
+            (process-spawn
+              tomb-baby-spider
+              :init enemy-init-by-other
+              this
+              params
+              :name "hero-templex-oracle-spider"
+              :to this
+              )
+            )
+          )
+    (set! (-> *tomb-baby-spider-nav-enemy-info* nav-mesh) old-nav-mesh)
+    spawned-h
+    )
+  )
+
+(defun hero-templex-oracle-wave-cleared? ((this task-manager-temple-oracle))
+  (let ((cleared? #t))
+    (dotimes (i (-> this spawned-count))
+      (when (handle->process (-> this spider-handles i))
+        (set! cleared? #f)
+        )
+      )
+    cleared?
+    )
+  )
+
+(defun hero-templex-oracle-cleanup-spiders! ((this task-manager-temple-oracle))
+  (dotimes (i (-> this spawned-count))
+    (let ((spider (handle->process (-> this spider-handles i))))
+      (when spider
+        (deactivate spider)
+        )
+      )
+    )
+  (hero-templex-oracle-clear-spider-handles! this)
+  (none)
+  )
 
 (defstate active (task-manager-temple-oracle)
   :virtual #t
+  :enter (behavior ()
+    (let ((parent-enter (-> (method-of-type task-manager active) enter)))
+      (when parent-enter
+        (parent-enter)
+        )
+      )
+    (hero-templex-oracle-clear-spider-handles! self)
+    (set! (-> self door-locked?) #f)
+    (set! (-> self spider-nav-mesh) #f)
+    (format *stdcon* "[temple-oracle-waves] manager ready; trigger=~A~%"
+            *hero-templex-oracle-wave-start?*)
+    )
+  :exit (behavior ()
+    (hero-templex-oracle-cleanup-spiders! self)
+    (set! *hero-templex-oracle-wave-start?* #f)
+    (when (-> self door-locked?)
+      (remove-setting! 'airlock-command)
+      (set! (-> self door-locked?) #f)
+      )
+    (let ((parent-exit (-> (method-of-type task-manager active) exit)))
+      (when parent-exit
+        (parent-exit)
+        )
+      )
+    )
   :trans (behavior ()
-    (format *stdcon* "Temple Oracle: Press down to fail, up to complete~%")
-    (if (cpad-pressed? 0 up)
-        (send-event self 'complete)
+    ((-> (method-of-object self wait) trans))
+    )
+  :code (behavior ()
+    ;; Normal Mode retains the original watcher-driven Temple progression.
+    (if (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+        (while #t
+          (suspend)
+          )
         )
-    (if (cpad-pressed? 0 down)
-        (send-event self 'fail)
+
+    (until *hero-templex-oracle-wave-start?*
+      (suspend)
+      )
+    (format *stdcon* "[temple-oracle-waves] arena trigger received~%")
+
+    ;; Wait for Temple A's entity resources before spawning.  This is a
+    ;; bounded level-load dependency, not a per-wave or per-enemy allocation.
+    (format *stdcon* "[temple-oracle-waves] waiting for Temple A nav mesh~%")
+    (until (-> self spider-nav-mesh)
+      (set! (-> self spider-nav-mesh) (hero-templex-oracle-find-nav-mesh self))
+      (when (not (-> self spider-nav-mesh))
+        (suspend)
         )
+      )
+    (format *stdcon* "[temple-oracle-waves] nav mesh ready; locking door~%")
+
+    (set-setting! 'airlock-command '(("tpl-inner-airlock-door-1" close)) 0.0 0)
+    (set! (-> self door-locked?) #t)
+    (let ((door (process-by-name "tpl-inner-airlock-door-1" *active-pool*)))
+      (when door
+        (send-event door 'close (seconds 0))
+        )
+      )
+
+    (dotimes (wave 2)
+      (format *stdcon* "[temple-oracle-waves] starting wave ~D~%" (+ wave 1))
+      (hero-templex-oracle-clear-spider-handles! self)
+      (dotimes (cycle 5)
+        (dotimes (lane 4)
+          (let ((spider-h (the-as handle #f)))
+            ;; A temporary pool shortage delays this lane instead of silently
+            ;; reducing the requested five-spider count.
+            (until spider-h
+              (set! spider-h
+                    (hero-templex-oracle-spawn-spider
+                      self
+                      (-> *hero-templex-oracle-spawn-points* lane)
+                      )
+                    )
+              (when (not spider-h)
+                (suspend)
+                )
+              )
+            (set! (-> self spider-handles (-> self spawned-count)) spider-h)
+            (+! (-> self spawned-count) 1)
+            )
+          )
+        (when (< cycle 4)
+          (suspend-for (seconds 1))
+          )
+        )
+      (format *stdcon* "[temple-oracle-waves] wave ~D spawned 20 spiders~%" (+ wave 1))
+
+      (until (hero-templex-oracle-wave-cleared? self)
+        (suspend)
+        )
+      (when (zero? wave)
+        (suspend-for (seconds 2))
+        )
+      )
+
+    (format *stdcon* "[temple-oracle-waves] encounter complete~%")
+
+    (remove-setting! 'airlock-command)
+    (set! (-> self door-locked?) #f)
+    (let ((door (process-by-name "tpl-inner-airlock-door-1" *active-pool*)))
+      (when door
+        (send-event door 'open (seconds 0))
+        )
+      )
+    (send-event self 'complete)
     )
   )
 

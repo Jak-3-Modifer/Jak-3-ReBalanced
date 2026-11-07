@@ -2191,7 +2191,13 @@
    This looks cool because you can shoot them many times."
   (let ((f0-1 (fmax 0.0 (fmin arg0 (-> this hit-points)))))
     (cond
-      ((and (= (-> this incoming knocked-type) (knocked-type blue-shot)) (= f0-1 (-> this hit-points)) (< 0.0 f0-1))
+      ;; Needle Lazer projectiles carry penetrate39 and should apply lethal
+      ;; damage immediately instead of entering the generic Blue fated state.
+      ((and (= (-> this incoming knocked-type) (knocked-type blue-shot))
+            (not (logtest? (penetrate penetrate39) (-> this incoming penetrate-using)))
+            (= f0-1 (-> this hit-points))
+            (< 0.0 f0-1)
+            )
        (cond
          ((zero? (-> this fated-time))
           (set-time! (-> this fated-time))

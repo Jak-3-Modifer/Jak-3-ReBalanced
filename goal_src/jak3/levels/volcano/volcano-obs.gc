@@ -831,6 +831,7 @@
    (stopped-up-by       handle)
    (no-collision-timer  time-frame)
    (trigger-count       int32)
+   (hero-puzzle-open?   symbol)
    )
   (:state-methods
     idle
@@ -901,6 +902,10 @@
   :virtual #t
   :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
     (case message
+      (('hero-puzzle-open)
+       (set! (-> self hero-puzzle-open?) #t)
+       (go-virtual active)
+       )
       (('trigger)
        (+! (-> self trigger-count) 1)
        (if (= (-> self trigger-count) 2)
@@ -916,6 +921,10 @@
   :virtual #t
   :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
     (case message
+      (('hero-puzzle-open)
+       (set! (-> self hero-puzzle-open?) #t)
+       (go-virtual active)
+       )
       (('in-hole)
        (if (and (or (= (-> self extra-id) 1) (= (-> self extra-id) 2))
                 (< 9011.2 (the-as float (-> block param 0)))
@@ -969,6 +978,9 @@
   :virtual #t
   :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
     (case message
+      (('hero-puzzle-open)
+       (set! (-> self hero-puzzle-open?) #t)
+       )
       (('attack 'touch)
        (let ((gp-0 (as-type proc process-focusable)))
          (when gp-0
@@ -1006,10 +1018,13 @@
        #t
        )
       (('get-norm)
-       (get-norm! (-> self sync) 0)
+       (if (-> self hero-puzzle-open?)
+           1.0
+           (get-norm! (-> self sync) 0))
        )
       (('in-hole)
-       (when (and (or (= (-> self extra-id) 1) (= (-> self extra-id) 2))
+       (when (and (not (-> self hero-puzzle-open?))
+                  (or (= (-> self extra-id) 1) (= (-> self extra-id) 2))
                   (< (the-as float (-> block param 0)) 6144.0)
                   (< (the-as float (-> block param 1)) 2048.0)
                   )
@@ -1055,7 +1070,9 @@
     )
   :code sleep-code
   :post (behavior ()
-    (let ((f30-0 (get-norm! (-> self sync) 0)))
+    (let ((f30-0 (if (-> self hero-puzzle-open?)
+                     1.0
+                     (get-norm! (-> self sync) 0))))
       (sound-play-by-name
         (static-sound-name "steam-vent")
         (-> self sound-id)
@@ -1146,6 +1163,7 @@
   (set! (-> this sound-id) (new-sound-id))
   (set! (-> this stopped-up-by) (the-as handle #f))
   (set! (-> this trigger-count) 0)
+  (set! (-> this hero-puzzle-open?) #f)
   (update-transforms (-> this root))
   (let ((v1-21 (-> this extra-id)))
     (if (or (zero? v1-21) (= v1-21 1) (= v1-21 2))

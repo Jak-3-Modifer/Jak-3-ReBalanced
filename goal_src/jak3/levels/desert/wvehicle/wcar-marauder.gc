@@ -16,6 +16,7 @@
 ;; DECOMP BEGINS
 
 (define-extern v-turtle-camouflage-hides-target? (function symbol))
+(define-extern v-toad-camouflage-hides-target? (function symbol))
 
 (defskelgroup skel-v-marauder interceptor interceptor-lod0-jg interceptor-idle-ja
               ((interceptor-lod0-mg (meters 999999)))
@@ -130,6 +131,7 @@
   ;; leave spawned desert vehicles in an invalid control state.  Camouflage
   ;; instead prevents fresh turret tracking while preserving normal driving.
   (unless (or (v-turtle-camouflage-hides-target?)
+              (v-toad-camouflage-hides-target?)
               (v-snake-camouflage-hides-target?))
     (let ((s5-0 (-> this target-status)))
       (when (< 122880.0 (vector-vector-distance (-> s5-0 position) (-> this root trans)))
@@ -141,6 +143,8 @@
                             (focus-test? *target* pilot-riding)
                             (or (and (= *v-turtle-ability-loadout* 6)
                                      (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-turtle)))
+                                 (and (= *v-toad-ability-loadout* 6)
+                                      (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-toad)))
                                  (and *v-snake-turret-jammer-equipped?*
                                       (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
                                       (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-snake))))

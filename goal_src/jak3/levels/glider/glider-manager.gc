@@ -830,8 +830,10 @@
 
 ;; WARN: Return type mismatch connection-minimap vs none.
 (defmethod task-manager-desert-glide-method-32 ((this task-manager-desert-glide))
-  (dotimes (s5-0 (length *desert-glide-rings*))
-    (add-icon! *minimap* this (the-as uint 150) (the-as int #f) (-> *desert-glide-rings* s5-0 pos) 0)
+  (when (not (and *game-info* (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+    (dotimes (s5-0 (length *desert-glide-rings*))
+      (add-icon! *minimap* this (the-as uint 150) (the-as int #f) (-> *desert-glide-rings* s5-0 pos) 0)
+      )
     )
   (dotimes (s5-1 (length *desert-glide-thermals*))
     (add-icon! *minimap* this (the-as uint 151) (the-as int #f) (-> *desert-glide-thermals* s5-1 pos) 0)
@@ -880,7 +882,12 @@
       (if (< f1-3 450560.0)
           (set! f0-1 (* 2.0 (- 450560.0 f1-3)))
           )
-      (< (-> arg0 y) (- (-> *desert-glide-rings* s5-0 pos y) (+ 204800.0 f0-1)))
+      (let ((fail-elevation (- (-> *desert-glide-rings* s5-0 pos y) (+ 204800.0 f0-1))))
+        (when (and *game-info* (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+          (set! *hero-glider-fail-elevation* fail-elevation)
+          )
+        (< (-> arg0 y) fail-elevation)
+        )
       )
     )
   )
@@ -910,6 +917,10 @@
         )
 
 (defmethod task-manager-desert-glide-method-34 ((this task-manager-desert-glide))
+  ;; Hero Mode replaces the route rings with player-controlled Wave Concussor
+  ;; propulsion.  Keep the route data for altitude/progression checks, but do
+  ;; not allocate any visible or collidable ring actors.
+  (b! (and *game-info* (logtest? (-> *game-info* secrets) (game-secrets hero-mode))) cfg-8 :delay (nop!))
   (let ((s5-0 (new 'stack-no-clear 'vector))
         (s4-0 *desert-glide-rings*)
         )
@@ -1481,7 +1492,17 @@
   (set! (-> this hud-altitude) (new 'static 'handle))
   (set! (-> this last-active-thermal) 0)
   (set! (-> this whistle-sound) (new 'static 'sound-id))
-  (adjust-player-ammo 200.0 (pickup-type ammo-yellow))
+  (if (and *game-info* (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+      (begin
+        (set! *hero-glider-fail-elevation* (- (-> *desert-glide-rings* 0 pos y) (meters 50)))
+        (set! (-> *game-info* gun-ammo 1)
+              (if (task-node-closed? (game-task-node desert-glide-templetop))
+                  50.0
+                  115.0
+                  ))
+        )
+      (adjust-player-ammo 200.0 (pickup-type ammo-yellow))
+      )
   (task-manager-desert-glide-method-39 this (the-as uint 1))
   (task-manager-desert-glide-method-32 this)
   (none)

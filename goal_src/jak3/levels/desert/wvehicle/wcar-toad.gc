@@ -26,6 +26,101 @@
 
 ;; DECOMP BEGINS
 
+;; Hero Mode Dune Hopper loadout.  Keep this state independent from the Tough
+;; Puppy so the two garage menus never change each other's equipped modules.
+(define *v-toad-loadout-menu-open?* #f)
+(define *v-toad-loadout-menu-page* 0)
+(define *v-toad-loadout-menu-selection* 0)
+(define *v-toad-weapon-loadout* 0)
+(define *v-toad-ability-loadout* 0)
+(define *v-toad-defense-loadout* 0)
+(define *v-toad-vehicle-toughness-equipped?* #f)
+
+(define *v-toad-mass-inverter-cooldown-time* (the-as time-frame 0))
+(define *v-toad-mass-inverter-cooldown-active?* #f)
+(define *v-toad-damage-immunity-time* (the-as time-frame 0))
+(define *v-toad-damage-immunity-active?* #f)
+(define *v-toad-damage-immunity-cooldown-time* (the-as time-frame 0))
+(define *v-toad-damage-immunity-cooldown-active?* #f)
+(define *v-toad-repair-cooldown-time* (the-as time-frame 0))
+(define *v-toad-repair-cooldown-active?* #f)
+(define *v-toad-regenerative-armor-time* (the-as time-frame 0))
+(define *v-toad-regenerative-armor-active?* #f)
+(define *v-toad-camouflage-time* (the-as time-frame 0))
+(define *v-toad-camouflage-cooldown-time* (the-as time-frame 0))
+(define *v-toad-camouflage-cooldown-active?* #f)
+(define *v-toad-camouflage-active?* #f)
+(define *v-toad-jammer-fade-active?* #f)
+
+(defun set-v-toad-active-loadout! ((loadout int))
+  (set! *v-toad-weapon-loadout* loadout)
+  (none)
+  )
+
+(defun set-v-toad-ability-loadout! ((loadout int))
+  (set! *v-toad-ability-loadout* loadout)
+  (set! *v-toad-vehicle-toughness-equipped?* (= loadout 2))
+  (none)
+  )
+
+(defun set-v-toad-defense-loadout! ((loadout int))
+  (set! *v-toad-defense-loadout* loadout)
+  (none)
+  )
+
+(defun close-v-toad-loadout-menu ()
+  (set-master-mode 'game)
+  (set! *v-toad-loadout-menu-open?* #f)
+  (set! *popup-menu-open* #f)
+  (none)
+  )
+
+(defun open-v-toad-loadout-menu ()
+  (cond
+    ((!= *v-toad-weapon-loadout* 0) (set! *v-toad-loadout-menu-selection* 0))
+    ((!= *v-toad-ability-loadout* 0) (set! *v-toad-loadout-menu-selection* 1))
+    ((!= *v-toad-defense-loadout* 0) (set! *v-toad-loadout-menu-selection* 2))
+    (else (set! *v-toad-loadout-menu-selection* 0)))
+  (set! *v-toad-loadout-menu-page* 0)
+  (set! *v-toad-loadout-menu-open?* #t)
+  (set! *popup-menu-open* #t)
+  (set-master-mode 'menu)
+  (sound-play "menu-pick")
+  (none)
+  )
+
+(defun v-toad-set-fade! ((this wvehicle) (amount uint) (active? symbol))
+  (cond
+    (active?
+     (logior! (-> this draw status) (draw-control-status force-fade))
+     (set! (-> this draw force-fade) amount))
+    (else
+     (set! (-> this draw force-fade) (the-as uint 128))
+     (logclear! (-> this draw status) (draw-control-status force-fade))))
+  (dotimes (wheel-index (-> this info physics-model wheel-count))
+    (let ((wheel-proc (handle->process (-> this wheel wheel-index handle))))
+      (when wheel-proc
+        (cond
+          (active?
+           (logior! (-> (the-as process-drawable wheel-proc) draw status)
+                    (draw-control-status force-fade))
+           (set! (-> (the-as process-drawable wheel-proc) draw force-fade) amount))
+          (else
+           (set! (-> (the-as process-drawable wheel-proc) draw force-fade) (the-as uint 128))
+           (logclear! (-> (the-as process-drawable wheel-proc) draw status)
+                      (draw-control-status force-fade)))))))
+  (none)
+  )
+
+(defun v-toad-camouflage-hides-target? ()
+  (if (and *v-toad-camouflage-active?*
+           *target*
+           (focus-test? *target* pilot-riding)
+           (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-toad)))
+      #t
+      #f)
+  )
+
 (deftype v-toad (wcar-base)
   ((jmod-axles       joint-mod-rotate-local  4 :inline)
    (jmod-shock-tops  joint-mod-rotate-local  2 :inline)
@@ -34,6 +129,120 @@
   (:methods
     (v-toad-method-203 (_type_ vehicle-wheel-state vehicle-wheel-info) none)
     )
+  )
+
+(defmethod deactivate ((this v-toad))
+  (when (or *v-toad-camouflage-active?* *v-toad-jammer-fade-active?*)
+    (v-toad-set-fade! this (the-as uint 128) #f))
+  (set! *v-toad-camouflage-active?* #f)
+  (set! *v-toad-jammer-fade-active?* #f)
+  (set! *v-toad-damage-immunity-active?* #f)
+  ((method-of-type wcar-base deactivate) this)
+  (none)
+  )
+
+(defmethod apply-damage ((this v-toad) (amount float) (impact rigid-body-impact))
+  (when (and *v-toad-vehicle-toughness-equipped?*
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+    (set! amount (/ amount 2)))
+  (when *v-toad-damage-immunity-active?*
+    (set! amount 0.0))
+  (when (and (= *v-toad-ability-loadout* 7) (> amount 0.0))
+    (set-time! *v-toad-regenerative-armor-time*)
+    (set! *v-toad-regenerative-armor-active?* #t))
+  ((method-of-type wcar-base apply-damage) this amount impact)
+  (none)
+  )
+
+(defun v-toad-update-loadout! ((this v-toad))
+  (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (cpad-pressed? 0 r1)
+             (= *v-toad-weapon-loadout* 1)
+             (v-turtle-mass-inverter-unlocked?)
+             (or (not *v-toad-mass-inverter-cooldown-active?*)
+                 (time-elapsed? *v-toad-mass-inverter-cooldown-time* (seconds 8))))
+    (process-spawn
+      gun-gravity
+      (-> this root trans)
+      (-> this rbody matrix fvec)
+      :name "v-toad-mass-inverter"
+      :to *entity-pool*)
+    (set-time! *v-toad-mass-inverter-cooldown-time*)
+    (set! *v-toad-mass-inverter-cooldown-active?* #t))
+
+  (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (cpad-pressed? 0 right))
+    (case *v-toad-defense-loadout*
+      ((4)
+       (when (and (not *v-toad-damage-immunity-active?*)
+                  (or (not *v-toad-damage-immunity-cooldown-active?*)
+                      (time-elapsed? *v-toad-damage-immunity-cooldown-time* (seconds 35))))
+         (set-time! *v-toad-damage-immunity-time*)
+         (set! *v-toad-damage-immunity-active?* #t)
+         (set! *v-toad-damage-immunity-cooldown-active?* #f)
+         (unless (play-sound-file
+                   "sfx/shield_cue.flac"
+                   (the int (* 40.0 (-> *setting-control* user-current sfx-volume))))
+           (sound-play "shield-on"))))
+      ((5)
+       (when (and (< 0.0 (-> this hit-points))
+                  (<= (-> this hit-points) 0.15)
+                  (or (not *v-toad-repair-cooldown-active?*)
+                      (time-elapsed? *v-toad-repair-cooldown-time* (seconds 40))))
+         (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
+         (set-time! *v-toad-repair-cooldown-time*)
+         (set! *v-toad-repair-cooldown-active?* #t)))
+      ((8)
+       (when (and (not *v-toad-camouflage-active?*)
+                  (or (not *v-toad-camouflage-cooldown-active?*)
+                      (time-elapsed? *v-toad-camouflage-cooldown-time* (seconds 25))))
+         (set-time! *v-toad-camouflage-time*)
+         (set! *v-toad-camouflage-active?* #t)
+         (set! *v-toad-camouflage-cooldown-active?* #f)
+         (v-toad-set-fade! this (the-as uint 13) #t)))))
+
+  (when (and *v-toad-damage-immunity-active?*
+             (or (time-elapsed? *v-toad-damage-immunity-time* (seconds 4))
+                 (!= *v-toad-defense-loadout* 4)))
+    (set! *v-toad-damage-immunity-active?* #f)
+    (set-time! *v-toad-damage-immunity-cooldown-time*)
+    (set! *v-toad-damage-immunity-cooldown-active?* #t))
+
+  (when (and (= *v-toad-ability-loadout* 3)
+             (not (logtest? (vehicle-flag turbo-boost) (-> this v-flags))))
+    (set! (-> this turbo-ready)
+          (fmin 1.0 (+ (-> this turbo-ready) (* 0.5 (seconds-per-frame))))))
+
+  (cond
+    ((!= *v-toad-ability-loadout* 7)
+     (set! *v-toad-regenerative-armor-active?* #f))
+    ((and *v-toad-regenerative-armor-active?*
+          (time-elapsed? *v-toad-regenerative-armor-time* (seconds 4)))
+     (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.033333335)))
+     (if (>= (-> this hit-points) 1.0)
+         (set! *v-toad-regenerative-armor-active?* #f)
+         (set-time! *v-toad-regenerative-armor-time*))))
+
+  (when (and *v-toad-camouflage-active?*
+             (or (time-elapsed? *v-toad-camouflage-time* (seconds 10))
+                 (!= *v-toad-defense-loadout* 8)))
+    (set! *v-toad-camouflage-active?* #f)
+    (set-time! *v-toad-camouflage-cooldown-time*)
+    (set! *v-toad-camouflage-cooldown-active?* #t)
+    (v-toad-set-fade! this (the-as uint 128) #f))
+
+  (cond
+    (*v-toad-camouflage-active?*
+     (set! *v-toad-jammer-fade-active?* #f))
+    ((= *v-toad-ability-loadout* 6)
+     (unless *v-toad-jammer-fade-active?*
+       (set! *v-toad-jammer-fade-active?* #t)
+       (v-toad-set-fade! this (the-as uint 115) #t)))
+    (*v-toad-jammer-fade-active?*
+     (set! *v-toad-jammer-fade-active?* #f)
+     (v-toad-set-fade! this (the-as uint 128) #f)))
+  (none)
   )
 
 
@@ -373,6 +582,7 @@
   )
 
 (defmethod vehicle-method-79 ((this v-toad))
+  (v-toad-update-loadout! this)
   (let ((s5-0 (new 'stack-no-clear 'inline-array 'quaternion 2)))
     (quaternion-axis-angle! (-> s5-0 1) 1.0 0.0 0.0 -5355.7476)
     (dotimes (s4-0 2)
@@ -462,6 +672,14 @@
     )
   (alloc-rbody-control! this *v-toad-constants*)
   (set! (-> this rider-hand-joint-array 0) 14)
+  (set! *v-toad-damage-immunity-active?* #f)
+  (set! *v-toad-damage-immunity-cooldown-active?* #f)
+  (set! *v-toad-repair-cooldown-active?* #f)
+  (set! *v-toad-mass-inverter-cooldown-active?* #f)
+  (set! *v-toad-regenerative-armor-active?* #f)
+  (set! *v-toad-camouflage-cooldown-active?* #f)
+  (set! *v-toad-camouflage-active?* #f)
+  (set! *v-toad-jammer-fade-active?* #f)
   ;; Start with the 281.25 RPM intra-burst interval (64 ticks).
   (set! (-> this shoot-delay) (the-as uint 64))
   ((method-of-type joint-mod-rotate-local init)

@@ -353,8 +353,209 @@
     )
   )
 
+;; Hero Mode hang-glider tuning.  The stock rigid body remains responsible for
+;; collision and suspension; these values describe the aerodynamic layer.
+(define *hero-glider-trim-speed* (meters 30))
+(define *hero-glider-trim-lift* 0.48)
+(define *hero-glider-pitch-lift* 0.42)
+(define *hero-glider-base-drag* (meters 1.25))
+(define *hero-glider-pitch-drag* (meters 4.5))
+(define *hero-glider-turn-drag* (meters 3.0))
+(define *hero-glider-stall-pitch* 0.72)
+(define *hero-glider-stall-nose-down* (meters 7))
+(define *hero-glider-control-response* 2.5)
+(define *hero-glider-thermal-lift* 0.45)
+(define *hero-glider-overspeed-drag* (meters 18))
+(define *hero-glider-control-stiffness-start* (meters 65))
+(define *hero-glider-max-dive-speed* (meters 90))
+(define *hero-glider-stall-speed* (meters 15))
+(define *hero-glider-steering-input* 0.0)
+(define *hero-glider-pitch-input* 0.0)
+(define *hero-glider-red-boost-time* 0)
+(define *hero-glider-red-boost-duration* (seconds 0.2))
+(define *hero-glider-red-forward-accel* (meters 30))
+(define *hero-glider-red-upward-accel* (meters 16))
+(define *hero-glider-red-pitch-duration* (seconds 0.5))
+(define *hero-glider-red-pitch-target* 0.22)
+(define *hero-glider-red-pitch-response* (meters 30))
+(define *hero-glider-red-pitch-max-accel* (meters 18))
+;; The Hero Mode HUD reads altitude between the live route failure floor and
+;; the top of the highest intended thermal (about 437 meters).
+(define *hero-glider-fail-elevation* 0.0)
+(define *hero-glider-max-elevation* (meters 437))
+
+(defun hero-glider-physics-active? ()
+  (let ((task-info (-> *game-info* sub-task-list (game-task-node desert-glide-templetop))))
+    (and *game-info*
+         (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+         (-> task-info manager)
+         (handle->process (-> task-info manager manager)))
+    )
+  )
+
+(defun hero-glider-apply-flight-forces! ((this h-glider))
+  (when (and (hero-glider-physics-active?)
+             (logtest? (-> this v-flags) (vehicle-flag riding))
+             (not (logtest? (-> this v-flags) (vehicle-flag dead))))
+    (let* ((force (new 'stack-no-clear 'vector))
+           (force-pos (new 'stack-no-clear 'vector))
+           (velocity-dir (new 'stack-no-clear 'vector))
+           (pitch (fmax -1.0 (fmin 1.0 *hero-glider-pitch-input*)))
+           (pull-up (fmax 0.0 (- pitch)))
+           (dive (fmax 0.0 pitch))
+           (steering (fmax -1.0 (fmin 1.0 *hero-glider-steering-input*)))
+           (speed (vector-length (-> this rbody lin-velocity)))
+           (speed-ratio (fmax 0.0 (fmin 1.6 (/ speed *hero-glider-trim-speed*))))
+           (dynamic-pressure (* speed-ratio speed-ratio))
+           (low-speed-stall
+             (fmax 0.0 (fmin 1.0 (/ (- *hero-glider-stall-speed* speed) (meters 6)))))
+           (high-angle-stall
+             (fmax 0.0
+                   (fmin 1.0
+                         (/ (- pull-up *hero-glider-stall-pitch*)
+                            (- 1.0 *hero-glider-stall-pitch*)))))
+           (stall (fmax low-speed-stall high-angle-stall))
+           (upright (fmax 0.0 (-> this rbody matrix uvec y)))
+           (lift-coefficient
+             (* (+ *hero-glider-trim-lift* (* *hero-glider-pitch-lift* pull-up))
+                (- 1.0 (* 0.9 stall))))
+           (overspeed
+             (fmax 0.0
+                   (fmin 1.0
+                         (/ (- speed *hero-glider-control-stiffness-start*)
+                            (- *hero-glider-max-dive-speed* *hero-glider-control-stiffness-start*)))))
+           (mass (-> this info info mass))
+           )
+      ;; Lift follows the wing's live up-vector.  Banking therefore tilts the
+      ;; lift vector into the turn and costs vertical lift naturally.
+      (vector-float*! force
+                      (-> this rbody matrix uvec)
+                      (* mass
+                         (-> this info extra gravity)
+                         dynamic-pressure
+                         lift-coefficient))
+      (add-force! (-> this rbody) force)
+
+      ;; Thermals add lift only while the wing remains reasonably upright;
+      ;; steep banks cannot collect their full upward energy.
+      (when (-> this in-thermal)
+        (vector-float*! force
+                        *up-vector*
+                        (* mass
+                           (-> this info extra gravity)
+                           *hero-glider-thermal-lift*
+                           (-> this thermal-strength)
+                           upright))
+        (add-force! (-> this rbody) force)
+        )
+
+      ;; Aerodynamic drag opposes actual motion.  Pull-ups, steep dives and
+      ;; banked turns all increase drag, preserving the altitude/speed trade.
+      (when (< 0.0 speed)
+        (vector-copy! velocity-dir (-> this rbody lin-velocity))
+        (vector-normalize! velocity-dir 1.0)
+        (vector-float*! force
+                        velocity-dir
+                        (* -1.0
+                           mass
+                           dynamic-pressure
+                           (+ *hero-glider-base-drag*
+                              (* *hero-glider-pitch-drag* (+ pull-up (* 0.35 dive)))
+                              (* *hero-glider-turn-drag* (fabs steering))
+                              (* *hero-glider-overspeed-drag* overspeed overspeed))))
+        (add-force! (-> this rbody) force)
+        )
+
+      ;; A stall is recoverable: loss of lift adds a controlled nose-down
+      ;; pitching moment, allowing gravity to rebuild airspeed.  It does not
+      ;; directly fail the mission or subtract health.
+      (when (< 0.0 stall)
+        (set-vector! force-pos 0.0 0.0 (meters 5) 1.0)
+        (vector+! force-pos force-pos (-> this info info cm-offset-joint))
+        (vector-matrix*! force-pos force-pos (-> this rbody matrix))
+        (vector-float*! force
+                        *up-vector*
+                        (* -1.0 mass *hero-glider-stall-nose-down* stall))
+        (rigid-body-control-method-22 (-> this rbody) force-pos force)
+        )
+      )
+    )
+  (none)
+  )
+
+(defun hero-glider-apply-red-boost! ((this h-glider))
+  (when (and (hero-glider-physics-active?)
+             (logtest? (-> this v-flags) (vehicle-flag riding))
+             (not (logtest? (-> this v-flags) (vehicle-flag dead))))
+    (let ((force (new 'stack-no-clear 'vector))
+          (force-pos (new 'stack-no-clear 'vector))
+          (mass (-> this info info mass))
+          )
+      (when (not (time-elapsed? *hero-glider-red-boost-time* *hero-glider-red-boost-duration*))
+        (vector-float*! force
+                        (-> this rbody matrix fvec)
+                        (* mass *hero-glider-red-forward-accel*))
+        (add-force! (-> this rbody) force)
+        (vector-float*! force
+                        *up-vector*
+                        (* mass *hero-glider-red-upward-accel*))
+        (add-force! (-> this rbody) force)
+        )
+      ;; Keep a bounded pitch assist active slightly longer than propulsion.
+      ;; It only adds torque while the glider's forward axis is below the
+      ;; desired climb attitude, so an existing dive is overcome without
+      ;; snapping the rigid body or continuing to rotate an already raised
+      ;; nose.
+      (when (not (time-elapsed? *hero-glider-red-boost-time* *hero-glider-red-pitch-duration*))
+        (let* ((pitch-error
+                 (fmax 0.0
+                       (- *hero-glider-red-pitch-target*
+                          (-> this rbody matrix fvec y))))
+               (pitch-accel
+                 (fmin *hero-glider-red-pitch-max-accel*
+                       (* *hero-glider-red-pitch-response* pitch-error)))
+               )
+          (when (< 0.0 pitch-accel)
+            (set-vector! force-pos 0.0 0.0 (meters 5) 1.0)
+            (vector+! force-pos force-pos (-> this info info cm-offset-joint))
+            (vector-matrix*! force-pos force-pos (-> this rbody matrix))
+            (vector-float*! force *up-vector* (* mass pitch-accel))
+            (rigid-body-control-method-22 (-> this rbody) force-pos force)
+            )
+          )
+        )
+      )
+    )
+  (none)
+  )
+
 (defmethod vehicle-method-88 ((this h-glider) (arg0 vehicle-controls))
   (call-parent-method this arg0)
+  (when (hero-glider-physics-active?)
+    ;; Weight-shift input changes gradually, giving pitch and roll momentum.
+    ;; Above the safe-speed range, the controls progressively stiffen instead
+    ;; of allowing an abrupt or arbitrary mission failure.
+    (seek! *hero-glider-steering-input*
+           (-> arg0 steering)
+           (* *hero-glider-control-response* (seconds-per-frame)))
+    (seek! *hero-glider-pitch-input*
+           (-> arg0 lean-z)
+           (* *hero-glider-control-response* (seconds-per-frame)))
+    (let* ((speed (vector-length (-> this rbody lin-velocity)))
+           (stiffness
+             (fmax 0.45
+                   (- 1.0
+                      (* 0.55
+                         (fmax 0.0
+                               (fmin 1.0
+                                     (/ (- speed *hero-glider-control-stiffness-start*)
+                                        (- *hero-glider-max-dive-speed*
+                                           *hero-glider-control-stiffness-start*))))))))
+           )
+      (set! (-> this controls steering) (* *hero-glider-steering-input* stiffness))
+      (set! (-> this controls lean-z) (* *hero-glider-pitch-input* stiffness))
+      )
+    )
   (set! (-> this v-flags) (the-as vehicle-flag (logclear (-> this v-flags) (vehicle-flag camera-look-mode))))
   0
   (none)
@@ -465,6 +666,65 @@
          (sound-play "boost-ring")
          )
      )
+    (('hero-red-boost)
+     (when (hero-glider-physics-active?)
+       ;; The Wave Concussor's full charge time is one second, so normalized
+       ;; charge is also elapsed charge time.  Upward launch impulse scales
+       ;; continuously with charge, the stock ring acceleration joins it at
+       ;; 0.35 seconds, and a complete charge reaches full wind-launch force.
+       (let ((charge
+               (if (> arg1 1)
+                   (the-as float (-> arg3 param 1))
+                   0.0))
+             (ammo-used
+               (if (> arg1 0)
+                   (the-as float (-> arg3 param 0))
+                   1.0)))
+         (when (< 0.0 charge)
+           (set-time! *hero-glider-red-boost-time*)
+           ;; Forward acceleration comes from the stock ring state once the
+           ;; charge reaches 0.35.  The five upward-force tiers below pair
+           ;; duration and acceleration to supply 2.3, 4.5, 8.4, 17.85 and
+           ;; 24 m/s of total upward impulse respectively.
+           (set! *hero-glider-red-forward-accel* 0.0)
+           (cond
+             ((>= ammo-used 5.0)
+              (set! *hero-glider-red-boost-duration* (seconds 0.5))
+              (set! *hero-glider-red-upward-accel* (meters 48))
+              )
+             ((>= ammo-used 4.0)
+              (set! *hero-glider-red-boost-duration* (seconds 0.425))
+              (set! *hero-glider-red-upward-accel* (meters 42))
+              )
+             ((>= ammo-used 3.0)
+              (set! *hero-glider-red-boost-duration* (seconds 0.35))
+              (set! *hero-glider-red-upward-accel* (meters 24))
+              )
+             ((>= ammo-used 2.0)
+              (set! *hero-glider-red-boost-duration* (seconds 0.275))
+              (set! *hero-glider-red-upward-accel* (meters 16.363636))
+              )
+             (else
+               (set! *hero-glider-red-boost-duration* (seconds 0.2))
+               (set! *hero-glider-red-upward-accel* (meters 11.5))
+               )
+             )
+           (set! *hero-glider-red-pitch-duration*
+                 (the-as time-frame
+                         (the int
+                              (lerp (the float (seconds 0.5))
+                                    (the float (seconds 1))
+                                    charge))))
+           )
+         (when (>= charge 0.35)
+           (set! (-> this full-speed-boost?) #t)
+           (when (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (sound-play "boost-ring")
+             )
+           )
+         )
+       )
+     )
     (else
       ((method-of-type hvehicle rbody-event-handler) this arg0 arg1 arg2 arg3)
       )
@@ -547,6 +807,8 @@
   (set! (-> this lost-lift?) #f)
   (set-time! (-> this lost-lift-time))
   (set! (-> this full-speed-boost?) #f)
+  (set! *hero-glider-steering-input* 0.0)
+  (set! *hero-glider-pitch-input* 0.0)
   (set! (-> this amb-sound) (new-sound-id))
   (set! (-> this amb-sound-playing) #f)
   (init (-> this left-rudder) this (the-as uint 4) (joint-mod-base-flags attached))
@@ -589,7 +851,17 @@
    (the-as uint 8)
    (joint-mod-base-flags attached trans quat)
    )
-  (send-event *target* 'change-mode 'gun #f (pickup-type eco-yellow))
+  ;; The stock glider equips its dedicated Yellow gun here, after Jak is
+  ;; attached to the vehicle.  Use the same safe transition point for the Hero
+  ;; Mode Wave Concussor instead of changing Jak's gun during the preceding
+  ;; Temple cutscene/level handoff.
+  (if (hero-glider-physics-active?)
+      (begin
+        (set! *hero-glider-red-boost-time* 0)
+        (send-event *target* 'change-mode 'gun #f (pickup-type gun-red-2))
+        )
+      (send-event *target* 'change-mode 'gun #f (pickup-type eco-yellow))
+      )
   0
   (none)
   )
@@ -845,11 +1117,26 @@
 
 (defmethod apply-gravity! ((this h-glider) (arg0 float))
   (h-glider-method-162 this)
-  (set! (-> *game-info* health-bar-vehicle)
-        (fmax 0.0 (fmin 1.0 (* 0.0000032552084 (+ -49152.0 (-> this speed)))))
+  (if (hero-glider-physics-active?)
+      ;; Hero Mode repurposes the stock speed gauge as a true elevation meter.
+      ;; Zero is the current route-specific failure floor and one is the
+      ;; highest intended elevation on the course.
+      (set! (-> *game-info* health-bar-vehicle)
+            (fmax
+              0.0
+              (fmin
+                1.0
+                (/ (- (-> this rbody matrix trans y) *hero-glider-fail-elevation*)
+                   (- *hero-glider-max-elevation* *hero-glider-fail-elevation*))))
+            )
+      (begin
+        (set! (-> *game-info* health-bar-vehicle)
+              (fmax 0.0 (fmin 1.0 (* 0.0000032552084 (+ -49152.0 (-> this speed)))))
+              )
+        (if (-> this lost-lift?)
+            (set! (-> *game-info* health-bar-vehicle) 0.0)
+            )
         )
-  (if (-> this lost-lift?)
-      (set! (-> *game-info* health-bar-vehicle) 0.0)
       )
   (let ((s3-0 (new 'stack-no-clear 'vector))
         (s4-0 (new 'stack-no-clear 'vector))
@@ -1065,6 +1352,8 @@
              )
         (add-force! (-> this rbody) s4-0)
         )
+    (hero-glider-apply-flight-forces! this)
+    (hero-glider-apply-red-boost! this)
     (vector-float*! s4-0 (-> this rbody lin-velocity) (- (-> this info handling drag-force-factor)))
     (add-force! (-> this rbody) s4-0)
     (let ((s3-1 (new 'stack-no-clear 'vector)))
@@ -1100,7 +1389,11 @@
         #t
         )
       )
-    (if (and (< 0.0 (vector-length-squared (-> this progression-plane)))
+    ;; Hero Mode has no route rings, so its course failure is controlled by
+    ;; the live altitude floor in glider-too-low?.  Retain the stock
+    ;; progression-plane failure only for Normal Mode.
+    (if (and (not (hero-glider-physics-active?))
+             (< 0.0 (vector-length-squared (-> this progression-plane)))
              (< (vector-dot (-> this progression-plane) (-> this root trans)) (+ -4096.0 (-> this progression-plane w)))
              )
         (desert-glide-task-done)
@@ -1114,7 +1407,11 @@
           )
         )
       (when (-> this lost-lift?)
-        (if (time-elapsed? (-> this lost-lift-time) (seconds 3))
+        ;; Keep the stock three-second stall failure in Normal Mode.  Hero
+        ;; Mode may enter lost-lift during a steep pitch even while safely
+        ;; above its displayed failure floor, so altitude decides failure.
+        (if (and (not (hero-glider-physics-active?))
+                 (time-elapsed? (-> this lost-lift-time) (seconds 3)))
             (desert-glide-task-done)
             )
         (set! f0-137 1.0)
@@ -1134,7 +1431,10 @@
         (if (and (not (-> this in-thermal)) (< (-> this speed) 32768.0) (< f0-137 0.0))
             (set! f1-80 (* 0.00024414062 (+ -28672.0 (-> this speed)) f1-80))
             )
-        (when (and (not (-> this lost-lift?)) (and (< (-> this speed) 49152.0) (time-elapsed? (-> this birth) (seconds 4))))
+        (when (and (not (-> this lost-lift?))
+                   (and (< (-> this speed)
+                           (if (hero-glider-physics-active?) *hero-glider-stall-speed* 49152.0))
+                        (time-elapsed? (-> this birth) (seconds 4))))
           (set! (-> this lost-lift?) #t)
           (set-time! (-> this lost-lift-time))
           )

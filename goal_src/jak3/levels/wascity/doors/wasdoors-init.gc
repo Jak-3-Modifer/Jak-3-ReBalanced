@@ -33,6 +33,15 @@
   (new 'static 'vector :x 9409536.0 :y 129884.16 :z 710492.16 :w 1.0)
   )
 
+(define *v-toad-loadout-trigger-pos*
+  ;; Dune Hopper bay: 2245.31, 30.98, 170.73 in garage world-space meters.
+  (new 'static 'vector
+       :x (meters 2245.31)
+       :y (meters 30.98)
+       :z (meters 170.73)
+       :w 1.0)
+  )
+
 ;; Hero Mode prototype trigger for the falling-rock collection minigame.
 ;; 2264.97, 9.46, -42.28 in Wasdoors world-space meters.
 (define *wasdoors-rock-catcher-trigger-pos*
@@ -1174,6 +1183,176 @@
   (none)
   )
 
+(defun wasdoors-draw-v-toad-loadout-menu ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 56 65 0.0
+                   (font-color default)
+                   (font-flags shadow kerning))))
+    (set! (-> font flags) (font-flags shadow kerning large))
+    (set-width! font 400)
+    (set-height! font 50)
+    (set-scale! font 0.48)
+    (set! (-> font color) (font-color cyan))
+    (format (clear *temp-string*)
+            (case *v-toad-loadout-menu-page*
+              ((0) "Dune Hopper Loadout")
+              ((1) "Weapons")
+              ((2) "Abilities")
+              (else "Defense")))
+    (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set-scale! font 0.4)
+    (case *v-toad-loadout-menu-page*
+      ((0)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 0) "> Weapons" "  Weapons")
+         150.0 (= *v-toad-loadout-menu-selection* 0) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 1) "> Abilities" "  Abilities")
+         205.0 (= *v-toad-loadout-menu-selection* 1) #f)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 2) "> Defense" "  Defense")
+         260.0 (= *v-toad-loadout-menu-selection* 2) #f))
+      ((1)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 0) "> None" "  None")
+         150.0 (= *v-toad-loadout-menu-selection* 0) (= *v-toad-weapon-loadout* 0))
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (v-turtle-mass-inverter-unlocked?)
+             (if (= *v-toad-loadout-menu-selection* 1) "> Mass Inverter" "  Mass Inverter")
+             (if (= *v-toad-loadout-menu-selection* 1) "> ???" "  ???"))
+         205.0 (= *v-toad-loadout-menu-selection* 1)
+         (and (v-turtle-mass-inverter-unlocked?) (= *v-toad-weapon-loadout* 1))))
+      ((2)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 0) "> None" "  None")
+         90.0 (= *v-toad-loadout-menu-selection* 0) (= *v-toad-ability-loadout* 0))
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 1) "> Vehicle Toughness" "  Vehicle Toughness")
+         130.0 (= *v-toad-loadout-menu-selection* 1) *v-toad-vehicle-toughness-equipped?*)
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (wasdoors-v-turtle-faster-boost-unlocked?)
+             (if (= *v-toad-loadout-menu-selection* 2) "> Faster Boost Cooldown" "  Faster Boost Cooldown")
+             (if (= *v-toad-loadout-menu-selection* 2) "> ???" "  ???"))
+         170.0 (= *v-toad-loadout-menu-selection* 2)
+         (and (wasdoors-v-turtle-faster-boost-unlocked?) (= *v-toad-ability-loadout* 3)))
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 3) "> Turret Jammer" "  Turret Jammer")
+         210.0 (= *v-toad-loadout-menu-selection* 3) (= *v-toad-ability-loadout* 6))
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 4) "> Regenerative Armor" "  Regenerative Armor")
+         250.0 (= *v-toad-loadout-menu-selection* 4) (= *v-toad-ability-loadout* 7)))
+      (else
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 0) "> None" "  None")
+         120.0 (= *v-toad-loadout-menu-selection* 0) (= *v-toad-defense-loadout* 0))
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 1) "> Damage Shield" "  Damage Shield")
+         160.0 (= *v-toad-loadout-menu-selection* 1) (= *v-toad-defense-loadout* 4))
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 2) "> Emergency Repair" "  Emergency Repair")
+         205.0 (= *v-toad-loadout-menu-selection* 2) (= *v-toad-defense-loadout* 5))
+       (wasdoors-draw-v-turtle-loadout-option-line font
+         (if (= *v-toad-loadout-menu-selection* 3) "> Camouflage" "  Camouflage")
+         250.0 (= *v-toad-loadout-menu-selection* 3) (= *v-toad-defense-loadout* 8))))
+    (set-scale! font 0.3)
+    (wasdoors-draw-v-turtle-loadout-option-line font
+      (if (= *v-toad-loadout-menu-page* 0)
+          "<PAD_X> Select     <PAD_TRIANGLE> Exit"
+          "<PAD_X> Equip     <PAD_CIRCLE> Back     <PAD_TRIANGLE> Exit")
+      345.0 #f #f))
+  (none)
+  )
+
+(defun wasdoors-update-v-toad-loadout-menu ()
+  (wasdoors-draw-v-toad-loadout-menu)
+  (let ((last-selection (case *v-toad-loadout-menu-page*
+                          ((0) 2)
+                          ((1) 1)
+                          ((2) 4)
+                          (else 3))))
+    (cond
+      ((cpad-pressed? 0 up)
+       (dec! *v-toad-loadout-menu-selection*)
+       (when (< *v-toad-loadout-menu-selection* 0)
+         (set! *v-toad-loadout-menu-selection* last-selection))
+       (sound-play "menu-pick"))
+      ((cpad-pressed? 0 down)
+       (inc! *v-toad-loadout-menu-selection*)
+       (when (> *v-toad-loadout-menu-selection* last-selection)
+         (set! *v-toad-loadout-menu-selection* 0))
+       (sound-play "menu-pick"))
+      ((cpad-pressed? 0 x)
+       (sound-play "menu-pick")
+       (case *v-toad-loadout-menu-page*
+         ((0)
+          (set! *v-toad-loadout-menu-page* (+ *v-toad-loadout-menu-selection* 1))
+          (set! *v-toad-loadout-menu-selection*
+                (case *v-toad-loadout-menu-page*
+                  ((1) (if (= *v-toad-weapon-loadout* 1) 1 0))
+                  ((2) (if *v-toad-vehicle-toughness-equipped?*
+                           1
+                           (case *v-toad-ability-loadout* ((3) 2) ((6) 3) ((7) 4) (else 0))))
+                  (else (case *v-toad-defense-loadout* ((4) 1) ((5) 2) ((8) 3) (else 0))))))
+         ((1)
+          (if (and (= *v-toad-loadout-menu-selection* 1)
+                   (not (v-turtle-mass-inverter-unlocked?)))
+              (sound-play "menu-back")
+              (set-v-toad-active-loadout! *v-toad-loadout-menu-selection*)))
+         ((2)
+          (if (and (= *v-toad-loadout-menu-selection* 2)
+                   (not (wasdoors-v-turtle-faster-boost-unlocked?)))
+              (sound-play "menu-back")
+              (set-v-toad-ability-loadout!
+                (case *v-toad-loadout-menu-selection*
+                  ((0) 0) ((1) 2) ((2) 3) ((3) 6) (else 7)))))
+         (else
+          (set-v-toad-defense-loadout!
+            (case *v-toad-loadout-menu-selection*
+              ((0) 0) ((1) 4) ((2) 5) (else 8))))))
+      ((cpad-pressed? 0 triangle)
+       (close-v-toad-loadout-menu))
+      ((and (cpad-pressed? 0 circle) (!= *v-toad-loadout-menu-page* 0))
+       (set! *v-toad-loadout-menu-selection* (- *v-toad-loadout-menu-page* 1))
+       (set! *v-toad-loadout-menu-page* 0)
+       (sound-play "menu-pick"))))
+  (none)
+  )
+
+(defun wasdoors-update-v-toad-loadout-trigger ()
+  (when (and (= *v-toad-ability-loadout* 3)
+             (not (wasdoors-v-turtle-faster-boost-unlocked?)))
+    (set! *v-toad-ability-loadout* 0))
+  (when (and (= *v-toad-weapon-loadout* 1)
+             (not (v-turtle-mass-inverter-unlocked?)))
+    (set! *v-toad-weapon-loadout* 0))
+  (cond
+    ((not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (when *v-toad-loadout-menu-open?* (close-v-toad-loadout-menu))
+     (set! *v-toad-weapon-loadout* 0)
+     (set! *v-toad-ability-loadout* 0)
+     (set! *v-toad-defense-loadout* 0)
+     (set! *v-toad-vehicle-toughness-equipped?* #f))
+    (*v-toad-loadout-menu-open?*
+     (wasdoors-update-v-toad-loadout-menu))
+    ((and *target*
+          (not (focus-test? *target* pilot-riding))
+          (< (vector-vector-distance-squared (target-pos 0) *v-toad-loadout-trigger-pos*)
+             (square (meters 2.0))))
+     (let ((font (new 'stack 'font-context *font-default-matrix* 56 330 0.0
+                      (font-color default) (font-flags shadow kerning))))
+       (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+       (set-width! font 400)
+       (set-height! font 80)
+       (set-scale! font 0.7)
+       (format (clear *temp-string*) "Press <PAD_X> to edit Dune Hopper loadout")
+       (pc-encode-utf8-string *temp-string* *pc-encoded-temp-string*)
+       (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
+     (when (cpad-pressed? 0 x)
+       (open-v-toad-loadout-menu)
+       (cpad-clear! 0 x))))
+  (none)
+  )
+
 (defun wasdoors-point-inside? ((arg0 vector))
   (let ((gp-0 (new 'stack-no-clear 'inline-array 'vector 3)))
     (vector-copy! (-> gp-0 0) (new 'static 'vector :z -1.0 :w 957235.2))
@@ -1252,6 +1431,7 @@
      (repair-vehicles self)
      (wasdoors-update-v-turtle-loadout-trigger)
      (wasdoors-update-v-snake-loadout-trigger)
+     (wasdoors-update-v-toad-loadout-trigger)
     )
   :code sleep-code
   )

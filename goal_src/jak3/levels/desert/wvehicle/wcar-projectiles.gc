@@ -262,10 +262,10 @@
     (set! (-> this damage)
       (if (and owner
                (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-snake)))
-          0.75
+          1.5
           (if (and owner
                    (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-x-ride)))
-              1.5
+              3.0
               1.0
               )
           )
@@ -628,24 +628,108 @@
   (none)
   )
 
+;; The stock explosion system supplies a radial impulse. Since vehicle centers
+;; are usually level with the impact point, that is largely horizontal. Toad
+;; shells additionally launch only Marauder cars upward, with a falloff
+;; across the shell's actual blast radius. Mirage uses a horizontal pushback
+;; instead.
+(defun v-toad-shell-launch-marauder-cars! ((center vector) (radius float) (mirage-push-scale float))
+  (let ((shapes (new 'stack 'boxed-array collide-shape 64))
+        (query-velocity (new 'stack 'vector))
+        )
+    (vector-reset! query-velocity)
+    (set! (-> shapes length)
+          (fill-actor-list-for-sphere
+            *actor-hash*
+            center
+            query-velocity
+            radius
+            (the-as (pointer collide-shape) (-> shapes data))
+            (-> shapes allocated-length)
+            -1
+            )
+          )
+    (dotimes (shape-index (-> shapes length))
+      (let ((shape (the-as collide-shape (-> shapes shape-index))))
+        (when shape
+          (let ((vehicle (as-type (-> shape process) wvehicle)))
+            (when (and vehicle
+                       (= (-> vehicle info vehicle-type) (vehicle-type-u8 v-marauder)))
+              (let ((distance (vector-vector-distance center (-> vehicle root trans))))
+                (when (< distance radius)
+                  ;; Toad shells launch cars upward. Mirage shells use the
+                  ;; dedicated outward push below, with no vertical launch.
+                  (when (= mirage-push-scale 0.0)
+                    (+! (-> vehicle rbody lin-momentum y)
+                        (* (meters 60)
+                           (-> vehicle info info mass)
+                           (- 1.0 (/ distance radius))
+                           )
+                        )
+                    )
+                  ;; The stock radial blast can be absorbed by vehicle contact
+                  ;; physics. Mirage shells therefore add a visible horizontal
+                  ;; push: four times the 15 m/s shell baseline at the center.
+                  (when (< 0.0 mirage-push-scale)
+                    (let ((push-direction (new 'stack 'vector))
+                          (falloff (- 1.0 (/ distance radius)))
+                          )
+                      (vector-! push-direction (-> vehicle root trans) center)
+                      (set! (-> push-direction y) 0.0)
+                      (when (< 0.0 (vector-length push-direction))
+                        (vector-normalize! push-direction 1.0)
+                        (vector+float*! (-> vehicle rbody lin-momentum)
+                                        (-> vehicle rbody lin-momentum)
+                                        push-direction
+                                        (* (meters 15)
+                                           mirage-push-scale
+                                           falloff
+                                           (-> vehicle info info mass)
+                                           )
+                                        )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  (none)
+  )
+
 (defstate impact (v-toad-shot)
   :virtual #t
   :code (behavior ()
-    (let ((gp-0 (new 'stack-no-clear 'explosion-init-params)))
+    (let* ((gp-0 (new 'stack-no-clear 'explosion-init-params))
+           (owner (handle->process (-> self owner-handle)))
+           (mirage-shot? (and owner
+                              (type? owner wvehicle)
+                              (= (-> (the-as wvehicle owner) info vehicle-type)
+                                 (vehicle-type-u8 v-mirage))))
+           )
       (vector-copy! (-> gp-0 spawn-point) (-> self root trans))
       (quaternion-identity! (-> gp-0 spawn-quat))
-      (set! (-> gp-0 radius) (-> self blast-radius))
+      ;; Mirage shells retain the Toad projectile flight behavior, but produce
+      ;; a much larger and more forceful vehicle explosion on impact.
+      (set! (-> gp-0 radius) (if mirage-shot? (meters 50) (-> self blast-radius)))
       (set! (-> gp-0 scale) 2.0)
       (set! (-> gp-0 group) group-toad-grenade-shot-explode)
       (set! (-> gp-0 collide-with)
             (collide-spec backgnd jak crate civilian enemy obstacle vehicle-sphere hit-by-others-list player-list pusher)
             )
-      (set! (-> gp-0 damage) 6.0)
+      (set! (-> gp-0 damage) (if mirage-shot? 8.0 6.0))
       (set! (-> gp-0 damage-scale) 3.0)
       (set! (-> gp-0 vehicle-damage-factor) 1.0)
-      (set! (-> gp-0 vehicle-impulse-factor) 1.0)
+      (set! (-> gp-0 vehicle-impulse-factor) (if mirage-shot? 4.0 1.0))
       (set! (-> gp-0 ignore-proc) (process->handle (handle->process (-> self ignore-handle))))
       (explosion-spawn gp-0 self)
+      (v-toad-shell-launch-marauder-cars! (-> self root trans)
+                                           (-> gp-0 radius)
+                                           (if mirage-shot? 4.0 0.0))
       )
     (logior! (-> self draw status) (draw-control-status no-draw))
     (let ((v1-20 (-> self root root-prim)))

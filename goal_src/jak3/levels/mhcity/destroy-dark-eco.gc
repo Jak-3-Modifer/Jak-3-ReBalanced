@@ -1184,7 +1184,7 @@
     (send-event *target* 'end-mode 'darkjak)
     )
   :trans (behavior ()
-    (print-text self (text-id text-05e7))
+    (print-text self (text-id dark-strike-how-to))
     (if (and (time-elapsed? (-> self state-time) (seconds 5))
              *target*
              (not (logtest? (focus-status dark) (-> *target* focus-status)))

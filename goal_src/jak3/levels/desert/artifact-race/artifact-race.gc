@@ -6,8 +6,38 @@
 ;; dgos: DESRACE2, DESRACE1
 
 (define-extern *was-squad-control-artifact-race-1?* symbol)
+(define-extern *ocean-map-desert* ocean-map)
+(define-extern *ocean-mid-indices-desert* ocean-mid-indices)
+(define-extern *ocean-trans-indices-desert* ocean-trans-indices)
 
 (define *hero-artifact-race-1-ocean-rise-start* (the-as time-frame 0))
+(define *hero-artifact-race-1-final-timer-start* (the-as time-frame 0))
+
+;; Separate all-water index tables let Hero Mode Artifact Race 1 cover the
+;; complete Desert without destroying the normal Desert border classification.
+(define *hero-artifact-race-1-full-ocean-mid-indices*
+  (new 'static 'ocean-mid-indices
+    :data (new 'static 'array uint16 36)))
+
+(define *hero-artifact-race-1-full-ocean-trans-indices*
+  (new 'static 'ocean-trans-indices
+    :data (new 'static 'inline-array ocean-trans-index 2304)))
+
+(defun set-hero-artifact-race-1-full-ocean! ((enabled symbol))
+  (if enabled
+      (begin
+        (set! (-> *ocean-map-desert* ocean-mid-indices)
+              *hero-artifact-race-1-full-ocean-mid-indices*)
+        (set! (-> *ocean-map-desert* ocean-trans-indices)
+              *hero-artifact-race-1-full-ocean-trans-indices*)
+        )
+      (begin
+        (set! (-> *ocean-map-desert* ocean-mid-indices) *ocean-mid-indices-desert*)
+        (set! (-> *ocean-map-desert* ocean-trans-indices) *ocean-trans-indices-desert*)
+        )
+      )
+  (none)
+  )
 
 (defun update-hero-artifact-race-1-ocean! ()
   (when (nonzero? *hero-artifact-race-1-ocean-rise-start*)
@@ -385,6 +415,8 @@
 
 (defun reset-hero-artifact-race-1-ocean! ()
   (set! *hero-artifact-race-1-ocean-rise-start* (the-as time-frame 0))
+  (set! *hero-artifact-race-1-final-timer-start* (the-as time-frame 0))
+  (set-hero-artifact-race-1-full-ocean! #t)
   (set! (-> (lookup-level-info 'desert) ocean-height) 49152.0)
   (when *ocean-map*
     (set-height! *ocean-map* 49152.0))
@@ -393,6 +425,8 @@
 
 (defun restore-free-roam-desert-ocean! ()
   (set! *hero-artifact-race-1-ocean-rise-start* (the-as time-frame 0))
+  (set! *hero-artifact-race-1-final-timer-start* (the-as time-frame 0))
+  (set-hero-artifact-race-1-full-ocean! #f)
   (set! (-> (lookup-level-info 'desert) ocean-height) 36864.0)
   (when *ocean-map*
     (set-height! *ocean-map* 36864.0))
@@ -915,9 +949,7 @@
                                      ((= s4-0 6) 14.0)
                                      ((= s4-0 7) 8.0)
                                      ((= s4-0 8) 8.0)
-                                     ((= s4-0 9) 8.0)
-                                     ((= s4-0 10) 8.0)
-                                     ((= s4-0 11) 10.0)
+                                     ((= s4-0 9) 10.0)
                                      (else (res-lump-float s3-0 'timeout :default 60.0)))
                                  (cond
                                    ((= s4-0 0) 22.0)
@@ -989,12 +1021,24 @@
                (not (handle->process (-> this slave))))
           2.5
           1.0)))
-  ;; Hero Mode Artifact Race 1 has no time limit after the final artifact.
-  ;; Keep every collectible timer, and all Normal Mode behavior, unchanged.
-  (unless (and (= (-> this node-info task) (game-task desert-artifact-race-1))
-               (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-               (>= (-> this count) (-> this max-count)))
-    (hud-timer-handler this))
+  ;; Once index 9 has been collected, the shared 38-second Hero Mode timer is
+  ;; informational: clamp it at zero without invoking the normal go-fail path.
+  ;; Earlier artifact timers and all Normal Mode timers retain normal failure.
+  (cond
+    ((and (= (-> this node-info task) (game-task desert-artifact-race-1))
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+          (>= (-> this count) 11)
+          (nonzero? *hero-artifact-race-1-final-timer-start*))
+     (let ((remaining (- (seconds 38)
+                         (- (current-time) *hero-artifact-race-1-final-timer-start*))))
+       (set! (-> *game-info* timer)
+             (if (< remaining 0) (the-as time-frame 0) remaining))
+       (set! (-> *game-info* timer-flash) (< remaining (seconds 10)))))
+    ((and (= (-> this node-info task) (game-task desert-artifact-race-1))
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+          (>= (-> this count) (-> this max-count))))
+    (else
+      (hud-timer-handler this)))
   (when (and (= (-> this node-info task) (game-task desert-artifact-race-1))
              (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
              (nonzero? (-> this intro-time)))
@@ -1067,9 +1111,12 @@
                  (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
         (update-hero-artifact-race-1-ocean!))
       (b! (not (handle->process (-> self slave))) cfg-56 :delay (nop!))
-      (if (< (- (-> self time-limit) (- (current-time) (-> self start-time))) (seconds 10))
-          (send-event (handle->process (-> self slave)) 'sink)
-          )
+      (unless (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+                   (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (>= (-> self count) 11))
+        (if (< (- (-> self time-limit) (- (current-time) (-> self start-time))) (seconds 10))
+            (send-event (handle->process (-> self slave)) 'sink)
+            ))
       (if (and (= (-> self count) 1) (time-elapsed? (-> self speech-time) (seconds 10)))
           (set-time! (-> self speech-time))
           )
@@ -1090,6 +1137,11 @@
                    (= gp-2 10)
                    (zero? *hero-artifact-race-1-ocean-rise-start*))
           (set-time! *hero-artifact-race-1-ocean-rise-start*))
+        (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
+                   (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (= gp-2 10)
+                   (zero? *hero-artifact-race-1-final-timer-start*))
+          (set-time! *hero-artifact-race-1-final-timer-start*))
         (let ((s5-1 (-> self objs gp-2)))
           (let ((a0-40 (was-artifact-spawn self s5-1)))
             (b! (not a0-40) cfg-65 :delay (empty-form))
@@ -1127,11 +1179,6 @@
     (label cfg-68)
     (open! (-> self node-info) 'event)
     (remove-setting! 'airlock)
-    (when (and (= (-> self node-info task) (game-task desert-artifact-race-1))
-               (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-      (let ((timer (handle->process (-> self hud-timer))))
-        (when timer
-          (send-event timer 'hide-and-die))))
     (let ((gp-3 (new 'stack-no-clear 'inline-array 'task-arrow-params 1)))
       (vector-copy! (-> gp-3 0 pos) (-> self end-pos))
       (quaternion-identity! (-> gp-3 0 quat))

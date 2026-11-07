@@ -1417,6 +1417,27 @@
       (cpad-set-buzz! (-> *cpad-list* cpads 0) 1 (the int (* 255.0 f30-0)) (the-as time-frame a3-0))
       )
     (sound-play "red2-shot")
+    ;; The Hero Mode glider uses the Wave Concussor's actual discharge as its
+    ;; replacement for boost rings.  Notify only the currently ridden vehicle;
+    ;; h-glider validates the mission again before applying any force.
+    (let ((task-info (-> *game-info* sub-task-list (game-task-node desert-glide-templetop))))
+      (when (and *game-info*
+                 (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                 (-> task-info manager)
+                 (handle->process (-> task-info manager manager))
+                 *target*
+                 (focus-test? *target* pilot)
+                 (nonzero? (-> *target* pilot)))
+        (let ((vehicle (handle->process (-> *target* pilot vehicle))))
+          (when vehicle
+            ;; Pass both the ammo tier and exact normalized charge.  The Hero
+            ;; Mode glider uses the latter to distinguish a 0.35-second ring
+            ;; boost from a fully charged wind launch.
+            (send-event vehicle 'hero-red-boost (-> self ammo-drained) (-> self strength))
+            )
+          )
+        )
+      )
     (target-darkjak-drain-gun-eco!)
     (set-time! (-> self state-time))
     (set! (-> self max-radius) (lerp (-> self min-charge-radius) (-> self max-charge-radius) (-> self strength)))

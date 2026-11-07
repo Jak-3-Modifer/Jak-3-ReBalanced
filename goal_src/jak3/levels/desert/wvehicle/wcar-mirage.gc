@@ -160,7 +160,8 @@
   (setup-masks (-> this draw) 1 0)
   (setup-masks (-> this draw) 2 0)
   (alloc-rbody-control! this *v-mirage-constants*)
-  (set! (-> this shoot-delay) (the-as uint 240))
+  ;; 300 game ticks per second in this game
+  (set! (-> this shoot-delay) (the-as uint 200))
   (set! (-> this local-gun-pos 0 quad) (-> (new 'static 'vector :x 3686.4 :y 5324.8 :z 6144.0 :w 1.0) quad))
   (vector-copy! (-> this local-gun-pos 1) (new 'static 'vector :x -3686.4 :y 5324.8 :z 6144.0 :w 1.0))
   (set! (-> this rider-hand-joint-array 0) 17)

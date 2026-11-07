@@ -3,6 +3,25 @@
 
 ;; name: arena-scenes.gc
 ;; name in dgo: arena-scenes
+
+;; Arena Fight 1's resolution can leave scene/gameplay particles alive until
+;; after their arena heaps are released.  Clear them at the end of the scene,
+;; while their curve data is still valid, so the particle update cannot retain
+;; a stale live-func-curve pointer during the return to Wascity.
+(defun cleanup-arena-fight-1-resolution-particles ()
+  (let ((arena-cst (level-get *level* 'arenacst))
+        (arena-gameplay (level-get *level* 'wasstadc))
+        (arena-master (level-get *level* 'wasstada))
+        )
+    (when arena-cst
+      (kill-all-particles-in-level arena-cst))
+    (when arena-gameplay
+      (kill-all-particles-in-level arena-gameplay))
+    (when arena-master
+      (kill-all-particles-in-level arena-master))
+    )
+  (none)
+  )
 ;; dgos: WASSTADA
 
 ;; DECOMP BEGINS
@@ -774,6 +793,7 @@
       (1120 (hide-cloth "seem-highres"))
       (1695 (fadeout (frame-time-30 15)))
       (10000
+        (cleanup-arena-fight-1-resolution-particles)
         (apply ,(lambda :behavior scene-player
                   ()
                   (persist-with-delay *setting-control* 'blur-a-speed (seconds 1) 'blur-a-speed 'abs 1000.0 0)

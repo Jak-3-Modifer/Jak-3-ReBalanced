@@ -5359,7 +5359,17 @@
               )
             :task-mask (task-mask task6)
             :on-open #f
-            :manager #f
+            :manager (new 'static 'task-manager-info
+              :level 'templea
+              :type-to-spawn 'task-manager-temple-oracle
+              :intro-scene #f
+              :resolution-scene #f
+              :resolution-scene-continue #f
+              :final-node (game-task-node temple-oracle-introduction)
+              :vehicle-type #x1b
+              :on-complete #f
+              :on-fail #f
+              )
             :borrow '()
             :open? #f
             :on-close #f
