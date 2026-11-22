@@ -7,9 +7,235 @@
 
 ;; DECOMP BEGINS
 
+;; Hero Mode Desert Fox loadout.  This deliberately owns its selections and
+;; cooldowns so the garage menu cannot alter another vehicle's equipment.
+(define *v-fox-loadout-menu-open?* #f)
+(define *v-fox-loadout-menu-page* 0)
+(define *v-fox-loadout-menu-selection* 0)
+(define *v-fox-weapon-loadout* 0)
+(define *v-fox-ability-loadout* 0)
+(define *v-fox-defense-loadout* 0)
+(define *v-fox-vehicle-toughness-equipped?* #f)
+(define *v-fox-mass-inverter-cooldown-time* (the-as time-frame 0))
+(define *v-fox-mass-inverter-cooldown-active?* #f)
+(define *v-fox-damage-immunity-time* (the-as time-frame 0))
+(define *v-fox-damage-immunity-active?* #f)
+(define *v-fox-damage-immunity-cooldown-time* (the-as time-frame 0))
+(define *v-fox-damage-immunity-cooldown-active?* #f)
+(define *v-fox-repair-cooldown-time* (the-as time-frame 0))
+(define *v-fox-repair-cooldown-active?* #f)
+(define *v-fox-regenerative-armor-time* (the-as time-frame 0))
+(define *v-fox-regenerative-armor-active?* #f)
+(define *v-fox-camouflage-time* (the-as time-frame 0))
+(define *v-fox-camouflage-cooldown-time* (the-as time-frame 0))
+(define *v-fox-camouflage-cooldown-active?* #f)
+(define *v-fox-camouflage-active?* #f)
+(define *v-fox-jammer-fade-active?* #f)
+
+(defun set-v-fox-active-loadout! ((loadout int))
+  (set! *v-fox-weapon-loadout* loadout)
+  (none))
+
+(defun set-v-fox-ability-loadout! ((loadout int))
+  (set! *v-fox-ability-loadout* loadout)
+  (set! *v-fox-vehicle-toughness-equipped?* (= loadout 2))
+  (none))
+
+(defun set-v-fox-defense-loadout! ((loadout int))
+  (set! *v-fox-defense-loadout* loadout)
+  (none))
+
+(defun close-v-fox-loadout-menu ()
+  (set-master-mode 'game)
+  (set! *v-fox-loadout-menu-open?* #f)
+  (set! *popup-menu-open* #f)
+  (none))
+
+(defun open-v-fox-loadout-menu ()
+  (cond
+    ((!= *v-fox-weapon-loadout* 0) (set! *v-fox-loadout-menu-selection* 0))
+    ((!= *v-fox-ability-loadout* 0) (set! *v-fox-loadout-menu-selection* 1))
+    ((!= *v-fox-defense-loadout* 0) (set! *v-fox-loadout-menu-selection* 2))
+    (else (set! *v-fox-loadout-menu-selection* 0)))
+  (set! *v-fox-loadout-menu-page* 0)
+  (set! *v-fox-loadout-menu-open?* #t)
+  (set! *popup-menu-open* #t)
+  (set-master-mode 'menu)
+  (sound-play "menu-pick")
+  (none))
+
+(defun v-fox-set-fade! ((this wvehicle) (amount uint) (active? symbol))
+  (if active?
+      (begin
+        (logior! (-> this draw status) (draw-control-status force-fade))
+        (set! (-> this draw force-fade) amount))
+      (begin
+        (set! (-> this draw force-fade) (the-as uint 128))
+        (logclear! (-> this draw status) (draw-control-status force-fade))))
+  (dotimes (wheel-index (-> this info physics-model wheel-count))
+    (let ((wheel-proc (handle->process (-> this wheel wheel-index handle))))
+      (when wheel-proc
+        (if active?
+            (begin
+              (logior! (-> (the-as process-drawable wheel-proc) draw status)
+                       (draw-control-status force-fade))
+              (set! (-> (the-as process-drawable wheel-proc) draw force-fade) amount))
+            (begin
+              (set! (-> (the-as process-drawable wheel-proc) draw force-fade) (the-as uint 128))
+              (logclear! (-> (the-as process-drawable wheel-proc) draw status)
+                         (draw-control-status force-fade)))))))
+  (none))
+
+(defun v-fox-camouflage-hides-target? ()
+  (if (and *v-fox-camouflage-active?*
+           *target*
+           (focus-test? *target* pilot-riding)
+           (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-fox)))
+      #t
+      #f))
+
 (deftype v-fox (wcar-snake-base)
   ()
   )
+
+(defmethod deactivate ((this v-fox))
+  (when (or *v-fox-camouflage-active?* *v-fox-jammer-fade-active?*)
+    (v-fox-set-fade! this (the-as uint 128) #f))
+  (set! *v-fox-camouflage-active?* #f)
+  (set! *v-fox-jammer-fade-active?* #f)
+  (set! *v-fox-damage-immunity-active?* #f)
+  ((method-of-type wcar-snake-base deactivate) this)
+  (none))
+
+(defmethod apply-damage ((this v-fox) (amount float) (impact rigid-body-impact))
+  (when (and *v-fox-vehicle-toughness-equipped?*
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+    (set! amount (/ amount 2)))
+  (when *v-fox-damage-immunity-active?*
+    (set! amount 0.0))
+  (when (and (= *v-fox-ability-loadout* 7) (> amount 0.0))
+    (set-time! *v-fox-regenerative-armor-time*)
+    (set! *v-fox-regenerative-armor-active?* #t))
+  ((method-of-type wcar-base apply-damage) this amount impact)
+  (none))
+
+(defun v-fox-update-loadout! ((this v-fox))
+  (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (cpad-pressed? 0 r1)
+             (= *v-fox-weapon-loadout* 1)
+             (v-turtle-mass-inverter-unlocked?)
+             (or (not *v-fox-mass-inverter-cooldown-active?*)
+                 (time-elapsed? *v-fox-mass-inverter-cooldown-time* (seconds 8))))
+    (process-spawn gun-gravity (-> this root trans) (-> this rbody matrix fvec)
+                   :name "v-fox-mass-inverter" :to *entity-pool*)
+    (set-time! *v-fox-mass-inverter-cooldown-time*)
+    (set! *v-fox-mass-inverter-cooldown-active?* #t))
+  (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (cpad-pressed? 0 right))
+    (case *v-fox-defense-loadout*
+      ((4)
+       (when (and (not *v-fox-damage-immunity-active?*)
+                  (or (not *v-fox-damage-immunity-cooldown-active?*)
+                      (time-elapsed? *v-fox-damage-immunity-cooldown-time* (seconds 35))))
+         (set-time! *v-fox-damage-immunity-time*)
+         (set! *v-fox-damage-immunity-active?* #t)
+         (set! *v-fox-damage-immunity-cooldown-active?* #f)
+         (sound-play "shield-on")))
+      ((5)
+       (when (and (< 0.0 (-> this hit-points))
+                  (<= (-> this hit-points) 0.15)
+                  (or (not *v-fox-repair-cooldown-active?*)
+                      (time-elapsed? *v-fox-repair-cooldown-time* (seconds 40))))
+         (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
+         (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (sound-play "get-green-eco"))
+         (set-time! *v-fox-repair-cooldown-time*)
+         (set! *v-fox-repair-cooldown-active?* #t)))
+      ((8)
+       (when (and (not *v-fox-camouflage-active?*)
+                  (or (not *v-fox-camouflage-cooldown-active?*)
+                      (time-elapsed? *v-fox-camouflage-cooldown-time* (seconds 25))))
+         (set-time! *v-fox-camouflage-time*)
+         (set! *v-fox-camouflage-active?* #t)
+         (set! *v-fox-camouflage-cooldown-active?* #f)
+         (v-fox-set-fade! this (the-as uint 13) #t)))))
+  (when (and *v-fox-damage-immunity-active?*
+             (or (time-elapsed? *v-fox-damage-immunity-time* (seconds 4))
+                 (!= *v-fox-defense-loadout* 4)))
+    (set! *v-fox-damage-immunity-active?* #f)
+    (set-time! *v-fox-damage-immunity-cooldown-time*)
+    (set! *v-fox-damage-immunity-cooldown-active?* #t))
+  (when (and (= *v-fox-ability-loadout* 3)
+             (not (logtest? (vehicle-flag turbo-boost) (-> this v-flags))))
+    (set! (-> this turbo-ready)
+          (fmin 1.0 (+ (-> this turbo-ready) (* 0.5 (seconds-per-frame))))))
+  (cond
+    ((!= *v-fox-ability-loadout* 7) (set! *v-fox-regenerative-armor-active?* #f))
+    ((and *v-fox-regenerative-armor-active?*
+          (time-elapsed? *v-fox-regenerative-armor-time* (seconds 4)))
+     (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.033333335)))
+     (if (>= (-> this hit-points) 1.0)
+         (set! *v-fox-regenerative-armor-active?* #f)
+         (set-time! *v-fox-regenerative-armor-time*))))
+  (when (and *v-fox-camouflage-active?*
+             (or (time-elapsed? *v-fox-camouflage-time* (seconds 10))
+                 (!= *v-fox-defense-loadout* 8)))
+    (set! *v-fox-camouflage-active?* #f)
+    (set-time! *v-fox-camouflage-cooldown-time*)
+    (set! *v-fox-camouflage-cooldown-active?* #t)
+    (v-fox-set-fade! this (the-as uint 128) #f))
+  (cond
+    (*v-fox-camouflage-active?* (set! *v-fox-jammer-fade-active?* #f))
+    ((= *v-fox-ability-loadout* 6)
+     (unless *v-fox-jammer-fade-active?*
+       (set! *v-fox-jammer-fade-active?* #t)
+       (v-fox-set-fade! this (the-as uint 115) #t)))
+    (*v-fox-jammer-fade-active?*
+     (set! *v-fox-jammer-fade-active?* #f)
+     (v-fox-set-fade! this (the-as uint 128) #f)))
+  (none))
+
+(define *v-fox-burst-count* 0)
+
+;; Reset an interrupted burst when firing stops.
+(defmethod vehicle-method-77 ((this v-fox))
+  (v-fox-update-loadout! this)
+  (when (and
+          (logtest? (-> this v-flags)
+                    (vehicle-flag player-driving net-player-driving))
+          (not (logtest? (-> this controls flags)
+                         (vehicle-controls-flag vcf1))))
+    (set! *v-fox-burst-count* 0)
+    (set! (-> this shoot-delay) (the-as uint 19))
+    )
+
+  ((method-of-type wvehicle vehicle-method-77) this)
+  (none)
+  )
+
+
+;; Four-round burst firing.
+(defmethod wvehicle-method-169 ((this v-fox))
+
+  ;; Fire one projectile using existing shared behavior.
+  ((method-of-type wcar-snake-base wvehicle-method-169) this)
+
+  ;; Advance burst counter.
+  (set! *v-fox-burst-count* (+ *v-fox-burst-count* 1))
+
+  ;; Short delay within a burst, longer delay afterward.
+  (if (>= *v-fox-burst-count* 4)
+      (begin
+        (set! (-> this shoot-delay) (the-as uint 19))
+        (set! *v-fox-burst-count* 0)
+        )
+      (set! (-> this shoot-delay) (the-as uint 6))
+      )
+
+  (none)
+  )
+
 
 
 (defmethod vehicle-method-62 ((this v-fox))
@@ -66,8 +292,16 @@
   (setup-masks (-> this draw) 0 -1)
   (setup-masks (-> this draw) 1 0)
   (setup-masks (-> this draw) 2 0)
-  ;; The guns alternate every 10 ticks, giving each barrel 900 RPM.
-  (set! (-> this shoot-delay) (the-as uint 10))
+  (set! *v-fox-burst-count* 0)
+  (set! *v-fox-damage-immunity-active?* #f)
+  (set! *v-fox-damage-immunity-cooldown-active?* #f)
+  (set! *v-fox-repair-cooldown-active?* #f)
+  (set! *v-fox-mass-inverter-cooldown-active?* #f)
+  (set! *v-fox-regenerative-armor-active?* #f)
+  (set! *v-fox-camouflage-cooldown-active?* #f)
+  (set! *v-fox-camouflage-active?* #f)
+  (set! *v-fox-jammer-fade-active?* #f)
+  (set! (-> this shoot-delay) (the-as uint 19))
   (set! (-> this local-gun-pos 0 quad) (-> (new 'static 'vector :x 2048.0 :y 3686.4 :z 14336.0 :w 1.0) quad))
   (vector-copy! (-> this local-gun-pos 1) (new 'static 'vector :x -2048.0 :y 3686.4 :z 14336.0 :w 1.0))
   (set! (-> this rider-hand-joint-array 0) 8)

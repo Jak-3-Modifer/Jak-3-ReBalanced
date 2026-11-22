@@ -28,23 +28,34 @@
         (else #t)))
   )
 
-;; Color zero is the stock red laser.  Values 1..6 are the extra cosmetic
-;; colors; Blue continues to use its existing gs63 secret bit.
+;; Color zero is the stock red laser. Values 1..6 are the extra cosmetic
+;; colors; Blue continues to use its existing gs63 secret bit. Ownership uses
+;; purchases bits 6..11 and the selected color uses bits 12..14. This word is
+;; serialized by the custom save extension and is not rebuilt by task-control.
 (defun hero-gun-laser-color-index ()
-  (+ (if (logtest? (-> *game-info* items) (game-items item26)) 1 0)
-     (if (logtest? (-> *game-info* items) (game-items item27)) 2 0)
-     (if (logtest? (-> *game-info* items) (game-items item28)) 4 0))
+  (let ((index (the-as int (logand (shr (-> *hero-npc-shop-info* purchases) 12) 7))))
+    ;; Migrate the original item-bit implementation when loading an existing
+    ;; save made before laser ownership moved into the persistent shop word.
+    (when (zero? index)
+      (set! index
+            (+ (if (logtest? (-> *game-info* items) (game-items item26)) 1 0)
+               (if (logtest? (-> *game-info* items) (game-items item27)) 2 0)
+               (if (logtest? (-> *game-info* items) (game-items item28)) 4 0)))
+      (when (nonzero? index)
+        (set! (-> *hero-npc-shop-info* purchases)
+              (the-as uint
+                      (logior (logclear (-> *hero-npc-shop-info* purchases) #x7000)
+                              (shl index 12))))))
+    index)
   )
 
 (defun set-hero-gun-laser-color-index! ((index int))
-  (let ((items (logclear (-> *game-info* items) (game-items item26 item27 item28))))
-    (when (logtest? index 1)
-      (logior! items (game-items item26)))
-    (when (logtest? index 2)
-      (logior! items (game-items item27)))
-    (when (logtest? index 4)
-      (logior! items (game-items item28)))
-    (set! (-> *game-info* items) items))
+  (set! (-> *hero-npc-shop-info* purchases)
+        (the-as uint
+                (logior (logclear (-> *hero-npc-shop-info* purchases) #x7000)
+                        (shl (logand index 7) 12))))
+  ;; Clear legacy selection bits so selecting stock red remains stable.
+  (logclear! (-> *game-info* items) (game-items item26 item27 item28))
   (none)
   )
 
@@ -61,23 +72,144 @@
 
 (defun hero-gun-laser-option-owned? ((name text-id))
   (case name
-    (((text-id text-004b)) (logtest? (-> *game-info* items) (game-items item20)))
-    (((text-id text-004c)) (logtest? (-> *game-info* items) (game-items item21)))
-    (((text-id text-004d)) (logtest? (-> *game-info* items) (game-items item22)))
-    (((text-id text-0052)) (logtest? (-> *game-info* items) (game-items item23)))
-    (((text-id text-0053)) (logtest? (-> *game-info* items) (game-items item24)))
-    (((text-id text-0055)) (logtest? (-> *game-info* items) (game-items item25)))
+    (((text-id text-004b))
+     (when (logtest? (-> *game-info* items) (game-items item20))
+       (logior! (-> *hero-npc-shop-info* purchases) #x40))
+     (logtest? (-> *hero-npc-shop-info* purchases) #x40))
+    (((text-id text-004c))
+     (when (logtest? (-> *game-info* items) (game-items item21))
+       (logior! (-> *hero-npc-shop-info* purchases) #x80))
+     (logtest? (-> *hero-npc-shop-info* purchases) #x80))
+    (((text-id text-004d))
+     (when (logtest? (-> *game-info* items) (game-items item22))
+       (logior! (-> *hero-npc-shop-info* purchases) #x100))
+     (logtest? (-> *hero-npc-shop-info* purchases) #x100))
+    (((text-id text-0052))
+     (when (logtest? (-> *game-info* items) (game-items item23))
+       (logior! (-> *hero-npc-shop-info* purchases) #x200))
+     (logtest? (-> *hero-npc-shop-info* purchases) #x200))
+    (((text-id text-0053))
+     (when (logtest? (-> *game-info* items) (game-items item24))
+       (logior! (-> *hero-npc-shop-info* purchases) #x400))
+     (logtest? (-> *hero-npc-shop-info* purchases) #x400))
+    (((text-id text-0055))
+     (when (logtest? (-> *game-info* items) (game-items item25))
+       (logior! (-> *hero-npc-shop-info* purchases) #x800))
+     (logtest? (-> *hero-npc-shop-info* purchases) #x800))
     (else #f))
   )
 
 (defun hero-gun-laser-option-purchase! ((name text-id))
   (case name
-    (((text-id text-004b)) (logior! (-> *game-info* items) (game-items item20)))
-    (((text-id text-004c)) (logior! (-> *game-info* items) (game-items item21)))
-    (((text-id text-004d)) (logior! (-> *game-info* items) (game-items item22)))
-    (((text-id text-0052)) (logior! (-> *game-info* items) (game-items item23)))
-    (((text-id text-0053)) (logior! (-> *game-info* items) (game-items item24)))
-    (((text-id text-0055)) (logior! (-> *game-info* items) (game-items item25))))
+    (((text-id text-004b)) (logior! (-> *hero-npc-shop-info* purchases) #x40))
+    (((text-id text-004c)) (logior! (-> *hero-npc-shop-info* purchases) #x80))
+    (((text-id text-004d)) (logior! (-> *hero-npc-shop-info* purchases) #x100))
+    (((text-id text-0052)) (logior! (-> *hero-npc-shop-info* purchases) #x200))
+    (((text-id text-0053)) (logior! (-> *hero-npc-shop-info* purchases) #x400))
+    (((text-id text-0055)) (logior! (-> *hero-npc-shop-info* purchases) #x800)))
+  (none)
+  )
+
+;; These bits share the existing saved shop-purchase word.  Each costume has
+;; an ownership bit and a separate enabled bit, so buying it once unlocks a
+;; persistent on/off cosmetic toggle without consuming another game-secret bit.
+(defun hero-costume-option? ((name text-id))
+  ;; game-info is compiled before the UI text enum, so use the stable numeric
+  ;; IDs of the two menu entries rather than enum members here.
+  (or (= (the-as uint name) #x0070)
+      (= (the-as uint name) #x0071)
+      (= (the-as uint name) #x0072)
+      (= (the-as uint name) #x3f00)
+      (= (the-as uint name) #x3f01))
+  )
+
+;; These named accessors are also used by GAME's draw code, which does not
+;; import the UI text-id enum that names the two menu entries.
+(defun hero-goggles-costume-purchased? ()
+  (logtest? (-> *hero-npc-shop-info* purchases) #x4)
+  )
+
+(defun hero-goggles-costume-enabled? ()
+  (logtest? (-> *hero-npc-shop-info* purchases) #x8)
+  )
+
+(defun hero-scarf-costume-purchased? ()
+  (logtest? (-> *hero-npc-shop-info* purchases) #x10)
+  )
+
+(defun hero-scarf-costume-enabled? ()
+  (logtest? (-> *hero-npc-shop-info* purchases) #x20)
+  )
+
+;; Hero Mode-only V-Scorpion charged jump and aerial slam toggle. Bits 15 and
+;; 16 are outside the laser selection field and are serialized with purchases.
+(defun hero-scorpion-super-jump-enabled? ()
+  (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+       (logtest? (-> *hero-npc-shop-info* purchases) #x10000))
+  )
+
+(defun hero-costume-option-purchased? ((name text-id))
+  (cond
+    ((= (the-as uint name) #x3f00) (logtest? (-> *hero-npc-shop-info* purchases) #x20000))
+    ((= (the-as uint name) #x3f01) (logtest? (-> *hero-npc-shop-info* purchases) #x80000))
+    ((= (the-as uint name) #x0070) (logtest? (-> *hero-npc-shop-info* purchases) #x4))
+    ((= (the-as uint name) #x0071) (logtest? (-> *hero-npc-shop-info* purchases) #x10))
+    ((= (the-as uint name) #x0072) (logtest? (-> *hero-npc-shop-info* purchases) #x8000))
+    (else #f))
+  )
+
+(defun hero-costume-option-enabled? ((name text-id))
+  (cond
+    ((= (the-as uint name) #x3f00) (logtest? (-> *hero-npc-shop-info* purchases) #x40000))
+    ((= (the-as uint name) #x3f01) (logtest? (-> *hero-npc-shop-info* purchases) #x100000))
+    ((= (the-as uint name) #x0070) (logtest? (-> *hero-npc-shop-info* purchases) #x8))
+    ((= (the-as uint name) #x0071) (logtest? (-> *hero-npc-shop-info* purchases) #x20))
+    ((= (the-as uint name) #x0072) (logtest? (-> *hero-npc-shop-info* purchases) #x10000))
+    (else #f))
+  )
+
+(defun hero-costume-option-set-enabled! ((name text-id) (enabled? symbol))
+  (cond
+    ((= (the-as uint name) #x3f00)
+     (if enabled?
+         (logior! (-> *hero-npc-shop-info* purchases) #x40000)
+         (logclear! (-> *hero-npc-shop-info* purchases) #x40000)))
+    ((= (the-as uint name) #x3f01)
+     (if enabled?
+         (logior! (-> *hero-npc-shop-info* purchases) #x100000)
+         (logclear! (-> *hero-npc-shop-info* purchases) #x100000)))
+    ((= (the-as uint name) #x0070)
+     (if enabled?
+         (logior! (-> *hero-npc-shop-info* purchases) #x8)
+         (logclear! (-> *hero-npc-shop-info* purchases) #x8)))
+    ((= (the-as uint name) #x0071)
+     (if enabled?
+         (logior! (-> *hero-npc-shop-info* purchases) #x20)
+         (logclear! (-> *hero-npc-shop-info* purchases) #x20)))
+    ((= (the-as uint name) #x0072)
+     (if enabled?
+         (logior! (-> *hero-npc-shop-info* purchases) #x10000)
+         (logclear! (-> *hero-npc-shop-info* purchases) #x10000))))
+  (when *target*
+    (cond
+      ((= (the-as uint name) #x0070) (set! (-> *target* goggles-interp-targ) (if enabled? 1.0 0.0)))
+      ((= (the-as uint name) #x0071) (set! (-> *target* scarf-interp-targ) (if enabled? 1.0 0.0)))))
+  (none)
+  )
+
+(defun hero-costume-option-purchase! ((name text-id))
+  (cond
+    ((= (the-as uint name) #x3f00) (logior! (-> *hero-npc-shop-info* purchases) #x20000))
+    ((= (the-as uint name) #x3f01) (logior! (-> *hero-npc-shop-info* purchases) #x80000))
+    ((= (the-as uint name) #x0070) (logior! (-> *hero-npc-shop-info* purchases) #x4))
+    ((= (the-as uint name) #x0071) (logior! (-> *hero-npc-shop-info* purchases) #x10))
+    ((= (the-as uint name) #x0072) (logior! (-> *hero-npc-shop-info* purchases) #x8000)))
+  (hero-costume-option-set-enabled! name #t)
+  (none)
+  )
+
+(defun hero-costume-option-toggle! ((name text-id))
+  (hero-costume-option-set-enabled! name (not (hero-costume-option-enabled? name)))
   (none)
   )
 
@@ -89,11 +221,57 @@
 (define *hero-blueprint-notice* 0.0)
 (define *hero-npc-shop-info* (new 'static 'hero-npc-shop-info))
 (define *hero-burning-bush-trader-price* (the-as uint 0))
+(define *hero-fruit-shop-info* (new 'static 'hero-fruit-shop-info))
+(define *hero-food-inventory-selection* 0)
+(define *hero-food-pending-consume* -1)
+
+(defun hero-fruit-apply-effect! ((food int))
+  (when (and *target* (not (focus-test? *target* dead inactive disable)))
+    (case food
+      ((0) (send-event *target* 'get-pickup (pickup-type health) 1.0))
+      ((1)
+       (set-time! (-> *hero-fruit-shop-info* invulnerable-time))
+       (set-time! (-> *hero-fruit-shop-info* grapefruit-time)))
+      ((2)
+       (set-time! (-> *hero-fruit-shop-info* invulnerable-time))
+       (set-time! (-> *hero-fruit-shop-info* punch-time)))
+      ((3) (set-time! (-> *hero-fruit-shop-info* invulnerable-time)))
+      ((4) (set-time! (-> *hero-fruit-shop-info* potato-time)))
+      ((5)
+       (set-time! (-> *hero-fruit-shop-info* raspberry-time))
+       (set-time! (-> *hero-fruit-shop-info* melee-time)))))
+  (none))
+
+(defun hero-fruit-consume! ((food int))
+  (if (and (>= food 0)
+           (< food 6)
+           (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (= *hero-food-pending-consume* -1)
+           (< 0 (-> *hero-fruit-shop-info* owned food))
+           *target*
+           (not (focus-test? *target* dead inactive))
+           ;; Rice is the only food whose effect can be invalid at selection
+           ;; time.  Do not spend it when Jak is already at maximum health.
+           (or (!= food 0)
+               (< (-> *target* fact health) (-> *target* fact health-max))))
+      (begin
+        (-! (-> *hero-fruit-shop-info* owned food) 1)
+        (set! *hero-food-pending-consume* food)
+        (sound-play "menu-pick"))
+      (sound-play "menu-back"))
+  (none))
+
+(defun hero-fruit-apply-pending! ()
+  (when (>= *hero-food-pending-consume* 0)
+    (hero-fruit-apply-effect! *hero-food-pending-consume*)
+    (set! *hero-food-pending-consume* -1))
+  (none))
 
 (defun hero-burning-bush-trader-price-deactivate ((owner level))
   ;; Wascity B can unload while waswide and its shop manager remain alive.
   ;; Keep this callback in GAME so it is safe during either unload order.
   (set! *hero-burning-bush-trader-price* (the-as uint 0))
+  (set! (-> *hero-fruit-shop-info* offer-active?) #f)
   (none))
 
 (defmethod debug-draw ((this border-plane))
@@ -684,6 +862,18 @@
      (set! (-> *hero-npc-shop-info* blueprints) (the-as uint 0))
      (set! (-> *hero-npc-shop-info* purchases) (the-as uint 0))
      (set! *hero-burning-bush-trader-price* (the-as uint 0))
+     (dotimes (food 6)
+       (set! (-> *hero-fruit-shop-info* owned food) (the-as uint 0))
+       (set! (-> *hero-fruit-shop-info* stock food) (the-as uint 0))
+       (set! (-> *hero-fruit-shop-info* prices food) (the-as uint 0)))
+     (set! (-> *hero-fruit-shop-info* offer-active?) #f)
+     (set! (-> *hero-fruit-shop-info* invulnerable-time) 0)
+     (set! (-> *hero-fruit-shop-info* raspberry-time) 0)
+     (set! (-> *hero-fruit-shop-info* potato-time) 0)
+     (set! (-> *hero-fruit-shop-info* grapefruit-time) 0)
+     (set! (-> *hero-fruit-shop-info* punch-time) 0)
+     (set! (-> *hero-fruit-shop-info* melee-time) 0)
+     (set! *hero-food-pending-consume* -1)
      (dotimes (shop 8)
        (set! (-> *hero-npc-shop-info* prices shop) (the-as uint 0)))
      (set! *hero-blueprint-notice* 0.0)
@@ -2208,6 +2398,15 @@
       :flags (highscore-flags time hf2)
       :award-scores (new 'static 'array float 3 19500.0 16500.0 15000.0)
       )
+    ;; Hero Mode Destroy Interceptors alternate challenge.
+    (new 'static 'highscore-info
+      :award-scores (new 'static 'array float 3 100.0 175.0 350.0)
+      )
+    ;; Hero Mode Bumper Cars. Keep its impact-point records independent from
+    ;; both Destroy Interceptors kill-score branches.
+    (new 'static 'highscore-info
+      :award-scores (new 'static 'array float 3 3500.0 10000.0 20000.0)
+      )
     )
   )
 
@@ -2270,7 +2469,9 @@
       (set! (-> gp-0 display-text-handle) (the-as handle #f))
       )
   (if (zero? (-> gp-0 game-score))
-      (set! (-> gp-0 game-score) (new 'global 'boxed-array float 144))
+      ;; Twenty-one score slots, with eight entries per slot. Slots 18 and 19
+      ;; hold the Hero alternate challenge and Bumper Cars respectively.
+      (set! (-> gp-0 game-score) (new 'global 'boxed-array float 168))
       )
   (if (not (-> gp-0 current-continue))
       (set-continue! gp-0 *default-continue* #f)

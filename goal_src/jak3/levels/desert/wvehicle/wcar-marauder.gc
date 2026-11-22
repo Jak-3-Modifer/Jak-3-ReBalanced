@@ -17,6 +17,36 @@
 
 (define-extern v-turtle-camouflage-hides-target? (function symbol))
 (define-extern v-toad-camouflage-hides-target? (function symbol))
+(define-extern v-scorpion-camouflage-hides-target? (function symbol))
+(define-extern *v-scorpion-ability-loadout* int)
+(define-extern *v-fox-ability-loadout* int)
+(define-extern v-fox-camouflage-hides-target? (function symbol))
+(define-extern v-mirage-camouflage-hides-target? (function symbol))
+(define-extern *v-x-ride-ability-loadout* int)
+(define-extern v-x-ride-camouflage-hides-target? (function symbol))
+(define-extern *hero-destroy-interceptors-alternate-active?* symbol)
+(define-extern *hero-destroy-interceptors-one-hp-time* time-frame)
+(define-extern *hero-destroy-interceptors-one-hp-duration* time-frame)
+(define-extern *hero-destroy-interceptors-bumper-active?* symbol)
+(define-extern *hero-bumper-impact-points* float)
+
+;; Keep collision scoring secondary to actually destroying a Marauder.  The
+;; unscaled damage, speed, and impulse terms were rewarding repeated crashes
+;; more efficiently than kills.
+(define *hero-bumper-impact-score-scale* 0.25)
+(define-extern hero-interceptor-consume-forced-explosion! (function process symbol))
+(define-extern hero-v-snake-pickup-spawn (function process-drawable none))
+
+(defun v-marauder-camouflage-hides-target? ()
+  "True while the current player vehicle is camouflaged.  Marauders keep the
+   target-status snapshot they had at activation until this becomes false."
+  (or (v-turtle-camouflage-hides-target?)
+      (v-toad-camouflage-hides-target?)
+      (v-scorpion-camouflage-hides-target?)
+      (v-fox-camouflage-hides-target?)
+      (v-mirage-camouflage-hides-target?)
+      (v-x-ride-camouflage-hides-target?)
+      (v-snake-camouflage-hides-target?)))
 
 (defskelgroup skel-v-marauder interceptor interceptor-lod0-jg interceptor-idle-ja
               ((interceptor-lod0-mg (meters 999999)))
@@ -115,6 +145,8 @@
    (oasis-explosion?   symbol)
    (sub-state-time     uint32)
    (sub-state          int8)
+   (hero-one-hp?       symbol)
+   (hero-one-hp-restore float)
    )
   (:methods
     (setup-draw-masks (_type_ int) none)
@@ -123,16 +155,103 @@
 
 
 (defmethod control-hook-ai ((this v-marauder) (arg0 vehicle-controls))
+
+  ;; =========================================
+  ;; BUMPER CARS: BOUNCE FACTOR
+  ;; =========================================
+
+  (set! (-> this rbody bounce-factor)
+        (if *hero-destroy-interceptors-bumper-active?*
+            0.8
+            (-> this info info bounce-factor)))
+
+  (set! (-> this rbody info mass)
+        (if *hero-destroy-interceptors-bumper-active?*
+            4.0
+            (-> this info info mass)))
+  (set! (-> this rbody info inv-mass)
+        (if *hero-destroy-interceptors-bumper-active?*
+            0.25
+            (-> this info info inv-mass)))
+
+  ;; =========================================
+  ;; BUMPER CARS: MARAUDER HEALTH
+  ;; =========================================
+
+  ;; Alternate Tier-1 artifact: 1 HP cap.
+  ;; Survivors recover their previous HP
+  ;; after the temporary effect ends.
+
+  (cond
+    ((and *hero-destroy-interceptors-alternate-active?*
+              (nonzero? *hero-destroy-interceptors-one-hp-time*)
+              (not (time-elapsed?
+                     *hero-destroy-interceptors-one-hp-time*
+                     *hero-destroy-interceptors-one-hp-duration*)))
+
+     (unless (-> this hero-one-hp?)
+       (set! (-> this hero-one-hp-restore)
+             (-> this hit-points))
+
+       (set! (-> this hit-points)
+             (fmin (-> this hit-points)
+                   (-> this info damage inv-hit-points)))
+
+       (set! (-> this hero-one-hp?) #t)))
+
+    ((-> this hero-one-hp?)
+     (when (> (-> this hit-points) 0.0)
+       (set! (-> this hit-points)
+             (fmax (-> this hit-points)
+                   (-> this hero-one-hp-restore))))
+
+     (set! (-> this hero-one-hp?) #f)))
+
+  ;; =========================================
+  ;; BUMPER CARS: 1.5X AI TARGET SPEED
+  ;; =========================================
+
+  ;; Normal default AI target speeds:
+  ;; Minimum: 61440.0
+  ;; Maximum: 102400.0
+  ;;
+  ;; Bumper Cars target speeds:
+  ;; Minimum: 92160.0
+  ;; Maximum: 153600.0
+
+  (cond
+    (*hero-destroy-interceptors-bumper-active?*
+     (set! (-> this ai-min-speed) 92160.0)
+     (set! (-> this ai-max-speed) 153600.0))
+
+    ;; Restore standard targets after Bumper Cars.
+    ((and (= (-> this ai-min-speed) 92160.0)
+          (= (-> this ai-max-speed) 153600.0))
+     (set! (-> this ai-min-speed) 61440.0)
+     (set! (-> this ai-max-speed) 102400.0)))
+
+  ;; =========================================
+  ;; ORIGINAL MARAUDER AI
+  ;; =========================================
+
   (let ((t9-0 (method-of-type wcar-base control-hook-ai)))
     (t9-0 this arg0)
     )
+
+  ;; KEEP ALL REMAINING ORIGINAL CODE BELOW.
+
+
   ;; Do not overwrite the Marauder's driving controls during Camouflage.  Its
   ;; movement AI is stateful, and forcing its throttle and brake here can
   ;; leave spawned desert vehicles in an invalid control state.  Camouflage
   ;; instead prevents fresh turret tracking while preserving normal driving.
-  (unless (or (v-turtle-camouflage-hides-target?)
-              (v-toad-camouflage-hides-target?)
-              (v-snake-camouflage-hides-target?))
+  (when *hero-destroy-interceptors-bumper-active?*
+    ;; Bumper Cars has no turret combat. Clear an in-progress burst as well as
+    ;; the request flag so entering the mode cannot leak a final projectile.
+    (set! (-> this turret-control shot-count) 0)
+    (logclear! (-> this turret-control flags) (turret-flag should-shoot firing)))
+  (unless (or *hero-destroy-interceptors-bumper-active?*
+              (v-marauder-camouflage-hides-target?))
     (let ((s5-0 (-> this target-status)))
       (when (< 122880.0 (vector-vector-distance (-> s5-0 position) (-> this root trans)))
         (let ((f1-0 (vector-length (-> s5-0 velocity))))
@@ -145,11 +264,23 @@
                                      (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-turtle)))
                                  (and (= *v-toad-ability-loadout* 6)
                                       (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-toad)))
+                                 (and (= *v-scorpion-ability-loadout* 6)
+                                      (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-scorpion)))
+                                 (and (= *v-fox-ability-loadout* 6)
+                                      (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-fox)))
+                                 (and (= *v-x-ride-ability-loadout* 6)
+                                      (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-x-ride)))
                                  (and *v-snake-turret-jammer-equipped?*
                                       (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
                                       (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-snake))))
                             )
-                       2.5
+                       ;; Hero Mode V-Toad is intentionally the milder jammer;
+                       ;; every other jammer use retains the existing 2.5x aim spread.
+                       (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                (= *v-toad-ability-loadout* 6)
+                                (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-toad)))
+                           2.25
+                           2.5)
                        1.0
                        )
                    (fmax 1.0 (/ f1-0 (meters 20)))
@@ -246,6 +377,41 @@
     )
   0
   (none)
+  )
+
+(defmethod on-impact ((this v-marauder) (impact rigid-body-impact))
+  (let ((before (-> this hit-points))
+        (previous-impact (-> this impact-time)))
+    ((method-of-type wcar-base on-impact) this impact)
+    (when (and *hero-destroy-interceptors-bumper-active?*
+               (> (-> this hit-points) 0.0)
+               *target* (focus-test? *target* pilot-riding)
+               (= (-> impact process) (handle->process (-> *target* pilot vehicle)))
+               (> (-> impact impulse) 0.0)
+               (> (vector-length (-> impact velocity)) (meters 4))
+               (or (zero? previous-impact)
+                   (time-elapsed? previous-impact (seconds 0.5))))
+      (let ((damage (* (fmax 0.0 (- before (-> this hit-points))) (-> this info damage hit-points)))
+            (speed (/ (vector-length (-> impact velocity)) (meters 1)))
+            (impulse (/ (-> impact impulse) (meters 1))))
+        ;; Side impacts earn a modest bonus. Clamp impulse so extreme physics
+        ;; spikes cannot dominate the score.
+        (+! *hero-bumper-impact-points*
+            (* *hero-bumper-impact-score-scale*
+               (if (> (fabs (-> this impact-local-pos x)) (fabs (-> this impact-local-pos z))) 1.25 1.0)
+               (+ (* damage 10.0) (* speed 2.0) (fmin 100.0 (fmax 0.0 impulse))))))))
+  (none)
+  )
+
+(defmethod rbody-event-handler ((this v-marauder) (arg0 process) (arg1 int) (arg2 symbol) (arg3 event-message-block))
+  (case arg2
+    (('hero-force-explode)
+     ;; This route deliberately bypasses squad retirement, which otherwise
+     ;; removes the car without playing the vehicle explosion.
+     (set! (-> this hit-points) 0.0)
+     (go (method-of-object this explode)))
+    (else
+      ((method-of-type wcar-base rbody-event-handler) this arg0 arg1 arg2 arg3)))
   )
 
 (defmethod init-collision! ((this v-marauder))
@@ -458,6 +624,12 @@
     (the-as pair 0)
     )
   (alloc-rbody-control! this *v-marauder-constants*)
+  ;; Set the spawn health once; the physics update must not refill damage.
+  (when *hero-destroy-interceptors-bumper-active?*
+    (set! (-> this hit-points)
+          (* 80.0 (-> this info damage inv-hit-points))))
+  (set! (-> this hero-one-hp?) #f)
+  (set! (-> this hero-one-hp-restore) 0.0)
   (set! (-> this draw lod-set lod 0 dist) 1105920.0)
   (set! (-> this rider-hand-joint-array 0) 3)
   (setup-draw-masks this (the-as int (-> this info setup look-select)))
@@ -523,12 +695,18 @@
   :virtual #t
   :enter (behavior ()
     (+! (-> *game-info* marauders-killed) 1.0)
-    (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-        (hero-marauder-reward-spawn self)
-        (when (and *target* (focus-test? *target* pilot-riding))
-          (turbo-pickup-spawn (-> self root trans))
-          )
-        )
+    ;; Hero Mode always leaves the miniature V-Snake display pickup.  This is
+    ;; separate from the randomized reward path, so forced Bumper explosions
+    ;; cannot suppress the 100% cosmetic drop.
+    ;; Miniature vehicle drops are disabled pending streaming and lifetime
+    ;; validation of the composite skeleton display.
+    ;; A Tier-2 artifact already is a reward.  Its forced explosions must not
+    ;; generate another round of alternate-challenge drops or normal turbo loot.
+    (unless (hero-interceptor-consume-forced-explosion! self)
+      (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+          (hero-marauder-reward-spawn self)
+          (when (and *target* (focus-test? *target* pilot-riding))
+            (turbo-pickup-spawn (-> self root trans)))))
     ;; cars use the same reliable radial explosion setup as the robots, car go boOM!!
     (when (-> self oasis-explosion?)
       (let ((blast (new 'stack-no-clear 'explosion-init-params)))

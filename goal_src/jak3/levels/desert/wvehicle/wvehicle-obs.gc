@@ -473,16 +473,59 @@
               ((pre-artifact-c-lod0-mg (meters 999999)))
               :bounds (static-spherem 0 0 0 4))
 
+(defskelgroup skel-hero-artifact-4 pre-artifact-d pre-artifact-d-lod0-jg pre-artifact-d-idle-ja
+              ((pre-artifact-d-lod0-mg (meters 999999)))
+              :bounds (static-spherem 0 0 0 4))
+
+;; Runtime-only handoff to the active Destroy Interceptors task manager.  The
+;; token adds time to the mission countdown; it is not a persistent reward.
+(define *hero-destroy-interceptors-freeze-award* 0.0)
+(define *hero-destroy-interceptors-timer-award* 0.0)
+(define *hero-destroy-interceptors-alternate-active?* #f)
+(define *hero-destroy-interceptors-reset-timer?* #f)
+(define *hero-destroy-interceptors-one-hp-time* (the-as time-frame 0))
+(define *hero-destroy-interceptors-one-hp-duration* (the-as time-frame 0))
+(define *hero-bumper-double-start* (the-as time-frame 0))
+(define *hero-bumper-double-duration* (the-as time-frame 0))
+(define *hero-bumper-point-multiplier* 1)
+(define *hero-bumper-stage-points* 0.0)
+(define *hero-bumper-time-extension-fraction* 0.0)
+;; Raw challenge-score points required within six seconds to advance from
+;; 2x to 3x, 3x to 4x, and so on. Keep this centralized for balancing.
+(define *hero-bumper-stage-threshold* 300.0)
+(define *hero-bumper-last-base-score* 0.0)
+(define *hero-bumper-bonus-points* 0.0)
+(define-extern *hero-destroy-interceptors-bumper-active?* symbol)
+(define-extern *hero-destroy-interceptors-challenge-mode* int)
+(define-extern hero-destroy-interceptors-kill-live-marauders! (function none))
+
 (deftype hero-artifact-pickup (turbo-pickup)
   ((tier uint32)
    (base-pos vector :inline)
    (bob-angle float))
   )
 
+(define-extern hero-interceptor-artifact-pickup? (function hero-artifact-pickup symbol))
+(define-extern hero-interceptor-artifact-award! (function hero-artifact-pickup none))
+
+(defun hero-interceptor-artifact-heal-vehicle! ()
+  (when (and *target* (focus-test? *target* pilot-riding))
+    (let ((car (as-type (handle->process (-> *target* pilot vehicle)) wvehicle)))
+      (when (and car
+                 (> (-> car hit-points) 0.0)
+                 (not (logtest? (-> car v-flags) (vehicle-flag dead))))
+        ;; Vehicle hit-points are normalized, so 1.0 is full health.
+        (set! (-> car hit-points) 1.0)))
+    )
+  (none)
+  )
+
 (defstate idle (hero-artifact-pickup)
   :virtual #t
   :trans (behavior ()
     (when (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+              (and (not *hero-destroy-interceptors-alternate-active?*)
+                   (hero-interceptor-artifact-pickup? self))
               (time-elapsed? (-> self birth-time) (seconds 30)))
       (go-virtual die)
       )
@@ -504,7 +547,13 @@
                       (fmax (meters 3) (-> player-pos w))))
           ;; Disarm before awarding, so no second touch can duplicate the reward.
           (set! (-> self available) #f)
-          (+! (-> *game-info* hero-artifacts-pending (-> self tier)) 1)
+          ;; The original three artifact tiers persist in the Hero inventory.
+          ;; Artifact D is alternate-challenge-only and has no matching save slot.
+          (when (< (-> self tier) 3)
+            (+! (-> *game-info* hero-artifacts-pending (-> self tier)) 1))
+          (when (and *hero-destroy-interceptors-alternate-active?*
+                     (hero-interceptor-artifact-pickup? self))
+            (hero-interceptor-artifact-award! self))
           ;; Hero artifact cues follow the SFX slider.
           (case (-> self tier)
             ((0)
@@ -520,8 +569,10 @@
                         (the int (* 30.0 (-> *setting-control* user-current sfx-volume))))
                (sound-play "money-pickup")))
             (else (sound-play "money-pickup")))
-          (format #t "Hero artifact collected: tier ~D, pending ~D~%"
-                  (+ (-> self tier) 1) (-> *game-info* hero-artifacts-pending (-> self tier)))
+          (if (< (-> self tier) 3)
+              (format #t "Hero artifact collected: tier ~D, pending ~D~%"
+                      (+ (-> self tier) 1) (-> *game-info* hero-artifacts-pending (-> self tier)))
+              (format #t "Hero artifact collected: alternate artifact D~%"))
           (go-virtual die)
           )
         )
@@ -551,8 +602,153 @@
     )
   )
 
-(defbehavior hero-artifact-pickup-init-by-other hero-artifact-pickup
-  ((pos vector) (tier uint32) (owner-level level))
+;; Disk boot copies the parent's state slots when creating the subtype.
+;; Define it after both parent states so it inherits the artifact states.
+(deftype hero-interceptor-artifact-pickup (hero-artifact-pickup)
+  ((reward uint32))
+  )
+
+;; A cosmetic Hero Mode Marauder drop.  It inherits the artifact pickup's
+;; non-solid proximity collection and timed cleanup, but deliberately has no
+;; reward slot: it is only a miniature V-Snake model, not a vehicle actor.
+(deftype hero-v-snake-pickup (hero-artifact-pickup)
+  ()
+  )
+
+;; Draw-only children for the complete miniature V-Snake.  Unlike vehicle-wheel,
+;; these have no rigid body, vehicle controls, collision response, or wheel physics.
+(deftype hero-v-snake-wheel-display (process-drawable)
+  ((root       collide-shape :override)
+   ;; `parent` is the process-pool link inherited from process-drawable.
+   ;; Keep the display's gameplay owner in its own handle so the child never
+   ;; corrupts the entity-pool linkage.
+   (owner      handle)
+   (local-pos  vector        :inline)
+   (x-flip     float))
+  (:state-methods
+    idle
+    die)
+  )
+
+(defstate idle (hero-v-snake-wheel-display)
+  :trans (behavior ()
+    (unless (handle->process (-> self owner))
+      (go-virtual die))
+    )
+  :code sleep-code
+  :post (behavior ()
+    (let ((parent (the-as hero-v-snake-pickup (handle->process (-> self owner))))
+          (axis (new 'stack-no-clear 'vector)))
+      (when parent
+        ;; Convert the fixed V-Snake wheel offset through the bobbing body's
+        ;; live rotation, keeping all five display parts together.
+        (vector-copy! (-> self root trans) (-> parent root trans))
+        (vector-x-quaternion! axis (-> parent root quat))
+        (vector+float*! (-> self root trans) (-> self root trans) axis (-> self local-pos x))
+        (vector-y-quaternion! axis (-> parent root quat))
+        (vector+float*! (-> self root trans) (-> self root trans) axis (-> self local-pos y))
+        (vector-z-quaternion! axis (-> parent root quat))
+        (vector+float*! (-> self root trans) (-> self root trans) axis (-> self local-pos z))
+        (quaternion-copy! (-> self root quat) (-> parent root quat))
+        (ja-no-eval :group! (ja-group) :num! (seek!) :frame-num 0.0)
+        (ja-post)
+        )
+      )
+    )
+  )
+
+(defstate die (hero-v-snake-wheel-display)
+  :code (behavior ()
+    (cleanup-for-death self)
+    (deactivate self)
+    )
+  )
+
+(defbehavior hero-v-snake-wheel-display-init-by-other hero-v-snake-wheel-display
+  ((parent hero-v-snake-pickup) (x float) (y float) (z float) (x-flip float))
+  (stack-size-set! (-> self main-thread) 1024)
+  (set! (-> self level) (-> parent level))
+  (set! (-> self owner) (process->handle parent))
+  (set-vector! (-> self local-pos) x y z 1.0)
+  (set! (-> self x-flip) x-flip)
+  ;; This collision shape supplies a transform root only.  Its empty collision
+  ;; specs ensure that the decorative wheels cannot interact with the world.
+  (let ((root (new 'process 'collide-shape self (collide-list-enum usually-hit-by-player))))
+    (let ((sphere (new 'process 'collide-shape-prim-sphere root (the-as uint 0))))
+      (set! (-> sphere prim-core collide-as) (collide-spec))
+      (set! (-> sphere prim-core collide-with) (collide-spec))
+      (set-vector! (-> sphere local-sphere) 0.0 0.0 0.0 1.0)
+      (set! (-> root total-prims) (the-as uint 1))
+      (set! (-> root root-prim) sphere)
+      )
+    (set! (-> self root) root)
+    )
+  (vector-copy! (-> self root trans) (-> parent root trans))
+  (quaternion-copy! (-> self root quat) (-> parent root quat))
+  (set-vector! (-> self root scale) (* 0.28 x-flip) 0.28 0.28 1.0)
+  (initialize-skeleton self
+    (the-as skeleton-group
+      (art-group-get-by-name *level* "skel-v-snake-wheel" (the-as (pointer level) #f)))
+    (the-as pair 0))
+  (go-virtual idle)
+  )
+
+(defun hero-v-snake-wheel-display-spawn ((parent hero-v-snake-pickup)
+                                         (x float) (y float) (z float) (x-flip float))
+  (process-spawn hero-v-snake-wheel-display parent x y z x-flip :name "hero-v-snake-wheel" :to *entity-pool*)
+  (none)
+  )
+
+(defun hero-interceptor-artifact-pickup? ((pickup hero-artifact-pickup))
+  (= (-> pickup type) hero-interceptor-artifact-pickup)
+  )
+
+(defun hero-interceptor-artifact-award! ((pickup hero-artifact-pickup))
+  (let ((interceptor-pickup (the-as hero-interceptor-artifact-pickup pickup)))
+    (case (-> interceptor-pickup reward)
+      ;; Artifact D: reset this alternate challenge's countdown to 2:05.
+      ;; Artifact D resets the alternate challenge. Bumper Cars reuses this
+      ;; reward slot for its Tier-2 artifact, which adds ten visible seconds.
+      ((0) (if *hero-destroy-interceptors-bumper-active?*
+                (+! *hero-destroy-interceptors-timer-award* 10.0)
+               (set! *hero-destroy-interceptors-reset-timer?* #t)))
+      ;; Tier 3: restore the player's vehicle to maximum health.
+      ((1) (hero-interceptor-artifact-heal-vehicle!))
+      ;; Tier 2: destroy the live Marauder squad through its normal death path.
+      ((2) (hero-destroy-interceptors-kill-live-marauders!))
+      ;; Tier 1: each collection adds six seconds to the active one-hit window.
+      ((3)
+       (if (and (nonzero? *hero-destroy-interceptors-one-hp-time*)
+                (not (time-elapsed? *hero-destroy-interceptors-one-hp-time*
+                                    *hero-destroy-interceptors-one-hp-duration*)))
+           (+! *hero-destroy-interceptors-one-hp-duration* (seconds 6))
+           (begin
+             (set-time! *hero-destroy-interceptors-one-hp-time*)
+             (set! *hero-destroy-interceptors-one-hp-duration* (seconds 6)))))
+      ;; Bumper Cars Tier-3 starts (or refreshes) a six-second escalation
+      ;; attempt. Reaching the point threshold raises the multiplier and starts
+      ;; a fresh six-second stage; collecting another pickup does not skip a tier.
+      ((4)
+       (when *hero-destroy-interceptors-bumper-active?*
+          (unless (and (> *hero-bumper-point-multiplier* 1)
+                       (nonzero? *hero-bumper-double-start*)
+                       (not (time-elapsed? *hero-bumper-double-start*
+                                           *hero-bumper-double-duration*)))
+            (set! *hero-bumper-point-multiplier* 2)
+            (set! *hero-bumper-stage-points* 0.0)
+            (set! *hero-bumper-stage-threshold* 300.0)
+            (set! *hero-bumper-time-extension-fraction* 0.0))
+          (set-time! *hero-bumper-double-start*)
+          (set! *hero-bumper-double-duration* (seconds 6))))
+      )
+    )
+  (none)
+  )
+
+(defun hero-artifact-pickup-setup! ((self hero-artifact-pickup)
+                                    (pos vector)
+                                    (tier uint)
+                                    (owner-level level))
   (stack-size-set! (-> self main-thread) 1024)
   (set! (-> self level) owner-level)
   (set! (-> self tier) tier)
@@ -578,25 +774,171 @@
   ;; Reuse the turbo pickup's ground probe, not a mission-specific artifact actor.
   (find-ground self)
   (vector-copy! (-> self base-pos) (-> self root trans))
+  ;; Tier 4 is the V-Snake miniature's no-art placeholder.  It supplies the
+  ;; shared pickup setup but intentionally loads no artifact art; the caller
+  ;; installs the V-Snake skeleton directly.  This avoids a transient
+  ;; pre-artifact-d-ag load every time a Marauder dies.
+  (when (< tier 4)
+    (initialize-skeleton self
+      (the-as skeleton-group
+        (art-group-get-by-name *level*
+          (cond ((= tier 0) "skel-hero-artifact-1")
+                ((= tier 1) "skel-hero-artifact-2")
+                ((= tier 2) "skel-hero-artifact-3")
+                (else "skel-hero-artifact-4"))
+          (the-as (pointer level) #f)))
+      (the-as pair 0))
+    (cond
+      ((= tier 0)
+       (set-vector! (-> self draw color-mult) 0.15 0.55 1.0 1.0)
+       (set-vector! (-> self draw color-emissive) 0.05 0.25 0.8 1.0))
+      ((= tier 1)
+       (set-vector! (-> self draw color-mult) 0.7 0.2 1.0 1.0)
+       (set-vector! (-> self draw color-emissive) 0.45 0.05 0.65 1.0))
+      ((= tier 2)
+       (set-vector! (-> self draw color-mult) 1.0 0.75 0.15 1.0)
+       (set-vector! (-> self draw color-emissive) 0.65 0.4 0.05 1.0))
+      (else
+       (set-vector! (-> self draw color-mult) 0.2 1.0 0.6 1.0)
+       (set-vector! (-> self draw color-emissive) 0.05 0.65 0.3 1.0))
+      )
+    )
+  (none)
+  )
+
+(defbehavior hero-artifact-pickup-init-by-other hero-artifact-pickup
+  ((pos vector) (tier uint32) (owner-level level))
+  (hero-artifact-pickup-setup! self pos tier owner-level)
+  (go-virtual idle)
+  )
+
+(defbehavior hero-interceptor-artifact-pickup-init-by-other hero-interceptor-artifact-pickup
+  ((pos vector) (tier uint32) (reward uint32) (owner-level level))
+  (set! (-> self reward) reward)
+  (hero-artifact-pickup-setup! self pos tier owner-level)
+  (go-virtual idle)
+  )
+
+(defbehavior hero-v-snake-pickup-init-by-other hero-v-snake-pickup
+  ((pos vector) (owner-level level))
+  ;; Tier 4 is a non-persistent visual-only base.  Its shared setup skips
+  ;; artifact initialization, then this pickup installs V-Snake directly.
+  (hero-artifact-pickup-setup! self pos (the-as uint 4) owner-level)
+  (set-vector! (-> self root scale) 0.28 0.28 0.28 1.0)
   (initialize-skeleton self
     (the-as skeleton-group
-      (art-group-get-by-name *level*
-        (cond ((= tier 0) "skel-hero-artifact-1")
-              ((= tier 1) "skel-hero-artifact-2")
-              (else "skel-hero-artifact-3"))
-        (the-as (pointer level) #f)))
+      (art-group-get-by-name *level* "skel-v-snake" (the-as (pointer level) #f)))
     (the-as pair 0))
-  (cond
-    ((= tier 0)
-     (set-vector! (-> self draw color-mult) 0.15 0.55 1.0 1.0)
-     (set-vector! (-> self draw color-emissive) 0.05 0.25 0.8 1.0))
-    ((= tier 1)
-     (set-vector! (-> self draw color-mult) 0.7 0.2 1.0 1.0)
-     (set-vector! (-> self draw color-emissive) 0.45 0.05 0.65 1.0))
-    (else
-     (set-vector! (-> self draw color-mult) 1.0 0.75 0.15 1.0)
-     (set-vector! (-> self draw color-emissive) 0.65 0.4 0.05 1.0))
+  (set-vector! (-> self draw color-mult) 1.0 1.0 1.0 1.0)
+  (set-vector! (-> self draw color-emissive) 0.0 0.0 0.0 1.0)
+  ;; V-Snake has a shared chassis, but its own four wheels make the miniature
+  ;; read as the complete vehicle rather than the similar V-Mirage shell.
+  ;; Offsets are the live V-Snake wheel placements, scaled by the 0.28 display size.
+  (hero-v-snake-wheel-display-spawn self (meters -0.53) (meters 0.04) (meters 0.54) -1.0)
+  (hero-v-snake-wheel-display-spawn self (meters  0.53) (meters 0.04) (meters 0.54)  1.0)
+  (hero-v-snake-wheel-display-spawn self (meters -0.64) (meters 0.04) (meters -0.83) -1.0)
+  (hero-v-snake-wheel-display-spawn self (meters  0.64) (meters 0.04) (meters -0.83)  1.0)
+  (go-virtual idle)
+  )
+
+(defun hero-v-snake-pickup-spawn ((source process-drawable))
+  ;; Entity pool keeps the display model alive after the Marauder explodes.
+  (process-spawn hero-v-snake-pickup (-> source root trans) (-> source level)
+                 :name "hero-v-snake-pickup" :to *entity-pool*)
+  (none)
+  )
+
+(deftype hero-interceptor-freeze-pickup (hero-artifact-pickup)
+  ((freeze-seconds float))
+  )
+
+(defstate idle (hero-interceptor-freeze-pickup)
+  :virtual #t
+  :trans (behavior ()
+    (when (or (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+              (not *hero-destroy-interceptors-alternate-active?*)
+              (time-elapsed? (-> self birth-time) (seconds 30)))
+      (go-virtual die)
+      )
+    (when (and (-> self available) *target* (not (focus-test? *target* dead)))
+      (let ((player-pos (new 'stack 'vector)))
+        (vector-copy! player-pos (-> *target* control trans))
+        (set! (-> player-pos w) (meters 1))
+        (when (focus-test? *target* pilot-riding)
+          (let ((car (as-type (handle->process (-> *target* pilot vehicle)) process-drawable)))
+            (when car
+              (vector-copy! player-pos
+                            (-> (the-as collide-shape (-> car root)) root-prim prim-core world-sphere))
+              )
+            )
+          )
+        (when (and (< (vector-vector-xz-distance-squared (-> self root trans) player-pos)
+                      (square (+ (meters 2) (-> player-pos w))))
+                   (< (fabs (- (-> self root trans y) (-> player-pos y)))
+                      (fmax (meters 3) (-> player-pos w))))
+          ;; Disarm before publishing the award so a token cannot be collected twice.
+          (set! (-> self available) #f)
+          (+! *hero-destroy-interceptors-freeze-award* (-> self freeze-seconds))
+          (cond
+            ((<= (-> self freeze-seconds) 1.0) (sound-play "small-pickup"))
+            ((<= (-> self freeze-seconds) 2.0) (sound-play "medium-pickup"))
+            (else (sound-play "large-pickup")))
+          (go-virtual die)
+          )
+        )
+      )
     )
+  :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
+    (none)
+    )
+  :code sleep-code
+  :post (behavior ()
+    (spawn (-> self part) (-> self root trans))
+    )
+  )
+
+(defmethod deactivate ((this hero-interceptor-freeze-pickup))
+  (when (nonzero? (-> this part))
+    (kill-particles (-> this part))
+    (set! (-> this part) (the-as sparticle-launch-control 0))
+    )
+  ((method-of-type process-drawable deactivate) this)
+  (none)
+  )
+
+(defbehavior hero-interceptor-freeze-pickup-init-by-other hero-interceptor-freeze-pickup
+  ((pos vector) (freeze-seconds float) (owner-level level))
+  (stack-size-set! (-> self main-thread) 1024)
+  (set! (-> self level) owner-level)
+  (set! (-> self freeze-seconds) freeze-seconds)
+  (set! (-> self tier) (the-as uint32 0))
+  (set! (-> self available) #t)
+  (set! (-> self persistent) #f)
+  (set! (-> self collector) (the-as handle #f))
+  (set! (-> self bob-angle) 0.0)
+  (set-time! (-> self birth-time))
+  (let ((root (new 'process 'collide-shape self (collide-list-enum usually-hit-by-player))))
+    (let ((sphere (new 'process 'collide-shape-prim-sphere root (the-as uint 0))))
+      (set! (-> sphere prim-core collide-as) (collide-spec))
+      (set! (-> sphere prim-core collide-with) (collide-spec))
+      (set-vector! (-> sphere local-sphere) 0.0 0.0 0.0 (meters 1))
+      (set! (-> root total-prims) (the-as uint 1))
+      (set! (-> root root-prim) sphere)
+      )
+    (set! (-> self root) root)
+    )
+  (vector-copy! (-> self root trans) pos)
+  (quaternion-identity! (-> self root quat))
+  (find-ground self)
+  (vector-copy! (-> self base-pos) (-> self root trans))
+  ;; These are the original Desert/Timer Chase freeze-token effects:
+  ;; blue small (1s), yellow medium (2s), and red large (3s).
+  (set! (-> self part)
+        (create-launch-control
+          (cond ((<= freeze-seconds 1.0) group-score-drop-a)
+                ((<= freeze-seconds 2.0) group-score-drop-b)
+                (else group-score-drop-c))
+          self))
   (go-virtual idle)
   )
 
@@ -609,14 +951,67 @@
         (else 4))
   )
 
+;; Alternate challenge: Artifact D 2%, tier 3 3%, tier 2 5%, tier 1 10%.
+;; Freeze tokens at 15% (3s), 25% (2s), and 40% (1s).
+;; Bumper Cars: 1s / 2s / 3s freeze 35% / 25% / 18%,
+;; tier-1 full repair 7%, tier-2 timer bonus 10%, tier-3 double points 5%.
+(defun hero-destroy-interceptors-reward-for-roll ((roll int))
+  (if *hero-destroy-interceptors-bumper-active?*
+      (cond ((< roll 35) 6)
+            ((< roll 60) 5)
+            ((< roll 78) 4)
+            ((< roll 85) 8)
+            ((< roll 95) 9)
+            (else 10))
+      (cond ((< roll 2) 0)
+            ((< roll 5) 1)
+            ((< roll 10) 2)
+            ((< roll 20) 3)
+            ((< roll 35) 4)
+            ((< roll 60) 5)
+            (else 6)))
+  )
+
 (defbehavior hero-marauder-reward-spawn process-drawable ((source process-drawable))
-  (let ((reward (hero-marauder-reward-for-roll (rand-vu-int-count 100))))
-    (case reward
-      ((0) (turbo-pickup-spawn (-> source root trans)))
-      (else
-        ;; Entity pool, not the dying car's subtree: loot survives the explosion.
-        (process-spawn hero-artifact-pickup (-> source root trans) (the-as uint32 (- reward 2)) (-> source level)
-                       :name "hero-artifact-pickup" :to *entity-pool*)
+  (cond
+    (*hero-destroy-interceptors-alternate-active?*
+     (let ((reward (hero-destroy-interceptors-reward-for-roll (rand-vu-int-count 100))))
+       (case reward
+         ((0) (process-spawn hero-interceptor-artifact-pickup (-> source root trans) (the-as uint32 3) (the-as uint32 0) (-> source level)
+                           :name "hero-interceptor-artifact-d" :to *entity-pool*))
+         ((1) (process-spawn hero-interceptor-artifact-pickup (-> source root trans) (the-as uint32 2) (the-as uint32 1) (-> source level)
+                           :name "hero-interceptor-artifact-tier-3" :to *entity-pool*))
+         ((2) (process-spawn hero-interceptor-artifact-pickup (-> source root trans) (the-as uint32 1) (the-as uint32 2) (-> source level)
+                           :name "hero-interceptor-artifact-tier-2" :to *entity-pool*))
+         ((3) (process-spawn hero-interceptor-artifact-pickup (-> source root trans) (the-as uint32 0) (the-as uint32 3) (-> source level)
+                           :name "hero-interceptor-artifact-tier-1" :to *entity-pool*))
+         ((4) (process-spawn hero-interceptor-freeze-pickup (-> source root trans) 3.0 (-> source level)
+                           :name "hero-interceptor-freeze-pickup" :to *entity-pool*))
+         ((5) (process-spawn hero-interceptor-freeze-pickup (-> source root trans) 2.0 (-> source level)
+                           :name "hero-interceptor-freeze-pickup" :to *entity-pool*))
+         ((6) (process-spawn hero-interceptor-freeze-pickup (-> source root trans) 1.0 (-> source level)
+                              :name "hero-interceptor-freeze-pickup" :to *entity-pool*))
+         ;; Bumper Cars keeps the visual artifact tiers intuitive while
+         ;; reusing the tested full-repair and timer-reset reward handlers.
+         ((8) (process-spawn hero-interceptor-artifact-pickup (-> source root trans) (the-as uint32 0) (the-as uint32 1) (-> source level)
+                             :name "hero-bumper-artifact-tier-1" :to *entity-pool*))
+         ((9) (process-spawn hero-interceptor-artifact-pickup (-> source root trans) (the-as uint32 1) (the-as uint32 0) (-> source level)
+                             :name "hero-bumper-artifact-tier-2" :to *entity-pool*))
+         ((10) (process-spawn hero-interceptor-artifact-pickup (-> source root trans) (the-as uint32 2) (the-as uint32 4) (-> source level)
+                              :name "hero-bumper-artifact-tier-3" :to *entity-pool*))
+         )
+       )
+     )
+    (else
+      (let ((reward (hero-marauder-reward-for-roll (rand-vu-int-count 100))))
+        (case reward
+          ((0) (turbo-pickup-spawn (-> source root trans)))
+          (else
+            ;; Entity pool, not the dying car's subtree: loot survives the explosion.
+            (process-spawn hero-artifact-pickup (-> source root trans) (the-as uint32 (- reward 2)) (-> source level)
+                           :name "hero-artifact-pickup" :to *entity-pool*)
+            )
+          )
         )
       )
     )

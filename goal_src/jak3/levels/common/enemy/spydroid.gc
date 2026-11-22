@@ -372,12 +372,12 @@
   :virtual #t
   :enter (behavior ()
     (sound-play "droid-explode")
-    ;; Robot Spyder death blast: damage Jak within an 8-meter radius.
+    ;; Robot Spyder death blast: damage Jak within a 2-meter radius.
     ;; Use the same radial explosion damage profile as the RoboGuard.
     (let ((gp-0 (new 'stack-no-clear 'explosion-init-params)))
       (vector-copy! (-> gp-0 spawn-point) (-> self root trans))
       (quaternion-identity! (-> gp-0 spawn-quat))
-      (set! (-> gp-0 radius) (meters 8))
+      (set! (-> gp-0 radius) (meters 2))
       (set! (-> gp-0 scale) 1.0)
       (set! (-> gp-0 group) group-kg-explosion)
       (set! (-> gp-0 collide-with)

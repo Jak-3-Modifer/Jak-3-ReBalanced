@@ -77,15 +77,18 @@
 (define *h-bike-a-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      :mass 2.0
-      :inv-mass 0.5
+      ;; Arctic Leopard XE Pro R curb weight: 175 lb.  The game's bike masses
+      ;; are abstract units, so this is scaled from the established city-bike
+      ;; baseline rather than using pounds directly.
+      :mass 1.5
+      :inv-mass 0.6666667
       :linear-damping 0.995
       :angular-damping 0.995
       :bounce-factor 0.4
       :friction-factor 0.05
       :bounce-mult-factor 1.22
       :cm-offset-joint (new 'static 'vector :z 2457.6 :w 1.0)
-      :inertial-tensor-box (new 'static 'array meters 3 (meters 3) (meters 4) (meters 6))
+      :inertial-tensor-box (new 'static 'array meters 3 (meters 2.25) (meters 3) (meters 4.5))
       )
     :extra (new 'static 'rigid-body-object-extra-info
       :max-time-step 0.033333335
@@ -100,14 +103,16 @@
     :vehicle-type (vehicle-type-u8 vt27)
     :transmission (new 'static 'vehicle-transmission-info :gear-count 1)
     :handling (new 'static 'vehicle-handling-info
-      :max-engine-thrust (meters 50)
-      :inv-max-engine-thrust 0.0000048828124
-      :engine-response-rate 60.0
+      ;; Arctic Leopard XE Pro R: 26.5 kW peak electric power, 72 mph top
+      ;; speed, and high-torque off-road response.
+      :max-engine-thrust (meters 147.2)
+      :inv-max-engine-thrust 0.000001658427
+      :engine-response-rate 120.0
       :engine-intake-factor 1.5
-      :brake-factor 3.5
+      :brake-factor 4.5
       :turbo-boost-factor 1.0
       :turbo-boost-duration (seconds 1)
-      :max-xz-speed (meters 40)
+      :max-xz-speed (meters 32.1869)
       :player-turn-anim-min -1.0
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
@@ -115,7 +120,7 @@
       :pilot-z-accel-factor 1.0
       :ground-probe-distance (meters 5)
       :cos-ground-effect-angle 0.42261827
-      :spring-lift-factor 0.3
+      :spring-lift-factor 0.45
       :air-drag-factor 1.0
       :steering-thruster-factor 5.0
       :steering-thruster-max-gain 4.0
@@ -418,15 +423,18 @@
 (define *h-bike-b-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      :mass 2.0
-      :inv-mass 0.5
+      ;; LiveWire S2 Mulholland curb weight: 432 lb.  The game's bike masses
+      ;; are abstract units, so this is scaled from the established city-bike
+      ;; baseline rather than using pounds directly.
+      :mass 3.5
+      :inv-mass 0.2857143
       :linear-damping 0.995
       :angular-damping 0.995
       :bounce-factor 0.4
       :friction-factor 0.05
       :bounce-mult-factor 1.22
       :cm-offset-joint (new 'static 'vector :z 2457.6 :w 1.0)
-      :inertial-tensor-box (new 'static 'array meters 3 (meters 3) (meters 4) (meters 6))
+      :inertial-tensor-box (new 'static 'array meters 3 (meters 5.25) (meters 7) (meters 10.5))
       )
     :extra (new 'static 'rigid-body-object-extra-info
       :max-time-step 0.033333335
@@ -441,14 +449,20 @@
     :vehicle-type (vehicle-type-u8 vt27)
     :transmission (new 'static 'vehicle-transmission-info :gear-count 1)
     :handling (new 'static 'vehicle-handling-info
-      :max-engine-thrust (meters 50)
-      :inv-max-engine-thrust 0.0000048828124
-      :engine-response-rate 60.0
+      ;; LiveWire S2 Mulholland: 63 kW / 84 hp peak, 194 lb-ft of electric
+      ;; torque, and a 99 mph maximum speed.
+      ;; The city-bike physics solver applies thrust along the bike's current
+      ;; forward axis.  Keep the 63 kW character through response and torque,
+      ;; but limit raw thrust to prevent ramps turning that force into a large
+      ;; vertical launch.
+      :max-engine-thrust (meters 90)
+      :inv-max-engine-thrust 0.0000027126736
+      :engine-response-rate 85.0
       :engine-intake-factor 1.5
-      :brake-factor 3.5
+      :brake-factor 5.0
       :turbo-boost-factor 1.0
       :turbo-boost-duration (seconds 1)
-      :max-xz-speed (meters 40)
+      :max-xz-speed (meters 27)
       :player-turn-anim-min -1.0
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
@@ -462,9 +476,9 @@
       :steering-thruster-max-gain 4.0
       :steering-thruster-half-gain-speed (meters 15)
       :tire-steering-speed-factor 61440.0
-      :tire-friction-factor 0.5
-      :tire-static-friction 0.55
-      :tire-dynamic-friction 0.4
+      :tire-friction-factor 0.7
+      :tire-static-friction 0.7
+      :tire-dynamic-friction 0.5
       :tire-dynamic-friction-speed (meters 2)
       :tire-inv-max-friction-speed 0.000024414063
       :airfoil-factor 1.0
@@ -761,15 +775,20 @@
 (define *h-bike-c-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      :mass 2.0
-      :inv-mass 0.5
+      ;; Ryvid Anthem curb weight: 313 lb.  The game's bike masses are abstract
+      ;; units, so this is scaled from the established city-bike baseline
+      ;; rather than using pounds directly.
+      :mass 2.6
+      :inv-mass 0.3846154
       :linear-damping 0.995
       :angular-damping 0.995
       :bounce-factor 0.4
       :friction-factor 0.05
       :bounce-mult-factor 1.22
       :cm-offset-joint (new 'static 'vector :z 2457.6 :w 1.0)
-      :inertial-tensor-box (new 'static 'array meters 3 (meters 3) (meters 4) (meters 6))
+      ;; The Anthem's 50/50 weight distribution should feel nimble without
+      ;; making the lightweight bike unstable over street terrain.
+      :inertial-tensor-box (new 'static 'array meters 3 (meters 3.9) (meters 5.2) (meters 7.8))
       )
     :extra (new 'static 'rigid-body-object-extra-info
       :max-time-step 0.033333335
@@ -784,14 +803,18 @@
     :vehicle-type (vehicle-type-u8 vt27)
     :transmission (new 'static 'vehicle-transmission-info :gear-count 1)
     :handling (new 'static 'vehicle-handling-info
-      :max-engine-thrust (meters 50)
-      :inv-max-engine-thrust 0.0000048828124
-      :engine-response-rate 60.0
+      ;; Ryvid Anthem: 20 kW Sport-mode peak output, 250 lb-ft peak wheel
+      ;; torque, and an up-to-84 mph top speed.  The restrained force and
+      ;; response keep its strong low-speed electric pull from pitching the
+      ;; lightweight bike upward on ramps.
+      :max-engine-thrust (meters 105)
+      :inv-max-engine-thrust 0.0000023251488
+      :engine-response-rate 100.0
       :engine-intake-factor 1.5
-      :brake-factor 3.5
+      :brake-factor 4.75
       :turbo-boost-factor 1.0
       :turbo-boost-duration (seconds 1)
-      :max-xz-speed (meters 40)
+      :max-xz-speed (meters 37.554)
       :player-turn-anim-min -1.0
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
@@ -799,15 +822,15 @@
       :pilot-z-accel-factor 1.0
       :ground-probe-distance (meters 5)
       :cos-ground-effect-angle 0.42261827
-      :spring-lift-factor 0.3
+      :spring-lift-factor 0.4
       :air-drag-factor 1.0
       :steering-thruster-factor 5.0
       :steering-thruster-max-gain 4.0
       :steering-thruster-half-gain-speed (meters 15)
       :tire-steering-speed-factor 61440.0
-      :tire-friction-factor 0.5
-      :tire-static-friction 0.55
-      :tire-dynamic-friction 0.4
+      :tire-friction-factor 0.6
+      :tire-static-friction 0.6
+      :tire-dynamic-friction 0.45
       :tire-dynamic-friction-speed (meters 2)
       :tire-inv-max-friction-speed 0.000024414063
       :airfoil-factor 1.0

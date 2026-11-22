@@ -869,6 +869,15 @@
       (set! (-> self game old-features) (the-as game-feature gp-0))
       )
     )
+  ;; Purchased costume toggles intentionally own these two appearance targets;
+  ;; mission settings may still use the stock targets when the cosmetic is not
+  ;; unlocked.
+  (when (hero-goggles-costume-purchased?)
+    (set! (-> self goggles-interp-targ)
+          (if (hero-goggles-costume-enabled?) 1.0 0.0)))
+  (when (hero-scarf-costume-purchased?)
+    (set! (-> self scarf-interp-targ)
+          (if (hero-scarf-costume-enabled?) 1.0 0.0)))
   (+! (-> self scarf-interp) (* 0.2 (- (-> self scarf-interp-targ) (-> self scarf-interp))))
   (seek! (-> self scarf-interp) (-> self scarf-interp-targ) (seconds-per-frame))
   (+! (-> self goggles-interp) (* 0.2 (- (-> self goggles-interp-targ) (-> self goggles-interp))))

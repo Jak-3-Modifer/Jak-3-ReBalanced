@@ -39,6 +39,58 @@
 
 ;; DECOMP BEGINS
 
+;; Hero Mode Destroy Interceptors branch selection. Mode 0 is the original
+;; mission, mode 1 is the reward-focused alternate, and mode 2 is Bumper Cars.
+(define *hero-destroy-interceptors-challenge-mode* 0)
+(define *hero-destroy-interceptors-menu-selection* 0)
+
+(defun hero-destroy-interceptors-draw-mode-menu ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 56 92 0.0
+                   (font-color default) (font-flags shadow kerning))))
+    (set! (-> font flags) (font-flags shadow kerning middle middle-vert large))
+    (set-width! font 400)
+    (set-height! font 48)
+    (set-scale! font 0.58)
+    (set! (-> font color) (font-color progress-old-yellow))
+    (print-game-text "SELECT CHALLENGE" font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set-scale! font 0.46)
+    (set-origin! font 56 175)
+    (set! (-> font color)
+          (if (= *hero-destroy-interceptors-menu-selection* 0)
+              (font-color progress-old-selected)
+              (font-color default)))
+    (print-game-text
+      (if (= *hero-destroy-interceptors-menu-selection* 0)
+          "> DESTROY INTERCEPTORS"
+          "  DESTROY INTERCEPTORS")
+      font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set-origin! font 56 230)
+    (set! (-> font color)
+          (if (= *hero-destroy-interceptors-menu-selection* 1)
+              (font-color progress-old-selected)
+              (font-color default)))
+    (print-game-text
+      (if (= *hero-destroy-interceptors-menu-selection* 1)
+          "> ALTERNATE CHALLENGE"
+          "  ALTERNATE CHALLENGE")
+      font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set-origin! font 56 285)
+    (set! (-> font color)
+          (if (= *hero-destroy-interceptors-menu-selection* 2)
+              (font-color progress-old-selected)
+              (font-color default)))
+    (print-game-text
+      (if (= *hero-destroy-interceptors-menu-selection* 2)
+          "> BUMPER CARS"
+          "  BUMPER CARS")
+      font #f 44 (bucket-id hud-draw-hud-alpha))
+    (set-origin! font 56 360)
+    (set-scale! font 0.32)
+    (set! (-> font color) (font-color default))
+    (print-game-text "<PAD_DPAD_UP><PAD_DPAD_DOWN> Select     <PAD_X> Confirm"
+                     font #f 44 (bucket-id hud-draw-hud-alpha)))
+  (none))
+
 (defpartgroup group-desert-totem-eye-glow
   :id 379
   :flags (sp0 sp4)
@@ -462,6 +514,37 @@
       (suspend)
       )
     (suspend)
+    ;; Hero Mode chooses a branch before the existing introduction. The branch
+    ;; value survives retries while the shared task manager applies each
+    ;; branch's combat and reward rules after the handoff.
+    (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (= (-> self task current-node)
+                (game-task-node desert-bbush-destroy-interceptors-introduction)))
+        (begin
+          (set! *hero-destroy-interceptors-menu-selection*
+                *hero-destroy-interceptors-challenge-mode*)
+          (let ((choosing? #t))
+            (while choosing?
+              (hero-destroy-interceptors-draw-mode-menu)
+              (when (cpad-pressed? 0 up down l-analog-up l-analog-down)
+                (set! *hero-destroy-interceptors-menu-selection*
+                      (if (cpad-pressed? 0 up l-analog-up)
+                          (mod (+ *hero-destroy-interceptors-menu-selection* 2) 3)
+                          (mod (+ *hero-destroy-interceptors-menu-selection* 1) 3)))
+                (sound-play "menu-up-down")
+                (cpad-clear! 0 up down l-analog-up l-analog-down))
+              (when (cpad-pressed? 0 confirm x)
+                (set! *hero-destroy-interceptors-challenge-mode*
+                      *hero-destroy-interceptors-menu-selection*)
+                (set! choosing? #f)
+                (sound-play "menu-pick")
+                (cpad-clear! 0 confirm x))
+              (suspend))))
+        ;; Keep the confirmed Hero Mode branch through the introduction's
+        ;; follow-up dialogue/task-node handoff.  The combat task snapshots it
+        ;; when it starts; Normal Mode still always uses the original branch.
+        (unless (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+          (set! *hero-destroy-interceptors-challenge-mode* 0)))
     (if *target*
         (set! (-> *target* neck flex-blend) 1.0)
         )
@@ -471,14 +554,22 @@
     (set-time! (-> self state-time))
     (if (= (-> self task current-node) (game-task-node desert-bbush-custom-orbs-introduction))
         ;; Play the Oracle introduction while the normal Burning Bush camera
-        ;; pans. The file volume remains tied to the speech setting at 50%.
+        ;; pans. The file volume remains tied to the speech setting at 30%.
         (when (play-sound-file
                 "sfx/orcale.flac"
                 (the int (* 30.0 (-> *setting-control* user-current dialog-volume)))
                 )
-          (until (time-elapsed? (-> self state-time) (seconds 17.25))
-            (set! (-> self time) (* 0.0033333334 (the float (- (current-time) (-> self state-time)))))
-            (suspend)
+          (let ((skipped? #f))
+            (until (or skipped? (time-elapsed? (-> self state-time) (seconds 17.25)))
+              (if (cpad-pressed? 0 triangle)
+                  (begin
+                    (cpad-clear! 0 triangle)
+                    (stop-sound-file "sfx/orcale.flac")
+                    (set! skipped? #t))
+                  (begin
+                    (set! (-> self time) (* 0.0033333334 (the float (- (current-time) (-> self state-time)))))
+                    (suspend)))
+              )
             )
           )
         (let* ((v1-21 (get-current-task-event (-> self task)))

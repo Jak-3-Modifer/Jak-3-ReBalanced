@@ -278,22 +278,75 @@
   0
   )
 
+(defun prebot-blue1-pillars-phase? ((boss prebot))
+  "True while the Prebot is running its pillar sequence."
+  (and (-> boss next-state)
+       (let ((state-name (-> boss next-state name)))
+         (or (= state-name 'destroy-pillars)
+             (= state-name 'watch-pillars)
+             (= state-name 'create-pillars)
+             )
+         )
+       )
+  )
+
+(defun prebot-blue1-find-pillar-lock! ((player target))
+  "Acquire only the live minecar objective during Prebot's pillar sequence."
+  (let ((near (new 'stack-no-clear 'vector))
+        (far (new 'stack-no-clear 'vector))
+        (neck (new 'stack-no-clear 'vector))
+        (candidate (the-as process-focusable #f)))
+    ;; Build the same forward focus volume used by the ordinary gun tracker.
+    ;; The minecar model is drawable-only; its paired cav-railblocker is the
+    ;; focusable actor returned by this search.
+    (vector-copy! near (-> player control trans))
+    (vector-flatten! (-> player gun track-dir) (-> player gun track-dir) (-> player control c-R-w uvec))
+    (vector-normalize! (-> player gun track-dir) 1.0)
+    (+! (-> near y) 6144.0)
+    (vector+float*! near near (-> player gun track-dir) -32768.0)
+    (vector+float*! far near (-> player gun track-dir) (+ 32768.0 (-> player gun track-find-range)))
+    (let ((center (vector-average! (new 'stack-no-clear 'vector) near far)))
+      (set! (-> center w) (* 0.5 (vector-vector-distance near far)))
+      (set! (-> player focus-search length)
+            (fill-actor-list-for-box *actor-hash*
+                                     center
+                                     (-> player focus-search data)
+                                     (-> player focus-search allocated-length)))
+      )
+    (vector-copy!
+      neck
+      (vector<-cspace! (new 'stack-no-clear 'vector)
+                        (-> player node-list data (joint-node-index jakb-lod0-jg neckB))))
+    (+! (-> neck y) 2048.0)
+    (set! candidate
+          (find-nearest-focusable
+            (-> player focus-search)
+            (-> player control trans)
+            (+ 32768.0 (-> player gun track-find-range))
+            (search-info-flag attackable enemy cull-angle probe prefer-center)
+            (the-as search-info-flag (-> player gun track-require))
+            (-> player gun track-dir)
+            neck
+            5461.3335))
+    (when (and candidate (type? candidate cav-railblocker))
+      ((method-of-type focus focus-on!) (-> player gun track-target 0) candidate)
+      (vector-copy! (-> player gun track-trans) (get-trans candidate 3))
+      (set! (-> player gun track?) (gun-track-flags gutflags-0 gutflags-1 gutflags-2))
+      )
+    )
+  (none)
+  )
+
 (defmethod get-search-info-flag ((this prebot))
   "Get search-info-flag for this process."
-  ;; Let the Vulcan Fury acquire the Prebot only during the gun-damage phase.
+  ;; Gun Blue 1 keeps the actual Prebot available to the native laser tracker
+  ;; throughout the encounter.  The boss state still decides whether a hit can
+  ;; deal damage; this only controls aiming and target acquisition.
   (the-as search-info-flag
           (if (and *target*
                    (= (-> *target* game gun-type) (pickup-type gun-blue-1))
-                   (-> this next-state)
-                   (or (= (-> this next-state name) 'watch-critters)
-                       (and (= (-> this next-state name) 'watch-pillars)
-                            (= (-> this stage) 1)
-                            (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-                            (logtest? (-> this flags) (prebot-flag pf7))
-                            )
-                       )
-                   (handle->process (-> this gun))
-                   (> (-> this stage-hit-points) 1.0)
+                   (not (focus-test? this dead))
+                   (not (prebot-blue1-pillars-phase? this))
                    )
               (search-info-flag attackable enemy)
               (search-info-flag)
@@ -643,7 +696,8 @@
         ((let ((v1-39 (ja-group)))
            (and v1-39 (= v1-39 prebot-gun-fire-ja))
            )
-         (ja :num! (seek!))
+         ;; Keep the firing recovery within the 0.75-second 80 RPM window.
+         (ja :num! (seek! max 1.3333334))
          (when (ja-done? 0)
            (ja-channel-push! 1 (seconds 0.2))
            (ja :group! prebot-gun-target-ja :num! min)
@@ -669,7 +723,8 @@
                )
              )
            )
-         (when (time-elapsed? (-> self state-time) (seconds 1))
+         ;; 80 RPM: one Prebot gun shot every 0.75 seconds.
+         (when (time-elapsed? (-> self state-time) (seconds 0.75))
            (set-time! (-> self state-time))
            (blend-to-off! (-> self shoulder-aim-jm) (seconds 0.1) #f)
            (ja-channel-push! 1 (seconds 0.1))
@@ -729,6 +784,17 @@
   )
 
 (define-extern prebot-launch-critter (function int :behavior prebot))
+
+(defun prebot-lead-jak! ((boss prebot) (aim vector))
+  (when *target*
+    ;; Lead horizontal movement using the gun's roughly 60 m/s shot speed.
+    ;; Limit prediction so a quick change of direction can still evade a shot.
+    (let* ((distance (vector-vector-xz-distance (-> boss root trans) (target-pos 0)))
+           (lead-time (fmin 0.30 (* 0.75 (/ distance (meters 60)))))
+           (velocity (-> *target* control transv)))
+      (+! (-> aim x) (* (-> velocity x) lead-time))
+      (+! (-> aim z) (* (-> velocity z) lead-time))))
+  (none))
 
 (defstate watch-pillars (prebot)
   :virtual #t
@@ -921,7 +987,8 @@
         ((let ((v1-90 (ja-group)))
            (and v1-90 (= v1-90 prebot-gun-fire-ja))
            )
-         (ja :num! (seek!))
+         ;; Keep the firing recovery within the 0.75-second 80 RPM window.
+         (ja :num! (seek! max 1.3333334))
          (when (ja-done? 0)
            (cond
              ((and (= (-> self stage) 1)
@@ -964,7 +1031,8 @@
             (ja-channel-push! 1 (seconds 0.2))
             (ja :group! prebot-gun-stow-again-ja :num! min)
             )
-           ((time-elapsed? (-> self state-time) (seconds 1))
+           ;; 80 RPM: one Prebot gun shot every 0.75 seconds.
+           ((time-elapsed? (-> self state-time) (seconds 0.75))
             (send-event (handle->process (-> self gun)) 'fire)
             (prebot-light-flash 1.0 0.4 0.0)
              (when (not (and (= (-> self stage) 1)
@@ -999,6 +1067,10 @@
                     )
                    (else
                      (vector-copy! gp-10 (target-pos 0))
+                     (when (and (= (-> self stage) 1)
+                                (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                (logtest? (-> self flags) (prebot-flag pf7)))
+                       (prebot-lead-jak! self gp-10))
                      (let ((s5-6
                             (vector<-cspace!
                               (new 'stack-no-clear 'vector)
@@ -1413,7 +1485,8 @@
            )
          )
         ((and v1-2 (= v1-2 prebot-gun-fire-ja))
-         (ja :num! (seek!))
+         ;; Keep the firing recovery within the 0.75-second 80 RPM window.
+         (ja :num! (seek! max 2.0))
          (when (ja-done? 0)
            (if (= (-> self stage-hit-points) 1.0)
                (begin
@@ -1438,9 +1511,16 @@
                )
              (begin
                (blend-on! (-> self shoulder-aim-jm) (seconds 0.25) 1.0 #f)
-               (set-target! (-> self shoulder-aim-jm) (target-pos 0))
-               (when (time-elapsed? (-> self state-time) (seconds 1))
+               (let ((aim (new 'stack-no-clear 'vector)))
+                 (vector-copy! aim (target-pos 0))
+                 (prebot-lead-jak! self aim)
+                 (set-target! (-> self shoulder-aim-jm) aim))
+               ;; 80 RPM: one Prebot gun shot every 0.75 seconds.
+               (when (time-elapsed? (-> self state-time) (seconds 0.75))
                  (send-event (handle->process (-> self gun)) 'fire)
+                 ;; Start the cooldown at the shot, not after the fire
+                 ;; animation. Otherwise that animation adds an extra delay.
+                 (set-time! (-> self state-time))
                  (prebot-light-flash 1.0 0.4 0.0)
                  (blend-to-off! (-> self shoulder-aim-jm) (seconds 0.1) #f)
                  (ja-channel-push! 1 (seconds 0.1))
@@ -2814,6 +2894,47 @@
    )
   )
 
+(defun prebot-blue1-lock-update! ((boss prebot))
+  "Keep Gun Blue 1's laser and Jak's upper body on the same live Prebot target."
+  (cond
+    ((and *target*
+          (-> *target* gun active?)
+          (= (-> *target* gun gun-type) (pickup-type gun-blue-1))
+          (prebot-blue1-pillars-phase? boss))
+     ;; The pillar sequence deliberately has no boss lock.  The minecar model
+     ;; is drawable-only, so actively look for its cav-railblocker objective.
+     ;; This also covers selecting Blue 1 after the pillar sequence has begun.
+     (let ((current (handle->process (-> *target* gun track-target 0 handle))))
+       (when (= current boss)
+         ((method-of-type focus clear-focused) (-> *target* gun track-target 0))
+         (set! (-> *target* gun track?) (gun-track-flags gutflags-1 gutflags-2))
+         )
+       (when (>= (-> *target* gun track-angle-mult) 99.0)
+         (set! (-> *target* gun track-angle-mult) 1.75)
+         )
+       (when (or (not current) (not (type? current cav-railblocker)))
+         (prebot-blue1-find-pillar-lock! *target*)
+         )
+       )
+     )
+    ((and *target*
+          (-> *target* gun active?)
+          (= (-> *target* gun gun-type) (pickup-type gun-blue-1))
+          (not (focus-test? boss dead)))
+     (logclear! (-> boss focus-status) (focus-status gun-no-target))
+     ((method-of-type focus focus-on!) (-> *target* gun track-target 0) boss)
+     (vector-copy! (-> *target* gun track-trans) (get-trans boss 3))
+     (set! (-> *target* gun track?) (gun-track-flags gutflags-0 gutflags-1 gutflags-2))
+     ;; Marker consumed by target-gun's Prebot-only 1.88 twist branch.
+     (set! (-> *target* gun track-angle-mult) 99.0)
+     )
+    ((and *target* (>= (-> *target* gun track-angle-mult) 99.0))
+     (set! (-> *target* gun track-angle-mult) 1.75)
+     )
+    )
+  (none)
+  )
+
 
 (defstate active (task-manager-prebot)
   :virtual #t
@@ -2845,6 +2966,15 @@
         )
       )
     (set-time! (-> this check-timer))
+    )
+  ;; Resolve through the entity link every frame.  This survives stage changes
+  ;; and save/reload because the entity points at the newly restored process.
+  (when (-> this manager-entity)
+    (let ((boss (-> this manager-entity extra process)))
+      (when (and boss (type? boss prebot))
+        (prebot-blue1-lock-update! (the-as prebot boss))
+        )
+      )
     )
   (none)
   )

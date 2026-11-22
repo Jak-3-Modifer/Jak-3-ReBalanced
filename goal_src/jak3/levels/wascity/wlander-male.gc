@@ -325,6 +325,188 @@
       252 342 166 0.26 (font-color white) #t))
   (none))
 
+;; Hero Mode Fruit Stand ------------------------------------------------------
+;; Food ownership is saved in GAME; prices and stock are intentionally only a
+;; Wascity-visit offer and are regenerated after save load or Wascity unload.
+(define *hero-fruit-shop-open?* #f)
+(define *hero-fruit-shop-first-frame?* #f)
+(define *hero-fruit-shop-selection* 0)
+(define *hero-fruit-shop-manager-handle* (the-as handle #f))
+(define *hero-fruit-shop-position*
+  (new 'static 'vector :x (meters 1806.81) :y (meters 29.80) :z (meters -339.73)))
+(define *hero-fruit-shop-radius* (meters 4))
+
+(defun hero-fruit-shop-active-level? ()
+  (or (= (level-status? *level* 'wascitya #f) 'active)
+      (= (level-status? *level* 'wascityb #f) 'active)))
+
+(defun hero-fruit-shop-in-area? ()
+  (and *target*
+       (hero-fruit-shop-active-level?)
+       (<= (vector-vector-distance-squared (target-pos 0) *hero-fruit-shop-position*)
+           (square *hero-fruit-shop-radius*))))
+
+(defun hero-fruit-shop-ensure-offer! ()
+  (when (not (-> *hero-fruit-shop-info* offer-active?))
+    (format #t "[fruit-shop] rolling offer~%")
+    (dotimes (food 6)
+      ;; rand-vu-int-range includes both ends.
+      (set! (-> *hero-fruit-shop-info* prices food)
+            (the-as uint (rand-vu-int-range 1 10)))
+      (set! (-> *hero-fruit-shop-info* stock food)
+            (the-as uint (rand-vu-int-range 1 5))))
+    (set! (-> *hero-fruit-shop-info* offer-active?) #t)
+    (format #t "[fruit-shop] offer ready~%"))
+  (none))
+
+(defun hero-fruit-shop-name ((food int))
+  (case food
+    ((0) "Rice") ((1) "Grapefruit") ((2) "Orange")
+    ((3) "Lemon") ((4) "Potato") (else "Raspberries")))
+
+(defun hero-fruit-shop-effect ((food int))
+  (case food
+    ((0) "+1 HP")
+    ((1) "1 sec immunity + 88% first jump")
+    ((2) "1 sec immunity + 30% punch travel")
+    ((3) "1 sec immunity")
+    ((4) "30% damage reduction for 2 sec")
+    (else "30% damage reduction + 35% melee for 1 sec")))
+
+(defun hero-fruit-shop-draw-prompt ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 32 320 0.0
+                   (font-color default) (font-flags shadow kerning))))
+    (set-width! font 340)
+    (set-height! font 80)
+    (set-scale! font 0.7)
+    (set! (-> font flags) (font-flags shadow kerning large))
+    (pc-encode-utf8-string "Press <PAD_TRIANGLE> to Buy Food" *pc-encoded-temp-string*)
+    (print-game-text *pc-encoded-temp-string* font #f 44 (bucket-id hud-draw-hud-alpha)))
+  (none))
+
+(defun hero-fruit-shop-draw-menu ()
+  (let ((font (new 'stack 'font-context *font-default-matrix* 94 60 0.0
+                   (font-color white) (font-flags shadow kerning large))))
+    (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                 (bucket-id hud-draw-hud-alpha))
+      (draw-sprite2d-xy buf 72 44 368 328 (new 'static 'rgba :r 12 :g 18 :b 19 :a 108) #x3fffff)
+      (draw-sprite2d-xy buf 72 44 368 1 (new 'static 'rgba :r 42 :g 140 :b 118 :a 128) #x3fffff)
+      (draw-sprite2d-xy buf 72 371 368 1 (new 'static 'rgba :r 42 :g 88 :b 76 :a 112) #x3fffff)
+      (draw-sprite2d-xy buf 88 108 336 1 (new 'static 'rgba :r 42 :g 140 :b 118 :a 96) #x3fffff)
+      (draw-sprite2d-xy buf 88 315 336 1 (new 'static 'rgba :r 42 :g 88 :b 76 :a 96) #x3fffff)
+      (draw-sprite2d-xy buf 88 (+ 122 (* *hero-fruit-shop-selection* 31)) 336 27
+                        (new 'static 'rgba :r 24 :g 88 :b 78 :a 72) #x3fffff))
+    (hero-wascity-npc-shop-draw-label font "FRUIT STAND" 88 56 336 0.50 (font-color cyan) #t)
+    (hero-wascity-npc-shop-draw-label font "WASTELAND SUPPLIES" 88 84 336 0.22 (font-color menu-flag-off) #t)
+    (hero-wascity-npc-shop-draw-label font "ITEM" 98 113 150 0.22 (font-color menu-flag-off) #f)
+    (hero-wascity-npc-shop-draw-label font "STOCK" 260 113 58 0.22 (font-color menu-flag-off) #t)
+    (hero-wascity-npc-shop-draw-label font "SKILL" 334 113 74 0.22 (font-color menu-flag-off) #t)
+    (dotimes (food 6)
+      (let ((y (+ 128 (* food 31)))
+            (sold-out? (zero? (-> *hero-fruit-shop-info* stock food))))
+        (hero-wascity-npc-shop-draw-label font (hero-fruit-shop-name food) 98 y 150 0.29
+          (if sold-out? (font-color menu-flag-off) (font-color white)) #f)
+        (format (clear *temp-string*) "~D" (-> *hero-fruit-shop-info* stock food))
+        (hero-wascity-npc-shop-draw-label font *temp-string* 260 y 58 0.29
+          (if sold-out? (font-color red) (font-color green)) #t)
+        (format (clear *temp-string*) "~D" (-> *hero-fruit-shop-info* prices food))
+        (hero-wascity-npc-shop-draw-label font *temp-string* 334 y 74 0.29 (font-color white) #t)))
+    (hero-wascity-npc-shop-draw-label font (hero-fruit-shop-effect *hero-fruit-shop-selection*)
+      90 318 332 0.20 (font-color menu-flag-off) #t)
+    (format (clear *temp-string*) "Skill: ~D   <PAD_X> Buy   <PAD_TRIANGLE>/<PAD_CIRCLE> Exit"
+            (the int (-> *game-info* skill)))
+    (hero-wascity-npc-shop-draw-label font *temp-string* 90 344 332 0.21 (font-color white) #t))
+  (none))
+
+(defun hero-fruit-shop-buy! ()
+  (let ((food *hero-fruit-shop-selection*))
+    (cond
+      ((zero? (-> *hero-fruit-shop-info* stock food)) (sound-play "menu-back"))
+      ((< (-> *game-info* skill) (the float (-> *hero-fruit-shop-info* prices food)))
+       (sound-play "menu-back"))
+      (else
+       (give *game-info* 'skill (- (the float (-> *hero-fruit-shop-info* prices food)))
+             (the-as handle #f))
+       (-! (-> *hero-fruit-shop-info* stock food) 1)
+       (+! (-> *hero-fruit-shop-info* owned food) 1)
+       (sound-play "menu-pick"))))
+  (none))
+
+(defun hero-fruit-shop-close! ()
+  (when *hero-fruit-shop-open?*
+    (set! *hero-fruit-shop-open?* #f)
+    (set! *hero-fruit-shop-first-frame?* #f)
+    (set! *popup-menu-open* #f)
+    (when (= *master-mode* 'menu) (set-master-mode 'game)))
+  (none))
+
+(deftype hero-fruit-shop-manager (process) () (:state-methods idle))
+
+(defstate idle (hero-fruit-shop-manager)
+  :virtual #t
+  :trans (behavior ()
+    (cond
+      ((not (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                 (hero-fruit-shop-active-level?)))
+       (hero-fruit-shop-close!))
+      (*hero-fruit-shop-open?*
+       (cond
+         ((or (!= *master-mode* 'menu) (not *popup-menu-open*))
+          (hero-fruit-shop-close!))
+         (else
+          (when *hero-fruit-shop-first-frame?*
+            (format #t "[fruit-shop] drawing first menu frame~%"))
+          (hero-fruit-shop-draw-menu)
+          (when *hero-fruit-shop-first-frame?*
+            (set! *hero-fruit-shop-first-frame?* #f)
+            (format #t "[fruit-shop] first menu frame submitted~%"))
+          (cond
+            ((cpad-pressed? 0 triangle circle select)
+             (cpad-clear! 0 triangle circle select)
+             (hero-fruit-shop-close!))
+            ((cpad-pressed? 0 up l-analog-up)
+             (set! *hero-fruit-shop-selection* (mod (+ *hero-fruit-shop-selection* 5) 6))
+             (cpad-clear! 0 up l-analog-up)
+             (sound-play "generic-beep"))
+            ((cpad-pressed? 0 down l-analog-down)
+             (set! *hero-fruit-shop-selection* (mod (+ *hero-fruit-shop-selection* 1) 6))
+             (cpad-clear! 0 down l-analog-down)
+             (sound-play "generic-beep"))
+             ((cpad-pressed? 0 x)
+              (cpad-clear! 0 x)
+              (hero-fruit-shop-buy!))))))
+      ((and (= *master-mode* 'game)
+            (not *popup-menu-open*)
+            (not *hero-wascity-npc-shop-open?*)
+            (hero-wascity-npc-shop-player-ready?)
+            (hero-fruit-shop-in-area?))
+       (hero-fruit-shop-ensure-offer!)
+       (when (can-display-query? self "fruit-shop" -99.0)
+         (hero-fruit-shop-draw-prompt)
+         (when (cpad-pressed? 0 triangle)
+           (format #t "[fruit-shop] opening menu~%")
+           (cpad-clear! 0 triangle)
+           (set! *hero-fruit-shop-open?* #t)
+           (set! *hero-fruit-shop-first-frame?* #t)
+           (set! *hero-fruit-shop-selection* 0)
+           (set! *popup-menu-open* #t)
+           (set-master-mode 'menu)
+           (format #t "[fruit-shop] menu mode entered~%")
+           (sound-play "menu-pick"))))
+       (else (hero-fruit-shop-close!))))
+  :code sleep-code)
+
+(defbehavior hero-fruit-shop-manager-init-by-other hero-fruit-shop-manager ()
+  (process-mask-clear! (-> self mask) menu pause)
+  (set! *hero-fruit-shop-manager-handle* (process->handle self))
+  (format #t "[fruit-shop] manager started~%")
+  (go-virtual idle))
+
+(defun hero-fruit-shop-start ()
+  (when (not (handle->process *hero-fruit-shop-manager-handle*))
+    (process-spawn hero-fruit-shop-manager :name "hero-fruit-shop" :to *entity-pool*))
+  (none))
+
 (defun hero-wascity-npc-shop-buy! ()
   (let ((blue (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 0))
         (purple (hero-wascity-npc-shop-price *hero-wascity-npc-shop-slot* 1))
@@ -547,6 +729,7 @@
   (go-virtual idle))
 
 (defun hero-wascity-npc-shop-start ()
+  (hero-fruit-shop-start)
   (when (not (handle->process *hero-wascity-npc-shop-manager-handle*))
     (let ((manager (as-type (process-by-name "hero-wascity-npc-shop" *active-pool*)
                             hero-wascity-npc-shop-manager)))

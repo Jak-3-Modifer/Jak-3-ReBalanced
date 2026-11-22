@@ -1119,27 +1119,28 @@
   )
 
 (defun dp-bipedal-shove-darkjak-back! ((this dp-bipedal) (arg0 process))
-  "Knock Dark Jak five meters away from this Bipedal without dealing damage."
+  "Push Dark Jak horizontally and remove the Bipedal's motion into him."
   (let ((direction (new 'stack-no-clear 'vector)))
-    ;; target-hit interprets this vector as pointing from the recipient toward
-    ;; the attacker, then applies shove-back in the opposite direction.
-    (vector-! direction (-> this root trans) (get-trans (the-as process-focusable arg0) 0))
+    (vector-! direction (get-trans (the-as process-focusable arg0) 0) (-> this root trans))
     (set! (-> direction y) 0.0)
-    (vector-normalize! direction 1.0)
-    (send-event
-      arg0
-      'shove
-      #f
-      (static-attack-info :mask (vehicle-impulse-factor) ((id (new-attack-id))
-                                                          (damage 0.0)
-                                                          (vehicle-damage-factor 0.0)
-                                                          (vehicle-impulse-factor 0.0)
-                                                          (shove-back (meters 5))
-                                                          (shove-up 0.0)
-                                                          (vector direction)
-                                                          (angle 'shove)
-                                                          )
-                          )
+    (when (> (vector-length direction) 0.0)
+      (vector-normalize! direction 1.0)
+      (let ((inward (vector-dot (-> this root transv) direction)))
+        (when (> inward 0.0)
+          (vector+float*! (-> this root transv) (-> this root transv) direction (- inward))
+          )
+        )
+      (let ((inward (vector-dot (-> this nav state velocity) direction)))
+        (when (> inward 0.0)
+          (vector+float*! (-> this nav state velocity) (-> this nav state velocity) direction (- inward))
+          (set! (-> this nav state speed) (vector-length (-> this nav state velocity)))
+          )
+        )
+      (when (>= (current-time) (-> *target* control additional-decaying-velocity-decay-start-time))
+        (send-event arg0 'push-transv
+                    (vector-float*! direction direction (meters 16))
+                    (seconds 0.5))
+        )
       )
     )
   (none)
@@ -1189,10 +1190,17 @@
   (none)
   )
 
+(defmethod enemy-touch-handler ((this dp-bipedal) (arg0 process) (arg1 event-message-block))
+  (if (and (darkjak-target? arg0) (-> arg1 param 0))
+      (dp-bipedal-shove-darkjak-back! this arg0)
+      ((method-of-type nav-enemy enemy-touch-handler) this arg0 arg1))
+  (none)
+  )
+
 (defmethod send-attack-from-tshape ((this dp-bipedal) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
   "Dark Bipedals cannot hurt active Dark Jak, but retain their normal attacks otherwise."
   (if (darkjak-target? arg0)
-      #f
+      (begin (dp-bipedal-shove-darkjak-back! this arg0) #t)
       ((method-of-type enemy send-attack-from-tshape) this arg0 arg1 arg2)))
 
 (defmethod probe-point-for-los-block ((this dp-bipedal) (arg0 vector) (arg1 vector) (arg2 float))
@@ -3193,7 +3201,7 @@
            (set-vector! (-> this root scale) scale scale scale 1.0)
            )
          ;; Direct Dark Jak melee keeps the attack non-damaging, but uses the
-         ;; normal enemy hit path and knocks Dark Jak five meters backward.
+         ;; normal enemy hit path and pushes Dark Jak away.
          (when (dp-bipedal-darkjak-melee-attack? arg0 arg3)
            ((method-of-type nav-enemy event-handler) this arg0 arg1 arg2 arg3)
            (dp-bipedal-shove-darkjak-back! this arg0)

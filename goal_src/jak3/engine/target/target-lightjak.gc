@@ -684,6 +684,11 @@
   (set! *lightjak-trans-mods* v1-39)
   )
 
+(defun protect-hq-light-freeze? ()
+  (and (= *master-mode* 'game)
+       (= (level-status? *level* 'lctyprot #f) 'active)
+       (task-node-open? (game-task-node city-protect-hq-resolution))))
+
 (defbehavior want-to-powerjak? target ()
   (and (or (cpad-hold? (-> self control cpad number) l2) (nonzero? (-> self lightjak get-on-latch)))
        (and (not *pause-lock*)
@@ -720,10 +725,10 @@
                                )
                           (time-elapsed? (-> self fact darkjak-start-time) (seconds 0.05))
                           )
-                     (and (-> *setting-control* user-current lightjak)
-                          (logtest? (the-as game-feature (logand (game-feature lightjak) (-> *setting-control* user-current features)))
-                                    (-> self game features)
-                                    )
+                     (and (or (protect-hq-light-freeze?)
+                              (and (-> *setting-control* user-current lightjak)
+                                   (logtest? (the-as game-feature (logand (game-feature lightjak) (-> *setting-control* user-current features)))
+                                             (-> self game features))))
                           (not (focus-test?
                                  self
                                  dead
@@ -850,9 +855,9 @@
                         (set! (-> self lightjak get-off-lock) v1-126)
                         v1-126
                         )
-                      (logtest? (the-as game-feature (logand (game-feature lightjak-freeze) (-> *setting-control* user-current features)))
-                                (-> self game features)
-                                )
+                      (or (protect-hq-light-freeze?)
+                          (logtest? (the-as game-feature (logand (game-feature lightjak-freeze) (-> *setting-control* user-current features)))
+                                    (-> self game features)))
                       (>= (-> self game eco-pill-light) (-> *FACT-bank* lightjak-freeze-min))
                       (and (not (handle->process (-> self lightjak freeze-control))) (want-to-lightjak?))
                       )
@@ -986,10 +991,10 @@
 
 (defbehavior want-to-lightjak? target ()
   (and (not *pause-lock*)
-       (-> *setting-control* user-current lightjak)
-       (logtest? (the-as game-feature (logand (game-feature lightjak) (-> *setting-control* user-current features)))
-                 (-> self game features)
-                 )
+       (or (protect-hq-light-freeze?)
+           (and (-> *setting-control* user-current lightjak)
+                (logtest? (the-as game-feature (logand (game-feature lightjak) (-> *setting-control* user-current features)))
+                          (-> self game features))))
        (not (focus-test?
               self
               dead
@@ -2335,10 +2340,8 @@
   :event (behavior ((proc process) (argc int) (message symbol) (block event-message-block))
     (case message
       (('die)
-       (let ((v0-0 (-> block param 0)))
-         (set! (-> self abort?) (the-as symbol v0-0))
-         v0-0
-         )
+       (unless (protect-hq-light-freeze?)
+         (set! (-> self abort?) (the-as symbol (-> block param 0))))
        )
       )
     )
@@ -2406,7 +2409,8 @@
       )
     (let ((gp-0 (current-time)))
       (while (and (not (time-elapsed? gp-0 (the-as time-frame (-> *FACT-bank* lightjak-freeze-duration))))
-                  (let ((v1-15 #x20000)
+                  (or (protect-hq-light-freeze?)
+                      (let ((v1-15 #x20000)
                         (a0-8 (-> self parent))
                         )
                     (logtest? (the-as focus-status v1-15)
@@ -2417,9 +2421,13 @@
                                   focus-status
                                   )
                               )
-                    )
+                    ))
                   (not (-> self abort?))
                   )
+        (when (and (protect-hq-light-freeze?)
+                   (cpad-pressed? 0 square))
+          (cpad-clear! 0 square)
+          (set! (-> self abort?) #t))
         (suspend)
         )
       )

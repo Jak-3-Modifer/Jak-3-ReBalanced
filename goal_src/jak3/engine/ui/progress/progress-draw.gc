@@ -5,6 +5,11 @@
 ;; name in dgo: progress-draw
 ;; dgos: GAME
 
+(define-extern hero-costume-option? (function text-id symbol))
+(define-extern hero-costume-option-purchased? (function text-id symbol))
+(define-extern hero-costume-option-enabled? (function text-id symbol))
+(define-extern hero-costume-option-purchase! (function text-id none))
+
 ;; DECOMP BEGINS
 
 (define *progress-list-level* (new 'global 'progress-list-level))
@@ -905,6 +910,143 @@
   (none)
   )
 
+(defun hero-food-inventory-name ((food int))
+  (case food
+    ((0) "Rice")
+    ((1) "Grapefruit")
+    ((2) "Orange")
+    ((3) "Lemon")
+    ((4) "Potato")
+    (else "Raspberries"))
+  )
+
+(defun hero-food-inventory-description ((food int))
+  (case food
+    ((0) "Restores 1 HP.")
+    ((1) "Brief immunity and 88% higher first jump.")
+    ((2) "Brief immunity and stronger punch travel.")
+    ((3) "Brief immunity to all damage.")
+    ((4) "Reduces incoming damage for 2 seconds.")
+    (else "Brief damage resistance and stronger melee."))
+  )
+
+(defun hero-food-draw-rect ((x int) (y int) (width int) (height int) (color rgba))
+  (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                               (bucket-id hud-draw-hud-alpha))
+    (draw-sprite2d-xy buf x y width height color #x3fffff))
+  (none)
+  )
+
+(defun hero-food-draw-icon ((food int) (x int) (y int) (alpha float))
+  ;; The stock progress atlas has no food cells, and the Wascity fruit sprites
+  ;; are level-local.  These six procedural pictograms are therefore an
+  ;; explicit, globally safe icon mapping rather than unrelated inventory art.
+  (let ((a (the int (* 128.0 alpha))))
+    (case food
+      ((0) ; rice bowl and grains
+       (hero-food-draw-rect x (+ y 18) 38 15 (new 'static 'rgba :r 92 :g 70 :b 48 :a a))
+       (hero-food-draw-rect (+ x 4) (+ y 10) 30 12 (new 'static 'rgba :r 120 :g 120 :b 112 :a a))
+       (hero-food-draw-rect (+ x 8) (+ y 7) 5 5 (new 'static 'rgba :r 128 :g 128 :b 120 :a a))
+       (hero-food-draw-rect (+ x 17) (+ y 5) 5 6 (new 'static 'rgba :r 128 :g 128 :b 120 :a a))
+       (hero-food-draw-rect (+ x 26) (+ y 7) 5 5 (new 'static 'rgba :r 128 :g 128 :b 120 :a a)))
+      ((1) ; grapefruit with exposed pink center
+       (hero-food-draw-rect (+ x 5) (+ y 3) 29 32 (new 'static 'rgba :r 128 :g 72 :b 28 :a a))
+       (hero-food-draw-rect (+ x 9) (+ y 7) 21 24 (new 'static 'rgba :r 128 :g 58 :b 64 :a a))
+       (hero-food-draw-rect (+ x 18) (+ y 7) 3 24 (new 'static 'rgba :r 128 :g 112 :b 84 :a a))
+       (hero-food-draw-rect (+ x 9) (+ y 17) 21 3 (new 'static 'rgba :r 128 :g 112 :b 84 :a a)))
+      ((2) ; orange and leaf
+       (hero-food-draw-rect (+ x 7) (+ y 7) 27 28 (new 'static 'rgba :r 128 :g 62 :b 8 :a a))
+       (hero-food-draw-rect (+ x 17) (+ y 3) 8 6 (new 'static 'rgba :r 34 :g 104 :b 34 :a a))
+       (hero-food-draw-rect (+ x 24) (+ y 1) 8 5 (new 'static 'rgba :r 28 :g 88 :b 28 :a a)))
+      ((3) ; lemon
+       (hero-food-draw-rect (+ x 4) (+ y 15) 32 12 (new 'static 'rgba :r 128 :g 122 :b 20 :a a))
+       (hero-food-draw-rect (+ x 9) (+ y 8) 22 26 (new 'static 'rgba :r 128 :g 122 :b 20 :a a))
+       (hero-food-draw-rect (+ x 31) (+ y 17) 7 8 (new 'static 'rgba :r 112 :g 104 :b 12 :a a)))
+      ((4) ; potato and eyes
+       (hero-food-draw-rect (+ x 5) (+ y 8) 30 27 (new 'static 'rgba :r 92 :g 62 :b 35 :a a))
+       (hero-food-draw-rect (+ x 11) (+ y 13) 4 4 (new 'static 'rgba :r 48 :g 34 :b 22 :a a))
+       (hero-food-draw-rect (+ x 25) (+ y 23) 4 4 (new 'static 'rgba :r 48 :g 34 :b 22 :a a)))
+      (else ; raspberry cluster and leaf
+       (hero-food-draw-rect (+ x 17) (+ y 2) 8 7 (new 'static 'rgba :r 28 :g 100 :b 34 :a a))
+       (hero-food-draw-rect (+ x 9) (+ y 10) 10 10 (new 'static 'rgba :r 120 :g 18 :b 48 :a a))
+       (hero-food-draw-rect (+ x 20) (+ y 10) 10 10 (new 'static 'rgba :r 128 :g 20 :b 52 :a a))
+       (hero-food-draw-rect (+ x 4) (+ y 21) 10 10 (new 'static 'rgba :r 108 :g 12 :b 42 :a a))
+       (hero-food-draw-rect (+ x 15) (+ y 21) 10 10 (new 'static 'rgba :r 128 :g 18 :b 50 :a a))
+       (hero-food-draw-rect (+ x 26) (+ y 21) 10 10 (new 'static 'rgba :r 106 :g 10 :b 40 :a a))
+       (hero-food-draw-rect (+ x 11) (+ y 32) 10 7 (new 'static 'rgba :r 102 :g 10 :b 40 :a a))
+       (hero-food-draw-rect (+ x 22) (+ y 32) 10 7 (new 'static 'rgba :r 116 :g 12 :b 44 :a a)))))
+  (none)
+  )
+
+(defun draw-hero-food-inventory-page ((menu progress) (font font-context) (x-offset float) (alpha float))
+  (let* ((box (get-scissor-stack-top menu))
+         (left-ps2 (+ (-> box x) x-offset 20.0))
+         (right-ps2 (+ (-> box z) x-offset -20.0))
+         (left (if (-> *pc-settings* use-vis?) left-ps2
+                   (the float (adjust-game-x left-ps2))))
+         (right (if (-> *pc-settings* use-vis?) right-ps2
+                    (the float (adjust-game-x right-ps2))))
+         (top (-> box y))
+         (slot-width (/ (- (- right left) 16.0) 3.0))
+         (owned-count 0))
+    (set! (-> font alpha) alpha)
+    (dotimes (food 6)
+      (when (< 0 (-> *hero-fruit-shop-info* owned food))
+        (+! owned-count 1)))
+    (if (zero? owned-count)
+        (begin
+          (set! (-> font flags) (font-flags shadow kerning middle large))
+          (set! (-> font color) (font-color menu-flag-off))
+          (set-scale! font 0.48)
+          (set! (-> font origin x) (/ (+ left right) 2.0))
+          (set! (-> font origin y) (+ top 104.0))
+          (print-game-text "No Food Items." font #f 44 (bucket-id hud-draw-hud-alpha)))
+        (dotimes (food 6)
+          (let* ((column (mod food 3))
+                 (row (the int (/ food 3)))
+                 (x (+ left (* (the float column) (+ slot-width 8.0))))
+                 (y (+ top 32.0 (* (the float row) 88.0)))
+                 (owned (-> *hero-fruit-shop-info* owned food))
+                 (selected? (and (< 0 owned) (= food *hero-food-inventory-selection*))))
+            (hero-food-draw-rect (the int x) (the int y) (the int slot-width) 78
+              (if selected?
+                  (new 'static 'rgba :r 28 :g 104 :b 116 :a (the int (* 96.0 alpha)))
+                  (new 'static 'rgba :r 12 :g 18 :b 20 :a (the int (* 72.0 alpha)))))
+            (when selected?
+              (hero-food-draw-rect (the int x) (the int y) (the int slot-width) 3
+                (new 'static 'rgba :r 28 :g 126 :b 128 :a (the int (* 128.0 alpha))))
+              (hero-food-draw-rect (the int x) (+ (the int y) 75) (the int slot-width) 3
+                (new 'static 'rgba :r 28 :g 126 :b 128 :a (the int (* 128.0 alpha)))))
+            (when (< 0 owned)
+              (hero-food-draw-icon food (+ (the int x) 7) (+ (the int y) 7) alpha)
+              (set! (-> font flags) (font-flags shadow kerning large))
+              (set! (-> font color) (font-color white))
+              (set-scale! font 0.25)
+              (set! (-> font origin x) (+ x 5.0))
+              (set! (-> font origin y) (+ y 50.0))
+              (print-game-text (hero-food-inventory-name food) font #f 44 (bucket-id hud-draw-hud-alpha))
+              (set! (-> font flags) (font-flags shadow kerning right large))
+              (set! (-> font origin x) (+ x slot-width -5.0))
+              (set! (-> font origin y) (+ y 8.0))
+              (format (clear *temp-string*) "x~D" owned)
+              (print-game-text *temp-string* font #f 44 (bucket-id hud-draw-hud-alpha))))))
+    (when (and (< 0 owned-count)
+               (< 0 (-> *hero-fruit-shop-info* owned *hero-food-inventory-selection*)))
+      (set! (-> font flags) (font-flags shadow kerning middle large))
+      (set! (-> font color) (font-color white))
+      (set-scale! font 0.28)
+      (set! (-> font origin x) (/ (+ left right) 2.0))
+      (set! (-> font origin y) (+ top 215.0))
+      (print-game-text (hero-food-inventory-description *hero-food-inventory-selection*)
+                       font #f 44 (bucket-id hud-draw-hud-alpha)))
+    (set! (-> font flags) (font-flags shadow kerning middle large))
+    (set! (-> font color) (font-color menu-flag-off))
+    (set-scale! font 0.21)
+    (set! (-> font origin x) (/ (+ left right) 2.0))
+    (set! (-> font origin y) (+ top 244.0))
+    (print-game-text "<PAD_DPAD> Select    <PAD_X> Consume" font #f 44 (bucket-id hud-draw-hud-alpha)))
+  (none))
+
 (defmethod draw-option ((this menu-bigmap-option) (arg0 progress) (arg1 font-context) (arg2 int) (arg3 symbol))
   0
   (none)
@@ -1466,9 +1608,14 @@
   )
 
 (defmethod inventory-screen-method-9 ((this inventory-screen) (arg0 progress) (arg1 font-context) (arg2 float) (arg3 float))
-  (if (and (= this *hero-artifact-inventory-screen*)
-           (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-      (draw-hero-artifact-inventory-page arg0 arg1 arg2 arg3)
+  (cond
+    ((and (= this *hero-artifact-inventory-screen*)
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (draw-hero-artifact-inventory-page arg0 arg1 arg2 arg3))
+    ((and (= (-> this name) (text-id progress-inventory-food-items))
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (draw-hero-food-inventory-page arg0 arg1 arg2 arg3))
+    (else
       (begin
         ;; Original pages retain their layout after an Artifacts page slides out.
         (set! (-> arg1 flags) (font-flags kerning middle large))
@@ -1483,7 +1630,7 @@
           (inventory-item-group-method-10
             (-> this groups s1-1) arg0 arg1 arg2 arg3
             (the-as int (= s1-1 (-> this current-index)))))
-        (none)))
+        (none))))
   )
 
 (defmethod draw-option ((this menu-inventory) (arg0 progress) (arg1 font-context) (arg2 int) (arg3 symbol))
@@ -4005,6 +4152,23 @@
     ((= (-> this secret) (game-secrets gs21))
      2
      )
+    ;; The V-Scorpion jump secret is available exclusively in Hero Mode.
+    ((and (or (= (-> this name) (text-id text-0072))
+              (= (-> this name) (text-id progress-secrets-v-toad-4wd-test))
+              (= (-> this name) (text-id progress-secrets-v-toad-low-range-test)))
+          (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+     4
+     )
+    ((and (hero-costume-option? (-> this name))
+          (not (task-node-closed? (-> this avail-after)))
+          (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
+     4
+     )
+    ((hero-costume-option? (-> this name))
+     (cond
+       ((not (hero-costume-option-purchased? (-> this name))) 0)
+       ((hero-costume-option-enabled? (-> this name)) 1)
+       (else 2)))
     ;; Laser colors use custom ownership storage, so enforce their mission
     ;; unlock before the custom purchase/toggle state bypasses the normal gate.
     ;; Already purchased colors remain usable when carried into a new game.
@@ -4091,21 +4255,24 @@
       (logior! (-> *hero-npc-shop-info* purchases) 1)
       (logior! (-> *game-info* features) (game-feature armor0))
       )
+    (when (hero-costume-option? (-> this name))
+      (hero-costume-option-purchase! (-> this name)))
     ;; The existing confirmation flow charges the item's cost exactly once.
     (case (-> this name)
       (((text-id text-0040)) (logior! (-> *game-info* items) (game-items item30)))
       (((text-id text-0041)) (logior! (-> *game-info* items) (game-items item31))))
-    (case (-> this secret)
-      (((game-secrets hero-mode))
-       (logior! (-> *game-info* purchase-secrets) (-> this secret))
-       )
-      (else
-        (logior! (-> *game-info* purchase-secrets) (-> this secret))
-        (set! (-> *game-info* secrets)
-              (logclear (logior (-> *game-info* secrets) (-> this secret)) (-> this mask-secrets))
-              )
-        )
-      )
+    (when (not (hero-costume-option? (-> this name)))
+      (case (-> this secret)
+        (((game-secrets hero-mode))
+         (logior! (-> *game-info* purchase-secrets) (-> this secret))
+         )
+        (else
+          (logior! (-> *game-info* purchase-secrets) (-> this secret))
+          (set! (-> *game-info* secrets)
+                (logclear (logior (-> *game-info* secrets) (-> this secret)) (-> this mask-secrets))
+                )
+          )
+        ))
     (case (-> this secret)
       (((game-secrets vehicle-fox))
        (set! v0-1 (logior (-> *game-info* vehicles) (game-vehicles v-fox)))

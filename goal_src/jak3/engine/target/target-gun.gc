@@ -7,6 +7,10 @@
 
 ;; DECOMP BEGINS
 
+;; Published by Protect HQ when Terry spawns. Keep the handle in GAME so
+;; gun tracking can safely read it even before the mission DGO is loaded.
+(define *protect-terry-handle* (the-as handle #f))
+
 ;; Match melee's forced/endless Dark Jak exemptions; ammo is still spent normally.
 (defun target-darkjak-drain-gun-eco! ()
   (when (and *target* (focus-test? *target* dark) (-> *target* darkjak)
@@ -58,7 +62,8 @@
                 (f30-0 (lerp-scale 0.0 1.0 (fabs f0-0) 1820.4445 6371.5557))
                 )
            (cond
-             ((and (logtest? (-> self gun track?) (gun-track-flags gutflags-0))
+             ((and (!= (-> self gun track-angle-mult) 98.0)
+                   (logtest? (-> self gun track?) (gun-track-flags gutflags-0))
                    (!= (-> *cpad-list* cpads (-> self control cpad number) stick0-speed) 0.0)
                    (>= (-> self gun track-turnv-range)
                        (vector-vector-distance (-> self control trans) (-> self gun track-trans))
@@ -887,10 +892,18 @@
          (set! (-> self gun track-turn-range) 409600.0)
          (set! (-> self gun track-angle-mult) 1.75)
          (set! (-> self gun track-require) (the-as uint 26))
-         ;; Blaster: nearest whole tick to 0.445s at 300 ticks/sec (134).
-         ;; Beam Reflexor retains its 96-tick delay.
-         (set! (-> self gun fire-delay) (the-as uint (if (= (the-as int arg0) 29) 134 96)))
-         (set! (-> self gun combo-fire-delay) (the-as uint 30))
+         ;; Blaster: 90 ticks at 300 ticks/sec (0.3-second fire delay).
+         ;; Beam Reflexor retains its 96-tick delay.  Gun Yellow 2 uses
+         ;; 150 ticks (120 RPM) normally and 72 ticks (250 RPM) in combo fire.
+         (set! (-> self gun fire-delay)
+               (the-as uint
+                       (if (= (the-as int arg0) 29)
+                           90
+                           (if (= (the-as int arg0) 30)
+                               150
+                               96))))
+         (set! (-> self gun combo-fire-delay)
+               (the-as uint (if (= (the-as int arg0) 30) 72 30)))
          (set! (-> self gun track-beam-size) 819.2)
          (remove-setting! 'gun-min-height)
          (remove-setting! 'gun-max-height)
@@ -1668,7 +1681,30 @@
   (none)
   )
 
+(defun target-gun-refresh-terry-lock! ((jak target))
+  (let ((terry (as-type (handle->process *protect-terry-handle*) process-focusable)))
+    (if (and terry
+             (not (focus-test? terry dead inactive))
+             (-> jak gun active?)
+             (or (= (-> jak gun gun-type) (pickup-type gun-blue-1))
+                 (= (-> jak gun gun-type) (pickup-type gun-yellow-1))))
+        (begin
+          (focus-on! (-> jak gun track-target 0) terry)
+          (vector-copy! (-> jak gun track-trans) (get-trans terry 3))
+          (set! (-> jak gun track?) (gun-track-flags gutflags-0 gutflags-1 gutflags-2))
+          (set! (-> jak gun track-angle-mult) 98.0)
+          #t)
+        (begin
+          (when (= (-> jak gun track-angle-mult) 98.0)
+            (set! (-> jak gun track-angle-mult) 1.75)
+            (clear-focused (-> jak gun track-target 0))
+            (set! (-> jak gun track?) (gun-track-flags gutflags-1 gutflags-2))
+            )
+          #f))))
+
 (defbehavior target-gun-find-track target ()
+  (when (target-gun-refresh-terry-lock! self)
+    (return 0))
   (if (logtest? (-> self gun upper-body track-mode) (track-mode lock-on))
       (logior! (-> self gun track?) (gun-track-flags gutflags-3))
       (logclear! (-> self gun track?) (gun-track-flags gutflags-3))
@@ -2267,20 +2303,33 @@
        (vector-copy! (-> self gun top-anim-look-at) (-> self gun track-trans))
        (let ((gp-6 (new 'stack-no-clear 'vector)))
          (vector-copy! gp-6 (-> self gun top-anim-look-at))
-         (case (gun->eco (-> self gun gun-type))
-           (((pickup-type eco-yellow))
-            (+! (-> gp-6 y) -409.6)
-            )
-           (((pickup-type eco-blue))
-            (+! (-> gp-6 y) 2457.6)
-            )
-           (else
-             (+! (-> gp-6 y) -1638.4)
+         (unless (= (-> self gun track-angle-mult) 98.0)
+           (case (gun->eco (-> self gun gun-type))
+             (((pickup-type eco-yellow))
+              (+! (-> gp-6 y) -409.6)
+              )
+             (((pickup-type eco-blue))
+              (+! (-> gp-6 y) 2457.6)
+              )
+             (else
+               (+! (-> gp-6 y) -1638.4)
+               )
              )
            )
-         (if (not (logtest? (surface-flag gun-no-twist) (-> self control current-surface flags)))
-             (target-set! (-> self upper-body) gp-6)
-             )
+         (cond
+           ((= (-> self gun track-angle-mult) 98.0)
+            ;; The ordinary look-at range and pose blend can mute the torso
+            ;; even while the laser is already tracking the boss.
+            (let ((upper-body (-> self upper-body)))
+              (target-set! upper-body gp-6)
+              (set! (-> upper-body blend) 1.0)
+              (set! (-> upper-body flex-blend) 1.0)
+              )
+            )
+           ((not (logtest? (surface-flag gun-no-twist) (-> self control current-surface flags)))
+            (target-set! (-> self upper-body) gp-6)
+            )
+           )
          (when *gun-marks*
            (add-debug-sphere
              #t
@@ -2304,11 +2353,13 @@
        )
      (cond
        ((and (logtest? (-> self gun track?) (gun-track-flags gutflags-0))
-             (logtest? (get-search-info-flag (the-as process-focusable (handle->process (-> self gun track-target 0 handle))))
+             (or (= (-> self gun track-angle-mult) 98.0)
+                 (logtest? (get-search-info-flag (the-as process-focusable (handle->process (-> self gun track-target 0 handle))))
                        (search-info-flag guard enemy attackable-priority)
-                       )
+                       ))
              )
-        (if (and (not (time-elapsed? (-> self gun track-press-start-time) (seconds 0.5)))
+        (if (and (!= (-> self gun track-angle-mult) 98.0)
+                 (not (time-elapsed? (-> self gun track-press-start-time) (seconds 0.5)))
                  (< (-> self control time-between-zero-inputs) (seconds 0.5))
                  (and (= (-> self control turn-to-magnitude) 0.0)
                       (not (logtest? (-> self control current-surface flags) (surface-flag air attack)))
@@ -2322,6 +2373,17 @@
               )
             )
         (cond
+          ;; 99.0 is written only by the Prebot/Gun Blue 1 aim lock.
+          ;; It exaggerates the existing upper-body tracker without rotating
+          ;; the player's movement controller.
+          ((or (= (-> self gun track-angle-mult) 98.0)
+               (and (= (-> self gun gun-type) (pickup-type gun-blue-1))
+                    (>= (-> self gun track-angle-mult) 99.0)))
+           (set! (-> self gun track?) (gun-track-flags gutflags-0 gutflags-1 gutflags-2))
+           (set! (-> self gun upper-body twist-max y) 32768.0)
+           (set! (-> self gun upper-body twist-speed-y) 1.88)
+           (set! (-> self gun upper-body twist-speed-x) 1.88)
+           )
           ((or (and (nonzero? (-> self gun track-target-hold-time)) (< (current-time) (-> self gun track-target-hold-time)))
                (and (nonzero? (-> self gun turn-fast-hold-time)) (< (current-time) (-> self gun turn-fast-hold-time)))
                )
@@ -3347,6 +3409,14 @@
 (defbehavior target-gun-check target ()
   (when (using-gun? self)
     (let ((gp-0 (-> self gun)))
+      ;; Apply after the gun's animated muzzle and laser transforms are ready.
+      (when (target-gun-refresh-terry-lock! self)
+        (vector-! (-> gp-0 fire-dir) (-> gp-0 track-trans) (-> gp-0 fire-point))
+        (vector-normalize! (-> gp-0 fire-dir) 1.0)
+        (vector-copy! (-> gp-0 fire-dir-out) (-> gp-0 fire-dir))
+        (vector-! (-> gp-0 laser-dir) (-> gp-0 track-trans) (-> gp-0 laser-point))
+        (vector-normalize! (-> gp-0 laser-dir) 1.0)
+        )
       (cond
         ((and (focus-test? self pilot-riding) (nonzero? (-> self skel float-channels)))
          (set! (-> self skel top-anim interp-select 0) (the-as uint (shl 8 32)))

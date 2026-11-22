@@ -80,6 +80,9 @@
 ;; The Gila retains its custom hard-surface advantage and reduced sand grip.
 (defun custom-tire-friction-scale ((this wvehicle) (arg0 vehicle-wheel-surface-type))
   (cond
+    ((dune-hopper-awd-enabled? this)
+     (* (if (v-toad-locked-4wd? this) 1.4 1.0)
+        (+ 1.0 (* 0.6 (v-toad-hill-assist-amount this)))))
     ((= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
      (case arg0
        (((vehicle-wheel-surface-type stone)) 1.1)

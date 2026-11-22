@@ -36,6 +36,8 @@
 (define *protect-terry-shock-damage* 2.0)
 (define *protect-terry-shock-cooldown* (seconds 3))
 (define *protect-terry-last-shock-time* (the-as time-frame 0))
+(define *protect-terry-last-radius-pulse* (the-as time-frame 0))
+(defglobalconstant protect-terry-warning-radius (meters 15))
 (define *protect-terry-volley-cooldown* (seconds 1.75))
 (define *protect-terry-last-volley-time* (the-as time-frame 0))
 
@@ -352,13 +354,36 @@
 
 (set! (-> *roboguard-city-nav-enemy-info* fact-defaults) *fact-info-enemy-defaults*)
 
+(defun protect-terry-player-attack? ((sender object) (block event-message-block))
+  (let ((attack (the-as attack-info (-> block param 1))))
+    (and attack
+         (not (and sender
+                   (or (type? sender guard-shot) (type? sender guard-lazer-shot))))
+         ;; Player gun blasts can arrive from subprocesses. In particular,
+         ;; Plasmite uses penetrate40 and Mass Inverter uses gravity-end.
+         ;; Ordinary projectile events keep their flags on the sender's
+         ;; collision root, so use the same resolver as the base enemy handler.
+         (or (logtest? (get-penetrate-using-from-attack-event
+                         (the-as process-drawable sender) block)
+                       (penetrate jak-yellow-shot jak-red-shot jak-blue-shot
+                                  jak-dark-shot jak-red-shockwave jak-dark-nuke
+                                  jak-dark-blackhole penetrate40 dark-bomb))
+             (= (-> attack mode) 'gravity-end)
+             (and *target*
+                  (or (= sender *target*)
+                      (and (logtest? (-> attack mask) (attack-mask attacker))
+                           (= (handle->process (-> attack attacker)) *target*)))
+                  (or (= (-> attack mode) 'eco-red)
+                      (= (-> attack mode) 'eco-red-shove)
+                      (= (-> attack mode) 'eco-yellow)
+                      (= (-> attack mode) 'eco-blue)
+                      (= (-> attack mode) 'eco-dark)))))))
+
 ;; Match standard Robo Guard weapon resistances for the city variant.
 (defmethod get-damage-from-attack ((this roboguard-city) (arg0 object) (arg1 event-message-block))
-  ;; Damage is applied before msg-for-incoming-attack chooses Terry's reaction,
-  ;; so reject Guard Shot here as well as suppressing its hit reaction below.
+  ;; Terry only loses health to Jak's weapons and Dark Jak attacks.
   (when (and (logtest? (-> this robo-flags) (robo-flag r15))
-             arg0
-             (type? arg0 guard-shot)
+             (not (protect-terry-player-attack? arg0 arg1))
              )
     (return 0.0)
     )
@@ -2166,6 +2191,9 @@
   "Commmon handler for events."
   (case arg2
     (('attack)
+     (when (and (logtest? (-> this robo-flags) (robo-flag r15))
+                (not (protect-terry-player-attack? arg0 arg3)))
+       (return #f))
      (set-time! (-> this pursuit-start-time))
      (logior! (-> this flags) (citizen-flag in-pursuit))
      (if (not (logtest? (-> this squad alert-state flags) (squad-alert-flag war)))
@@ -2261,6 +2289,43 @@
       )
   )
 
+(defun protect-terry-kick-guards! ((boss roboguard-city))
+  (let ((center (-> boss root trans))
+        (shapes (new 'stack 'boxed-array collide-shape 64))
+        (velocity (new 'stack 'vector))
+        (kick (new 'stack 'vector)))
+    (vector-reset! velocity)
+    (set! (-> shapes length)
+          (fill-actor-list-for-sphere *actor-hash* center velocity (meters 10)
+            (the-as (pointer collide-shape) (-> shapes data))
+            (-> shapes allocated-length) -1))
+    (dotimes (index (-> shapes length))
+      (let* ((shape (-> shapes index))
+             (guard (and shape (as-type (-> shape process) crimson-guard))))
+        (when guard
+          (let ((pos (-> (the-as crimson-guard guard) root trans)))
+            (when (<= (vector-vector-distance-squared pos center) (square (meters 10)))
+              (vector-! kick pos center)
+              (set! (-> kick y) 0.0)
+              (when (> (vector-length kick) 0.0)
+                (vector-normalize! kick (meters 30))
+                (set! (-> kick y) (meters 4))
+                (send-event (the-as crimson-guard guard) 'terry-guard-kick kick))))))))
+  (none))
+
+(defun protect-terry-radius-pulse ((center vector))
+  ;; The cosmetic warning has its own radius.
+  (let ((point (new 'stack-no-clear 'vector)))
+    (dotimes (index 32)
+      (let ((angle (* 2048.0 (the float index))))
+        (set-vector! point
+          (+ (-> center x) (* protect-terry-warning-radius (cos angle)))
+          (+ (-> center y) (meters 0.4))
+          (+ (-> center z) (* protect-terry-warning-radius (sin angle)))
+          1.0)
+        (launch-particles (-> *part-id-table* 362) point))))
+  (none))
+
 (defmethod enemy-common-post ((this roboguard-city))
   "Common implementation of post. Runs ja-post."
   (roboguard-city-method-237 this)
@@ -2281,6 +2346,13 @@
     (send-attack-from-tshape this *target* (the-as touching-shapes-entry #f) (new-attack-id))
     (set-time! (-> this last-attack-time))
     )
+  (when (and (logtest? (-> this robo-flags) (robo-flag r15))
+             (> (-> this hit-points) 0.0)
+             (logtest? (-> this flags) (citizen-flag hostile))
+             (time-elapsed? *protect-terry-last-radius-pulse* (seconds 1)))
+    (set-time! *protect-terry-last-radius-pulse*)
+    (protect-terry-radius-pulse (-> this root trans))
+    (protect-terry-kick-guards! this))
   ;; Terry can repeatedly shock Jak at close range while actively fighting.
   ;; send-event returns false when Jak's normal damage handling rejects the hit;
   ;; only an accepted shock starts the cooldown.
@@ -2417,6 +2489,7 @@
   (set! (-> this hit-points) 400.0)
   (set-time! (-> this last-attack-time))
   (set-time! *protect-terry-last-shock-time*)
+  (set-time! *protect-terry-last-radius-pulse*)
   (set-time! *protect-terry-last-volley-time*)
   (none)
   )

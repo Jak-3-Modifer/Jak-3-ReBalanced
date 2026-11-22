@@ -9,6 +9,11 @@
 
 (define *debug-vehicle-work* (new 'static 'debug-vehicle-work))
 
+;; Runtime camera multiplier used by the Hero Mode Bumper Cars challenge.
+;; Keeping this in the shared vehicle camera path makes it apply to whichever
+;; player V-car was selected without mutating that vehicle's static constants.
+(define *vehicle-camera-max-length-scale* 1.0)
+
 (defskelgroup skel-vehicle-explosion vehicle-explosion vehicle-explosion-lod0-jg vehicle-explosion-idle-ja
               ((vehicle-explosion-lod0-mg (meters 999999)))
               :bounds (static-spherem 0 0 0 50)
@@ -352,7 +357,12 @@
       (set-setting! 'fov 'abs (-> s5-0 float00) 0)
       (let ((f30-2 (lerp-scale 1.0 0.6 f30-0 0.0 1.0)))
         (set-setting! 'string-min-length 'abs (* f30-2 (-> this info camera string-min-length)) 0)
-        (set-setting! 'string-max-length 'abs (* f30-2 (-> this info camera string-max-length)) 0)
+        (set-setting! 'string-max-length
+                      'abs
+                      (* f30-2
+                         (-> this info camera string-max-length)
+                         *vehicle-camera-max-length-scale*)
+                      0)
         )
       )
     (when *target*

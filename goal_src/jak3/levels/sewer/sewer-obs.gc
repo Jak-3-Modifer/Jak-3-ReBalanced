@@ -1588,6 +1588,7 @@
    (attack-id      int32)
    (last-sync-val  float)
    (vent-sound     sound-id)
+   (active-threshold float)
    )
   (:state-methods
     idle
@@ -1603,7 +1604,7 @@
   :trans (behavior ()
     (let ((f30-0 (get-norm! (-> self sync) 0)))
       (cond
-        ((< f30-0 0.5)
+        ((< f30-0 (-> self active-threshold))
          (if (zero? (-> self vent-sound))
              (set! (-> self vent-sound) (new-sound-id))
              )
@@ -1661,6 +1662,7 @@
   "Set up a newly created process from the entity that created it."
   (set! (-> this root) (new 'process 'trsqv))
   (process-drawable-from-entity! this arg0)
+  (set! (-> this active-threshold) 0.5)
   (let* ((v1-1 *game-info*)
          (a0-4 (+ (-> v1-1 attack-id) 1))
          )
@@ -1679,6 +1681,22 @@
     (set! (-> a1-3 period) (the-as uint 1800))
     (set! (-> a1-3 percent) 0.0)
     (initialize! (-> this sync) a1-3)
+    )
+  ;; Keep vents 1 and 3 together. Vents 2 and 4 share a longer cycle:
+  ;; twelve seconds on, then three seconds off. Entity sync data can override
+  ;; initialization, so set these timing values afterward.
+  (let ((vent-name (res-lump-struct arg0 'name string)))
+    (when (or (string= vent-name "sew-vent-1")
+              (string= vent-name "sew-vent-3"))
+      (set! (-> this sync period) (the-as uint 1800))
+      (set! (-> this sync offset) 0.0)
+      )
+    (when (or (string= vent-name "sew-vent-2")
+              (string= vent-name "sew-vent-4"))
+      (set! (-> this sync period) (the-as uint 4500))
+      (set! (-> this sync offset) 0.0)
+      (set! (-> this active-threshold) 0.8)
+      )
     )
   (set! (-> this part) (create-launch-control group-sewer-green-steam this))
   (go (method-of-object this idle))

@@ -707,44 +707,302 @@
    )
   )
 
+(define *hero-bumper-player-positioned?* #f)
+
+(define-extern *hero-destroy-interceptors-challenge-mode* int)
+(define-extern *hero-destroy-interceptors-freeze-award* float)
+(define-extern *hero-destroy-interceptors-timer-award* float)
+(define-extern *hero-destroy-interceptors-alternate-active?* symbol)
+(define-extern *hero-destroy-interceptors-reset-timer?* symbol)
+(define-extern *hero-destroy-interceptors-one-hp-time* time-frame)
+(define-extern *hero-destroy-interceptors-one-hp-duration* time-frame)
+(define-extern *hero-destroy-interceptors-bumper-active?* symbol)
+(define-extern *hero-bumper-impact-points* float)
+(define-extern *hero-bumper-double-start* time-frame)
+(define-extern *hero-bumper-double-duration* time-frame)
+(define-extern *hero-bumper-point-multiplier* int)
+(define-extern *hero-bumper-stage-points* float)
+(define-extern *hero-bumper-stage-threshold* float)
+(define-extern *hero-bumper-time-extension-fraction* float)
+(define-extern *hero-bumper-last-base-score* float)
+(define-extern *hero-bumper-bonus-points* float)
+(define-extern *vehicle-camera-max-length-scale* float)
+
+(defun hero-bumper-score-with-bonus ((base float))
+  (when (and (> *hero-bumper-point-multiplier* 1)
+             (or (zero? *hero-bumper-double-start*)
+                 (time-elapsed? *hero-bumper-double-start* *hero-bumper-double-duration*)))
+    (set! *hero-bumper-point-multiplier* 1)
+    (set! *hero-bumper-stage-points* 0.0)
+    (set! *hero-bumper-stage-threshold* 300.0)
+    (set! *hero-bumper-time-extension-fraction* 0.0)
+    (set! *hero-bumper-double-start* (the-as time-frame 0)))
+  (when (> base *hero-bumper-last-base-score*)
+    (let* ((earned (- base *hero-bumper-last-base-score*))
+           (awarded (* earned (the float *hero-bumper-point-multiplier*))))
+      (when (> *hero-bumper-point-multiplier* 1)
+        (+! *hero-bumper-bonus-points*
+            (- awarded earned))
+        ;; One score point adds one millisecond. The game clock uses 300 ticks
+        ;; per second, so preserve fractional ticks until they form a whole tick.
+        (+! *hero-bumper-time-extension-fraction* (* awarded 0.3))
+        (let ((extension (the int *hero-bumper-time-extension-fraction*)))
+          (when (> extension 0)
+            (+! *hero-bumper-double-duration* extension)
+            (+! *hero-bumper-time-extension-fraction* (- (the float extension)))))
+        (+! *hero-bumper-stage-points* awarded)
+        (when (>= *hero-bumper-stage-points* *hero-bumper-stage-threshold*)
+          (+! *hero-bumper-stage-points* (- *hero-bumper-stage-threshold*))
+          (+! *hero-bumper-point-multiplier* 1)
+          ;; 2x -> 3x requires 300 points, 3x -> 4x requires 600,
+          ;; 4x -> 5x requires 900, continuing in 300-point increments.
+          (set! *hero-bumper-stage-threshold*
+                (* 300.0 (the float (- *hero-bumper-point-multiplier* 1))))
+          (set-time! *hero-bumper-double-start*)
+          (set! *hero-bumper-double-duration* (seconds 6))
+          (set! *hero-bumper-time-extension-fraction* 0.0)))))
+  (set! *hero-bumper-last-base-score* (fmax base *hero-bumper-last-base-score*))
+  (+ *hero-bumper-last-base-score* *hero-bumper-bonus-points*))
+
+;; The four surveyed edge points define an approximately 460m by 390m oval.
+;; Project into its long and short axes in the X/Z plane; height is ignored.
+(defun hero-bumper-keep-player-in-oval! ((car wvehicle))
+  (let* ((dx (- (-> car rbody position x) (meters 3166.3)))
+         (dz (- (-> car rbody position z) (meters 536.18)))
+         (along (+ (* dx 0.983) (* dz -0.184)))
+         (across (+ (* dx 0.184) (* dz 0.983)))
+         (extent (+ (square (/ along (meters 230)))
+                    (square (/ across (meters 195))))))
+    (when (> extent 1.0)
+      (let ((inward (new 'stack 'vector)))
+    ;keep you locked in the oval, noescape boyo
+        (set-vector! inward (- dx) 0.0 (- dz) 0.0)
+        (vector-normalize! inward 1.0)
+        (vector+float*! (-> car rbody lin-momentum)
+                        (-> car rbody lin-momentum)
+                        inward
+                        (* (-> car info info mass)
+                           (meters 500)
+                           (seconds-per-frame))))))
+  (none))
+
+(defun hero-destroy-interceptors-set-award-scores! ((alternate? symbol))
+  ;; Each branch owns a score slot. Do not rewrite slot 16 according to the
+  ;; selected mode, because that makes records and medal ranks leak between
+  ;; Destroy Interceptors, the alternate challenge, and Bumper Cars.
+  (let ((normal-scores (-> *highscore-info-array* 16 award-scores))
+        (alternate-scores (-> *highscore-info-array* 18 award-scores))
+        (bumper-scores (-> *highscore-info-array* 19 award-scores)))
+    (set! (-> normal-scores 0) 30.0)
+    (set! (-> normal-scores 1) 45.0)
+    (set! (-> normal-scores 2) 60.0)
+    (set! (-> alternate-scores 0) 100.0)
+    (set! (-> alternate-scores 1) 175.0)
+    (set! (-> alternate-scores 2) 350.0)
+    (set! (-> bumper-scores 0) 3500.0)
+    (set! (-> bumper-scores 1) 10000.0)
+    (set! (-> bumper-scores 2) 20000.0))
+  (none)
+  )
+
 
 (defmethod set-time-limit ((this task-manager-bbush-destroy-interceptors))
   (call-parent-method this)
   (set! (-> this display-units) 1.0)
-  (set! (-> this time-limit) (seconds 120))
-  (set! (-> this game-score) (the-as uint 16))
+  (set! (-> this time-limit)
+        (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                 (nonzero? *hero-destroy-interceptors-challenge-mode*))
+            (if (= *hero-destroy-interceptors-challenge-mode* 2)
+                (seconds 130)
+                (seconds 125))
+            (seconds 120)))
+  ;; Normal, alternate, and Bumper Cars records must remain independent.
+  ;; The expanded game-score array is serialized by the existing score tag;
+  ;; older saves simply initialize these two new slots to zero.
+  (set! (-> this game-score)
+        (the-as uint
+                (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                    (case *hero-destroy-interceptors-challenge-mode*
+                      ((1) 18)
+                      ((2) 19)
+                      (else 16))
+                    16)))
   (set! (-> this want-current-hud?) #f)
   (set! (-> this max-reserve-count) 1000)
   (set! (-> *wasbbv-hud-info* score-text) (text-id kills))
   (set! (-> *wasbbv-hud-info* decimal-place-count) 0)
   (set! (-> *was-squad-control* target-count) 0)
+  (set! *hero-destroy-interceptors-freeze-award* 0.0)
+  (set! *hero-destroy-interceptors-timer-award* 0.0)
+  (set! *hero-destroy-interceptors-alternate-active?* #f)
+  (set! *hero-destroy-interceptors-reset-timer?* #f)
+  (set! *hero-destroy-interceptors-one-hp-time* (the-as time-frame 0))
+  (set! *hero-destroy-interceptors-one-hp-duration* (the-as time-frame 0))
+  (set! *hero-destroy-interceptors-bumper-active?* #f)
+  (set! *vehicle-camera-max-length-scale* 1.0)
+  (set! *hero-bumper-impact-points* 0.0)
+  (set! *hero-bumper-double-start* (the-as time-frame 0))
+  (set! *hero-bumper-double-duration* (the-as time-frame 0))
+  (set! *hero-bumper-point-multiplier* 1)
+  (set! *hero-bumper-stage-points* 0.0)
+  (set! *hero-bumper-stage-threshold* 300.0)
+  (set! *hero-bumper-time-extension-fraction* 0.0)
+  (set! *hero-bumper-last-base-score* 0.0)
+  (set! *hero-bumper-bonus-points* 0.0)
+  (set! *hero-bumper-player-positioned?* #f)
+  (hero-destroy-interceptors-set-award-scores!
+    (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+         (nonzero? *hero-destroy-interceptors-challenge-mode*)))
   0
   (none)
   )
 
+(defmethod hud-timer-handler ((this task-manager-bbush-destroy-interceptors))
+  ;; The HUD subtracts elapsed time from time-limit. Reset the clock origin
+  ;; before the shared timer updates the display and checks for expiration.
+  (when (and *hero-destroy-interceptors-alternate-active?*
+             *hero-destroy-interceptors-reset-timer?*
+             (nonzero? (-> this start-time)))
+    (set-time! (-> this start-time))
+    (set! (-> this time-limit) (seconds 125))
+    (set! *hero-destroy-interceptors-reset-timer?* #f))
+  (when (and *hero-destroy-interceptors-alternate-active?*
+             (> *hero-destroy-interceptors-timer-award* 0.0))
+    (+! (-> this time-limit)
+        (the int (* 300.0 *hero-destroy-interceptors-timer-award*)))
+    (set! *hero-destroy-interceptors-timer-award* 0.0))
+  ((method-of-type task-manager hud-timer-handler) this)
+  (none)
+  )
+
+(defmethod award-skill ((this task-manager-bbush-destroy-interceptors) (arg0 float))
+  ;; The normal medal reward grants three orbs for each newly reached tier.
+  ;; Once Gold is owned, keep the challenge replayable by rewarding only a
+  ;; genuine personal-best score with one additional three-orb increment.
+  (let* ((score-id (the-as int (-> this game-score)))
+         (old-rank (game-info-method-29 *game-info* score-id))
+         (best-score 0.0)
+         (score-history (get-game-score-ref *game-info* score-id)))
+    (dotimes (index 8)
+      (set! best-score (fmax best-score (-> score-history index))))
+    (call-parent-method this arg0)
+    (when (and *hero-destroy-interceptors-alternate-active?*
+               (= *hero-destroy-interceptors-challenge-mode* 1)
+               (>= old-rank 3)
+               (> arg0 best-score))
+      (give *game-info* 'skill (-> *FACT-bank* super-skill-inc) (the-as handle #f))))
+  (none)
+  )
+
 (defmethod task-manager-method-26 ((this task-manager-bbush-destroy-interceptors))
+  ;; Freeze the countdown while consuming the stacked token duration.  The
+  ;; inherited timer still updates its HUD, but advancing time-limit by the
+  ;; same frame step keeps the displayed countdown stationary.
+  (when (and *hero-destroy-interceptors-alternate-active?*
+             (> *hero-destroy-interceptors-freeze-award* 0.0))
+    (let ((freeze-step (fmin *hero-destroy-interceptors-freeze-award*
+                             (seconds-per-frame))))
+      (+! (-> this time-limit) (the int (* 300.0 freeze-step)))
+      (+! *hero-destroy-interceptors-freeze-award* (- freeze-step))
+      )
+    )
+  ;; The inherited task checks this score against medal goals and records it
+  ;; at completion, so Bumper Cars must supply points before that update.
+  (when (and *hero-destroy-interceptors-bumper-active?*
+             (nonzero? (-> this start-time)))
+    (let ((squad *was-squad-control*))
+      (set! (-> this score)
+            (hero-bumper-score-with-bonus
+              (+ *hero-bumper-impact-points*
+                 (* 100.0 (the float (- (- (-> this max-reserve-count) (-> squad reserve-count))
+                                          (-> squad active-count)))))))))
   (let ((t9-0 (method-of-type task-manager-vehicle-bbush task-manager-method-26)))
     (t9-0 this)
     )
   (when (nonzero? (-> this start-time))
     (let ((v1-3 *was-squad-control*))
       (set! (-> this score)
-            (the float (- (- (-> this max-reserve-count) (-> v1-3 reserve-count)) (-> v1-3 active-count)))
-            )
+            (if *hero-destroy-interceptors-bumper-active?*
+                (hero-bumper-score-with-bonus
+                  (+ *hero-bumper-impact-points*
+                     (* 100.0 (the float (- (- (-> this max-reserve-count) (-> v1-3 reserve-count))
+                                              (-> v1-3 active-count))))))
+                (the float (- (- (-> this max-reserve-count) (-> v1-3 reserve-count))
+                              (-> v1-3 active-count)))))
       )
     )
+  ;; Place whichever vehicle the player selected at the Bumper Cars start.
+  ;; This runs only after the inherited task update has captured the ridden
+  ;; vehicle handle, and only once for this task run.
+  (when (and *hero-destroy-interceptors-bumper-active?*
+             (not *hero-bumper-player-positioned?*))
+    (let ((player-car (the-as wvehicle (handle->process (-> this player-vehicle)))))
+      (when player-car
+        (set! (-> player-car root trans x) (meters 3189.08))
+        (set! (-> player-car root trans y) (meters 19.83))
+        (set! (-> player-car root trans z) (meters 587.52))
+        (set! (-> player-car root trans w) 1.0)
+        ;; Do not carry travel momentum into the arena.  The current vehicle
+        ;; orientation remains intact because no heading was specified.
+        (vector-reset! (-> player-car root transv))
+        (vector-copy! (-> player-car rbody position) (-> player-car root trans))
+        (vector-reset! (-> player-car rbody lin-momentum))
+        (vector-reset! (-> player-car rbody lin-velocity))
+        (set! *hero-bumper-player-positioned?* #t))))
+  (when (and *hero-destroy-interceptors-bumper-active?*
+             *hero-bumper-player-positioned?*)
+    (let ((player-car (the-as wvehicle (handle->process (-> this player-vehicle)))))
+      (when player-car
+        (hero-bumper-keep-player-in-oval! player-car))))
+  ;; Show the same points total used for medals and the recorded score.
+  (when *hero-destroy-interceptors-bumper-active?*
+    (set! (-> *wasbbv-hud-info* score-text) (text-id score))
+    (set! (-> *wasbbv-hud-info* score)
+          (-> this score)))
   0
   (none)
   )
 
 (defmethod task-manager-vehicle-bbush-method-35 ((this task-manager-bbush-destroy-interceptors))
+  ;; Latch the selected branch when the real combat task starts.  Reward drops
+  ;; must not depend on the Burning Bush's later dialogue node or a task-name
+  ;; lookup, both of which change after the introduction hands off control.
+  (set! *hero-destroy-interceptors-alternate-active?*
+        (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (nonzero? *hero-destroy-interceptors-challenge-mode*)))
+  (set! *hero-destroy-interceptors-bumper-active?*
+        (and *hero-destroy-interceptors-alternate-active?*
+             (= *hero-destroy-interceptors-challenge-mode* 2)))
+  (set! *vehicle-camera-max-length-scale*
+        (if *hero-destroy-interceptors-bumper-active?* 2.0 1.0))
   (set-setting! 'music 'desdstry 0.0 0)
   (set-setting! 'extra-bank '((desert2 bbush1)) 0.0 0)
   (let ((v1-4 *was-squad-control*))
-    (set! (-> v1-4 target-count) 4)
+    ;; Bumper Cars keeps ten lightweight Marauders active; the original and
+    ;; alternate Destroy Interceptors branches retain their four-car squad.
+    (set! (-> v1-4 target-count)
+          (if *hero-destroy-interceptors-bumper-active?* 10 4))
     (set! (-> v1-4 reserve-count) (- (-> this max-reserve-count) (-> v1-4 active-count)))
     )
   0
+  (none)
+  )
+
+(defmethod task-manager-method-25 ((this task-manager-bbush-destroy-interceptors))
+  (set! *hero-destroy-interceptors-alternate-active?* #f)
+  (set! *hero-destroy-interceptors-freeze-award* 0.0)
+  (set! *hero-destroy-interceptors-timer-award* 0.0)
+  (set! *hero-destroy-interceptors-reset-timer?* #f)
+  (set! *hero-destroy-interceptors-one-hp-time* (the-as time-frame 0))
+  (set! *hero-destroy-interceptors-one-hp-duration* (the-as time-frame 0))
+  (set! *hero-destroy-interceptors-bumper-active?* #f)
+  (set! *vehicle-camera-max-length-scale* 1.0)
+  (set! *hero-bumper-point-multiplier* 1)
+  (set! *hero-bumper-stage-points* 0.0)
+  (set! *hero-bumper-stage-threshold* 300.0)
+  (set! *hero-bumper-time-extension-fraction* 0.0)
+  (hero-destroy-interceptors-set-award-scores! #f)
+  (call-parent-method this)
   (none)
   )
 

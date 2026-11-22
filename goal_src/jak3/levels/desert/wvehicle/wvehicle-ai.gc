@@ -7,6 +7,8 @@
 
 ;; DECOMP BEGINS
 
+(define-extern v-marauder-camouflage-hides-target? (function symbol))
+
 (defmethod wvehicle-method-168 ((this wvehicle))
   (if (not (logtest? (-> this rbody flags) (rigid-body-flag enable-physics)))
       (apply-momentum! this)
@@ -14,7 +16,11 @@
   (set! (-> this camera-dist2) (vector-vector-distance-squared (-> this root trans) (camera-pos)))
   (set! (-> this player-dist2) (vector-vector-distance-squared (-> this root trans) (target-pos 0)))
   (let ((s5-2 (as-type (handle->process (-> this target-status handle)) process-focusable)))
-    (when s5-2
+    ;; Preserve a Marauder's last known player position while Camouflage is
+    ;; active.  Other Wasteland vehicles retain their ordinary live tracking.
+    (when (and s5-2
+               (not (and (= (-> this info vehicle-type) (vehicle-type-u8 v-marauder))
+                         (v-marauder-camouflage-hides-target?))))
       (vector-copy! (-> this target-status position) (get-trans (the-as process-focusable s5-2) 3))
       (vector-copy! (-> this target-status velocity) (get-transv (the-as process-focusable s5-2)))
       )
@@ -112,7 +118,14 @@
       (vector-normalize! (-> gp-0 force) 1.0)
       (vector+float*! (-> gp-0 velocity) (-> gp-0 mat fvec) (-> gp-0 force) 81920.0)
       (vector+float*! (-> gp-0 velocity) (-> gp-0 velocity) (-> gp-0 mat trans) 0.5)
-      (when (logtest? (vehicle-flag vf54) (-> this v-flags))
+      ;; In Bumper Cars, aim at the opponent instead of the normal following
+      ;; point 20 metres ahead of it. Navigation still selects a safe route.
+      (when (and *hero-destroy-interceptors-bumper-active?*
+                 (= (-> this info vehicle-type) (vehicle-type-u8 v-marauder)))
+        (vector+float*! (-> gp-0 velocity) (-> gp-0 mat fvec) (-> gp-0 mat trans) 0.2))
+      (when (and (logtest? (vehicle-flag vf54) (-> this v-flags))
+                 (not (and *hero-destroy-interceptors-bumper-active?*
+                           (= (-> this info vehicle-type) (vehicle-type-u8 v-marauder)))))
         (vector-copy! (-> gp-0 axis) (-> gp-0 mat rvec))
         (vector-copy! (-> gp-0 dir) (-> gp-0 mat uvec))
         (vector-copy! (-> gp-0 ground-normal-sum) (-> gp-0 mat fvec))
@@ -223,7 +236,13 @@
                                                         )
                                              )
                )
-         (logtest? (vehicle-flag rammed-target) (-> this v-flags))
+         ;; Keep ordinary impact recovery for obstacles; do not brake and
+         ;; reverse merely for contacting the player in Bumper Cars.
+         (and (logtest? (vehicle-flag rammed-target) (-> this v-flags))
+              (not (and *hero-destroy-interceptors-bumper-active?*
+                        (= (-> this info vehicle-type) (vehicle-type-u8 v-marauder))
+                        (< (vector-vector-xz-distance-squared (-> this root trans) (-> this target-status position))
+                           (square (meters 8))))))
          )
        (set! (-> gp-0 forward-dir y) 0.0)
        (set! (-> gp-0 forward-dir z) 1.0)

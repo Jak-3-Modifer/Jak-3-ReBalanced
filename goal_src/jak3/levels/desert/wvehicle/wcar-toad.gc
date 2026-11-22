@@ -145,7 +145,7 @@
   (when (and *v-toad-vehicle-toughness-equipped?*
              (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
              (logtest? (vehicle-flag player-driving) (-> this v-flags)))
-    (set! amount (/ amount 2)))
+    (set! amount (* amount 0.6)))
   (when *v-toad-damage-immunity-active?*
     (set! amount 0.0))
   (when (and (= *v-toad-ability-loadout* 7) (> amount 0.0))
@@ -177,7 +177,10 @@
       ((4)
        (when (and (not *v-toad-damage-immunity-active?*)
                   (or (not *v-toad-damage-immunity-cooldown-active?*)
-                      (time-elapsed? *v-toad-damage-immunity-cooldown-time* (seconds 35))))
+                      (time-elapsed? *v-toad-damage-immunity-cooldown-time*
+                                     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                         (seconds 26)
+                                         (seconds 35)))))
          (set-time! *v-toad-damage-immunity-time*)
          (set! *v-toad-damage-immunity-active?* #t)
          (set! *v-toad-damage-immunity-cooldown-active?* #f)
@@ -191,6 +194,10 @@
                   (or (not *v-toad-repair-cooldown-active?*)
                       (time-elapsed? *v-toad-repair-cooldown-time* (seconds 40))))
          (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
+         (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           ;; Match the normal health-pickup feedback, but only for the
+           ;; Hero Mode Emergency Repair activation.
+           (sound-play "get-green-eco"))
          (set-time! *v-toad-repair-cooldown-time*)
          (set! *v-toad-repair-cooldown-active?* #t)))
       ((8)
@@ -203,7 +210,10 @@
          (v-toad-set-fade! this (the-as uint 13) #t)))))
 
   (when (and *v-toad-damage-immunity-active?*
-             (or (time-elapsed? *v-toad-damage-immunity-time* (seconds 4))
+             (or (time-elapsed? *v-toad-damage-immunity-time*
+                                (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                    (seconds 6)
+                                    (seconds 4)))
                  (!= *v-toad-defense-loadout* 4)))
     (set! *v-toad-damage-immunity-active?* #f)
     (set-time! *v-toad-damage-immunity-cooldown-time*)
@@ -218,14 +228,20 @@
     ((!= *v-toad-ability-loadout* 7)
      (set! *v-toad-regenerative-armor-active?* #f))
     ((and *v-toad-regenerative-armor-active?*
-          (time-elapsed? *v-toad-regenerative-armor-time* (seconds 4)))
+          (time-elapsed? *v-toad-regenerative-armor-time*
+                         (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                             (seconds 1.5)
+                             (seconds 4))))
      (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.033333335)))
      (if (>= (-> this hit-points) 1.0)
          (set! *v-toad-regenerative-armor-active?* #f)
          (set-time! *v-toad-regenerative-armor-time*))))
 
   (when (and *v-toad-camouflage-active?*
-             (or (time-elapsed? *v-toad-camouflage-time* (seconds 10))
+             (or (time-elapsed? *v-toad-camouflage-time*
+                                (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                                    (seconds 8)
+                                    (seconds 10)))
                  (!= *v-toad-defense-loadout* 8)))
     (set! *v-toad-camouflage-active?* #f)
     (set-time! *v-toad-camouflage-cooldown-time*)

@@ -44,6 +44,21 @@
   )
 
 (define *was-squad-control-artifact-race-1?* #f)
+(define-extern *hero-destroy-interceptors-bumper-active?* symbol)
+;; Extra Bumper Cars slots are runtime-only; the shared squad type retains its
+;; original layout for other desert missions.
+(define *hero-bumper-extra-units* (new 'static 'array handle 10))
+
+(defun was-squad-unit-handle ((this was-squad-control) (index int))
+  (if (< index 10)
+      (-> this units index)
+      (-> *hero-bumper-extra-units* (- index 10))))
+
+(defun was-squad-set-unit-handle! ((this was-squad-control) (index int) (unit handle))
+  (if (< index 10)
+      (set! (-> this units index) unit)
+      (set! (-> *hero-bumper-extra-units* (- index 10)) unit))
+  (none))
 
 (define *hero-desert-squad-retire-time* (the-as time-frame 0))
 
@@ -88,6 +103,9 @@
         (set! (-> this units v1-5) (the-as handle #f))
         )
     )
+  (dotimes (i 10)
+    (if (zero? (-> *hero-bumper-extra-units* i))
+        (set! (-> *hero-bumper-extra-units* i) (the-as handle #f))))
   (set! (-> this active-count) 0)
   0
   (none)
@@ -120,14 +138,14 @@
   (let ((s5-0 0))
     (b! #t cfg-16 :delay (nop!))
     (label cfg-1)
-    (b! (as-type (handle->process (-> this units s5-0)) process-focusable) cfg-15 :delay (empty-form))
+    (b! (as-type (handle->process (was-squad-unit-handle this s5-0)) process-focusable) cfg-15 :delay (empty-form))
     (format #t "was-squad-control::add-unit succeded~%")
-    (set! (-> this units s5-0) (process->handle arg0))
+    (was-squad-set-unit-handle! this s5-0 (process->handle arg0))
     (b! #t cfg-18 :delay (nop!))
     (label cfg-15)
     (+! s5-0 1)
     (label cfg-16)
-    (b! (< s5-0 10) cfg-1)
+    (b! (< s5-0 (if *hero-destroy-interceptors-bumper-active?* 20 10)) cfg-1)
     )
   (format #t "was-squad-control::add-unit failed~%")
   (label cfg-18)
@@ -341,8 +359,8 @@
               (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
                    (task-node-open? (game-task-node desert-hover-resolution))
                    (= (-> this target-count) 1)))
-      (dotimes (i 10)
-        (let ((unit (as-type (handle->process (-> this units i)) process-focusable)))
+      (dotimes (i 20)
+        (let ((unit (as-type (handle->process (was-squad-unit-handle this i)) process-focusable)))
           (when (and unit (not (focus-test? unit dead)))
             (+! excess 1))))
       (set! excess (max 0 (- excess (-> this target-count)))))
@@ -359,8 +377,8 @@
       (vector-rotate-around-y! (-> s5-1 1 uvec) (-> s5-1 0 trans) -14563.556)
       (set! (-> s5-1 1 rvec w) (- (vector-dot (-> s5-1 1 rvec) (-> s5-1 0 uvec))))
       (set! (-> s5-1 1 uvec w) (- (vector-dot (-> s5-1 1 uvec) (-> s5-1 0 uvec))))
-      (dotimes (s4-1 10)
-        (let ((s3-0 (as-type (handle->process (-> this units s4-1)) process-focusable)))
+      (dotimes (s4-1 20)
+        (let ((s3-0 (as-type (handle->process (was-squad-unit-handle this s4-1)) process-focusable)))
           (when (and s3-0
                      (not (focus-test? (the-as process-focusable s3-0) dead))
                      (time-elapsed? (-> (the-as process-focusable s3-0) state-time) (seconds 2))
@@ -378,7 +396,7 @@
                         )
                 (when (send-event s3-0 'go-die)
                   (+! (-> this reserve-count) 1)
-                  (set! (-> this units s4-1) (the-as handle #f))
+                  (was-squad-set-unit-handle! this s4-1 (the-as handle #f))
                   (when (> excess 0)
                     (+! excess -1)
                     (set-time! *hero-desert-squad-retire-time*))
@@ -394,13 +412,13 @@
   (#when PC_PORT
     (when (pc-cheats? (-> *pc-settings* cheats) desert-peace)
       (set! (-> this target-count) 0)
-      (dotimes (s4-1 10)
-        (let ((s3-0 (as-type (handle->process (-> this units s4-1)) process-focusable)))
+      (dotimes (s4-1 20)
+        (let ((s3-0 (as-type (handle->process (was-squad-unit-handle this s4-1)) process-focusable)))
           (when (and s3-0
                      (not (focus-test? (the-as process-focusable s3-0) dead))
                      (send-event s3-0 'go-die))
             (+! (-> this reserve-count) 1)
-            (set! (-> this units s4-1) (the-as handle #f))
+            (was-squad-set-unit-handle! this s4-1 (the-as handle #f))
             )
           )
         )
@@ -411,8 +429,8 @@
   (let ((s5-2 0)
         (s4-2 0)
         )
-    (dotimes (s3-1 10)
-      (let ((v1-62 (as-type (handle->process (-> this units s3-1)) process-focusable)))
+    (dotimes (s3-1 20)
+      (let ((v1-62 (as-type (handle->process (was-squad-unit-handle this s3-1)) process-focusable)))
         (when v1-62
           (+! s5-2 1)
           (if (not (focus-test? (the-as process-focusable v1-62) dead))
@@ -433,7 +451,7 @@
           (cond
             ((and (< (-> this active-count) (-> this target-count))
                   (> (-> this reserve-count) 0)
-                  (< (-> this process-count) 10)
+                  (< (-> this process-count) (if *hero-destroy-interceptors-bumper-active?* 20 10))
                   (-> this nav-mesh)
                   (not (logtest? (-> this nav-mesh flags) (nav-mesh-flag water)))
                   (nav-mesh-method-11 (-> this nav-mesh) (-> v1-71 rvec))
@@ -466,6 +484,34 @@
   )
 
 (define *was-squad-control* (new 'static 'was-squad-control))
+
+(define *hero-interceptor-forced-explosions* (new 'static 'array handle 10))
+
+(defun hero-interceptor-consume-forced-explosion! ((unit process))
+  (let ((unit-handle (process->handle unit))
+        (forced? #f))
+    (dotimes (i 10)
+      (when (= (-> *hero-interceptor-forced-explosions* i) unit-handle)
+        (set! (-> *hero-interceptor-forced-explosions* i) (the-as handle #f))
+        (set! forced? #t)))
+    forced?))
+
+(defun hero-destroy-interceptors-kill-live-marauders! ()
+  ;; The Marauder handles this explicit event by entering its normal explosion
+  ;; state.  `go-die` is the squad-retirement path and only despawns the car.
+  (dotimes (i 10)
+    (let ((unit (as-type (handle->process (-> *was-squad-control* units i)) process-focusable)))
+      (when (and unit (not (focus-test? unit dead)))
+        (let ((unit-handle (process->handle unit)))
+          (unless (= (-> *hero-interceptor-forced-explosions* i) unit-handle)
+            (set! (-> *hero-interceptor-forced-explosions* i) unit-handle)
+            (unless (send-event unit 'hero-force-explode)
+              (set! (-> *hero-interceptor-forced-explosions* i) (the-as handle #f))))))
+      )
+    )
+  (none)
+  )
+
 ;; A raw-zero handle is not the GOAL false symbol; initialize before task updates.
 (set! (-> *was-squad-control* manager) (the-as handle #f))
 

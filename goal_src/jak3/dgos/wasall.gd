@@ -59,6 +59,7 @@
   "pre-artifact-a-ag.go"
   "pre-artifact-b-ag.go"
   "pre-artifact-c-ag.go"
+  "pre-artifact-d-ag.go"
   "scorpion-ag.go"
   "snake-ag.go"
   "fox-ag.go"

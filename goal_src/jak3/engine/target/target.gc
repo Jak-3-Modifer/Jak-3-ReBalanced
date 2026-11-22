@@ -1138,6 +1138,13 @@
       )
     (set-time! (-> self state-time))
     (sound-play "jump" :vol 70)
+    ;; Grapefruit raises only the initial normal jump height by 88 percent.
+    ;; Double jumps and the specialized high-jump states keep their stock values.
+    (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (not (time-elapsed? (-> *hero-fruit-shop-info* grapefruit-time)
+                                   (seconds 1.0))))
+      (set! arg0 (* arg0 1.88))
+      (set! arg1 (* arg1 1.88)))
     (init-var-jump arg0 arg1 #t #t (-> self control transv) 2.0)
     (logclear! (-> self control status) (collide-status on-surface on-ground touch-surface))
     (set! arg2 (cond
@@ -2641,7 +2648,12 @@
         )
     (initialize (-> self control impact-ctrl) self 28 3276.8 (-> self control root-prim prim-core collide-with))
     (let ((f26-0 (the-as number 0.0))
-          (f30-0 1.0)
+          ;; Orange extends only this punch's forward travel.
+          (f30-0 (if (and (logtest? (-> self game secrets) (game-secrets hero-mode))
+                          (not (time-elapsed? (-> *hero-fruit-shop-info* punch-time)
+                                              (seconds 1))))
+                     1.3
+                     1.0))
           (gp-2 0)
           (f28-0 1.0)
           )

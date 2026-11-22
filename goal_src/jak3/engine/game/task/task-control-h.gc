@@ -59,6 +59,8 @@
 (define-extern cty-faction-evaluate-commands (function pair object))
 
 (define-extern update-task-masks (function symbol int))
+(define-extern configure-hero-mode-desert-race-progression! (function none))
+(define-extern *mission-progression-mode* symbol)
 (define-extern task-resolution-close! (function game-task symbol))
 (define-extern hero-mode-current-main-task (function game-task))
 (define-extern hero-mode-skip-current-main-task! (function symbol))

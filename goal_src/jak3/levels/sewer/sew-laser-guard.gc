@@ -257,6 +257,68 @@
   (none)
   )
 
+(defun sew-laser-guard-knockback-source? ((source entity))
+  (and source
+       (let ((guard-name (res-lump-struct source 'name string)))
+         (or (string= guard-name "sew-laser-guard-4")
+             (string= guard-name "sew-laser-guard-5")
+             (string= guard-name "sew-laser-guard-6")
+             (string= guard-name "sew-laser-guard-7"))
+         )
+       )
+  )
+
+(defmethod deal-damage! ((this sew-laser-shot) (victim process) (block event-message-block))
+  ;; Build the normal projectile attack here so the shove reaches Jak in the
+  ;; same event as the damage. A second shove event is ignored once target-hit
+  ;; is pending.
+  (let ((attack (new 'stack 'attack-info)))
+    (set! (-> attack mode) (-> this attack-mode))
+    (set! (-> attack id) (-> this attack-id))
+    (set! (-> attack mask) (attack-mask mode id))
+    (when (!= (-> this owner-handle) #f)
+      (set! (-> attack attacker) (-> this owner-handle))
+      (logior! (-> attack mask) (attack-mask attacker))
+      )
+    (when (logtest? (-> this options) (projectile-options po13))
+      (set! (-> attack attacker-velocity quad) (-> this pre-move-transv quad))
+      (logior! (-> attack mask) (attack-mask attacker-velocity))
+      )
+    (set! (-> attack damage)
+          (if (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+                   (logtest? (-> victim mask) (process-mask target))
+                   )
+              4.0
+              (-> this damage)
+              )
+          )
+    (set! (-> attack vehicle-damage-factor) (-> this vehicle-damage-factor))
+    (set! (-> attack vehicle-impulse-factor) (-> this vehicle-impulse-factor))
+    (logior! (-> attack mask) (attack-mask damage vehicle-damage-factor vehicle-impulse-factor))
+    (when (logtest? (projectile-options po18) (-> this options))
+      (set! (-> attack invinc-time) (-> this invinc-time))
+      (logior! (-> attack mask) (attack-mask invinc-time))
+      )
+    (when (and (= victim *target*)
+               (sew-laser-guard-knockback-source? (-> this entity))
+               )
+      (set! (-> attack shove-back) (meters 6))
+      (logior! (-> attack mask) (attack-mask shove-back))
+      )
+    (the-as symbol
+      (send-event
+        victim
+        (if (logtest? (-> this options) (projectile-options po19))
+            'attack-invinc
+            'attack
+            )
+        block
+        attack
+        )
+      )
+    )
+  )
+
 (defskelgroup skel-sew-laser-guard sew-laser-guard sew-laser-guard-lod0-jg sew-laser-guard-idle-ja
               ((sew-laser-guard-lod0-mg (meters 999999)))
               :bounds (static-spherem 0 0 0 30)

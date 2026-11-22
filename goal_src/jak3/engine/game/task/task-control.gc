@@ -84,9 +84,12 @@
   (cty-faction-evaluate-commands arg0)
   )
 
+(define *hero-oracle-progression-manager* (the-as task-manager-info #f))
+(define *mission-progression-mode* 'unconfigured)
+
 (defun configure-hero-mode-desert-race-progression! ()
-  "Hero Mode runs Catch Lizards and Hover between Turtle Training and Artifact Race 1.
-Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
+  "Select the existing Hero graph or vanilla 4172dfe7 prerequisites and restarts.
+Do not change completion flags: these tables are runtime configuration, not save data."
   (let ((course-intro (-> *game-info* sub-task-list (game-task-node desert-course-race-introduction)))
         (artifact-intro (-> *game-info* sub-task-list (game-task-node desert-artifact-race-1-introduction)))
         (hover-intro (-> *game-info* sub-task-list (game-task-node desert-hover-introduction)))
@@ -106,9 +109,37 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
         (leaper-intro (-> *game-info* sub-task-list (game-task-node wascity-leaper-race-introduction)))
         (gun-game-intro (-> *game-info* sub-task-list (game-task-node wascity-gungame-introduction)))
         (arena-3-intro (-> *game-info* sub-task-list (game-task-node arena-fight-3-introduction)))
+        (arena-2-intro (-> *game-info* sub-task-list (game-task-node arena-fight-2-introduction)))
+        (rescue-intro (-> *game-info* sub-task-list (game-task-node desert-rescue-introduction)))
+        (climb-intro (-> *game-info* sub-task-list (game-task-node temple-climb-introduction)))
+        (oracle-intro (-> *game-info* sub-task-list (game-task-node temple-oracle-introduction)))
+        (temple-warp (get-continue-by-name *game-info* "templed-warp"))
         )
+    ;; Retain the existing Hero manager before Normal Mode removes its binding.
+    (when (-> oracle-intro manager)
+      (set! *hero-oracle-progression-manager* (-> oracle-intro manager)))
     (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
         (begin
+          ;; On a mode change/load discard the previous save's corral vehicle.
+          ;; During the mission preserve-hero-vehicle! owns these three values.
+          (when (!= *mission-progression-mode* 'hero)
+            (set! (-> catch-lizards-continue-1 vehicle-type) (the-as uint (-> *game-info* current-vehicle)))
+            (set! (-> catch-lizards-continue-2 vehicle-type) (the-as uint (-> *game-info* current-vehicle)))
+            (set! (-> catch-lizards-continue-3 vehicle-type) (the-as uint (-> *game-info* current-vehicle))))
+          (set-vector! (-> temple-warp trans) (meters 4279.29) (meters 95.18) (meters 4446.81) 1.0)
+          (set-vector! (-> temple-warp camera-trans) 17576318.0 410942.1562 18230798.0 1.0)
+          (dotimes (i 4)
+            (set! (-> temple-warp quat data i)
+                  (-> (new 'static 'array int16 4 0 -19005 0 -26542) i)))
+          (dotimes (i 9)
+            (set! (-> temple-warp camera-rot i)
+                  (-> (new 'static 'array int16 9 -10636 0 31001 -4712 32384 -1615 -30631 -4984 -10511) i)))
+          (set! (-> arena-2-intro parent-node 0) (game-task-node wascity-pre-game-resolution))
+          (set! (-> rescue-intro parent-node 0) (game-task-node desert-course-race-resolution))
+          (set! (-> rescue-intro parent-node 1) (game-task-node arena-fight-2-resolution))
+          (set! (-> climb-intro parent-node 0) (game-task-node desert-course-race-resolution))
+          (set! (-> climb-intro parent-node 1) (game-task-node arena-fight-2-resolution))
+          (set! (-> oracle-intro manager) *hero-oracle-progression-manager*)
           ;; Turtle Training -> Catch Lizards -> Hover -> Artifact Race 1 -> Course Race.
           ;; Leaper Race becomes available after the Temple Oracle mission.
           (set! (-> catch-lizards-intro parent-node 0) (game-task-node desert-turtle-training-resolution))
@@ -148,6 +179,21 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
           )
         (begin
           ;; Restore the original story sequence whenever Hero Mode is inactive.
+          (set-vector! (-> temple-warp trans) 17512212.0 389120.0 18223136.0 1.0)
+          (set-vector! (-> temple-warp camera-trans) 17555770.0 409207.2 18242222.0 1.0)
+          (dotimes (i 4)
+            (set! (-> temple-warp quat data i)
+                  (-> (new 'static 'array int16 4 0 -19542 0 -26298) i)))
+          (dotimes (i 9)
+            (set! (-> temple-warp camera-rot i)
+                  (-> (new 'static 'array int16 9 -13637 0 #x745f -4384 #x7e99 -2005 -29467 -4823 -13490) i)))
+          (set! (-> arena-2-intro parent-node 0) (game-task-node desert-hover-resolution))
+          (set! (-> catch-lizards-intro parent-node 0) (game-task-node arena-fight-2-resolution))
+          (set! (-> rescue-intro parent-node 0) (game-task-node desert-catch-lizards-resolution))
+          (set! (-> rescue-intro parent-node 1) (game-task-node none))
+          (set! (-> climb-intro parent-node 0) (game-task-node desert-catch-lizards-resolution))
+          (set! (-> climb-intro parent-node 1) (game-task-node none))
+          (set! (-> oracle-intro manager) #f)
           (set! (-> course-intro parent-node 0) (game-task-node desert-turtle-training-resolution))
           (set! (-> artifact-intro parent-node 0) (game-task-node desert-course-race-resolution))
           (set! (-> hover-intro parent-node 0) (game-task-node wascity-leaper-race-resolution))
@@ -174,7 +220,16 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
           )
     )
   )
+  (set! *mission-progression-mode*
+        (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode)) 'hero 'normal))
+  (none)
   )
+
+(defun ensure-mission-progression-mode! ()
+  (when (!= *mission-progression-mode*
+            (if (logtest? (-> *game-info* secrets) (game-secrets hero-mode)) 'hero 'normal))
+    (configure-hero-mode-desert-race-progression!))
+  (none))
 
 (defun update-task-masks ((arg0 symbol))
   (local-vars (a3-2 symbol))
@@ -1051,6 +1106,7 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
 
 (defun open-task-nodes ((arg0 (array game-task-node-info)))
   (local-vars (a3-4 symbol))
+  (configure-hero-mode-desert-race-progression!)
   (set! (-> arg0 length) 0)
   (let ((v1-1 (-> *game-info* sub-task-list)))
     (dotimes (a1-0 (-> v1-1 length))
@@ -1103,6 +1159,7 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
   )
 
 (defmethod open! ((this game-task-node-info) (arg0 symbol))
+  (ensure-mission-progression-mode!)
   (when (not (logtest? (-> this flags) (game-task-node-flag closed)))
     (let ((s4-0 (lambda ((arg0 game-task-node-info) (arg1 symbol))
                   (logior! (-> arg0 flags) (game-task-node-flag closed))
@@ -1243,6 +1300,7 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
 
 (defmethod game-task-node-info-method-11 ((this game-task-node-info) (arg0 symbol))
   (local-vars (v1-19 symbol))
+  (ensure-mission-progression-mode!)
   (when (logtest? (-> this flags) (game-task-node-flag closed))
     (logclear! (-> this flags) (game-task-node-flag closed))
     (+! (-> *game-info* task-counter) 1)
@@ -1290,6 +1348,7 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
 
 (defmethod game-task-node-info-method-12 ((this game-task-node-info))
   (local-vars (a0-3 symbol) (a1-1 symbol))
+  (ensure-mission-progression-mode!)
   (let ((a1-0 (-> *game-info* sub-task-list))
         (v1-1 this)
         )
@@ -1672,6 +1731,8 @@ Normal Mode retains Turtle Training -> Course Race -> Artifact Race 1."
   )
 
 (defun task-node-reset ((arg0 symbol))
+  ;; Reset closes ancestors, so select the graph before traversing parents.
+  (configure-hero-mode-desert-race-progression!)
   (let ((s5-0 (-> *game-info* sub-task-list)))
     (dotimes (s4-0 (-> s5-0 length))
       (when (nonzero? s4-0)

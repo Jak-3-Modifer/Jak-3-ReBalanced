@@ -7,6 +7,20 @@
 
 ;; DECOMP BEGINS
 
+(define-extern hero-scorpion-super-jump-enabled? (function symbol))
+
+;; Runtime-only flag owned by the Hero Mode Destroy Interceptors task. Keeping
+;; it beside the shared vehicle input path makes Bumper Cars suppress firing
+;; for whichever player vehicle is used without changing normal weapon rules.
+(define *hero-destroy-interceptors-bumper-active?* #f)
+;; Session-only impact points; Bumper Cars keeps its existing kill records.
+(define *hero-bumper-impact-points* 0.0)
+(define-extern *hero-bumper-double-start* time-frame)
+(define-extern *hero-bumper-double-duration* time-frame)
+(define-extern *hero-bumper-point-multiplier* int)
+(define-extern *hero-bumper-stage-points* float)
+(define-extern *hero-bumper-stage-threshold* float)
+
 (define *sand-shark-repair-active?* #f)
 (define *sand-shark-repair-update-seen?* #f)
 (define *sand-shark-repair-time* (the-as time-frame 0))
@@ -57,6 +71,54 @@
   (none)
   )
 
+(defun v-snake-damage-shield-repel-marauders! ((this wvehicle))
+  ;; A single activation pulse avoids repeatedly injecting momentum every
+  ;; frame while the four-second shield remains active.
+  (let ((shapes (new 'stack 'boxed-array collide-shape 64))
+        (query-velocity (new 'stack 'vector))
+        (radius (meters 10))
+        )
+    (vector-reset! query-velocity)
+    (set! (-> shapes length)
+          (fill-actor-list-for-sphere
+            *actor-hash*
+            (-> this root trans)
+            query-velocity
+            radius
+            (the-as (pointer collide-shape) (-> shapes data))
+            (-> shapes allocated-length)
+            -1
+            )
+          )
+    (dotimes (shape-index (-> shapes length))
+      (let ((shape (the-as collide-shape (-> shapes shape-index))))
+        (when shape
+          (let ((marauder (as-type (-> shape process) wvehicle)))
+            (when (and marauder
+                       (= (-> marauder info vehicle-type) (vehicle-type-u8 v-marauder)))
+              (let ((push-direction (new 'stack 'vector)))
+                (vector-! push-direction (-> marauder root trans) (-> this root trans))
+                (set! (-> push-direction y) 0.0)
+                (when (< 0.0 (vector-length push-direction))
+                  ;; Apply a 32 m/s outward physics impulse, matching the
+                  ;; existing vehicle-momentum conventions used by shell hits.
+                  (vector-normalize! push-direction 1.0)
+                  (vector+float*! (-> marauder rbody lin-momentum)
+                                  (-> marauder rbody lin-momentum)
+                                  push-direction
+                                  (* (meters 70) (-> marauder info info mass))
+                                  )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  (none)
+  )
+
 (defun v-snake-update-damage-shield! ((this wvehicle))
   (when (and *v-snake-damage-shield-active?*
              (or (not (handle->process (-> *v-snake-damage-shield-owner-storage* 0)))
@@ -78,6 +140,7 @@
     (set! (-> *v-snake-damage-shield-owner-storage* 0) (process->handle this))
     (set! *v-snake-damage-shield-time* (-> *display* game-clock frame-counter))
     (set! *v-snake-damage-shield-active?* #t)
+    (v-snake-damage-shield-repel-marauders! this)
     (sound-play "shield-on")
     (format #t "[Sand Shark Damage Shield] activated for 4 seconds~%"))
   (none)
@@ -365,11 +428,70 @@
        )
   )
 
+(defun v-toad-locked-4wd? ((this wvehicle))
+  (and (= (-> this info vehicle-type) (vehicle-type-u8 v-toad))
+       (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+       (hero-costume-option-enabled? (the-as text-id #x3f00)))
+  )
+
+(defun v-toad-low-range? ((this wvehicle))
+  (and (v-toad-locked-4wd? this)
+       (hero-costume-option-enabled? (the-as text-id #x3f01)))
+  )
+
 (defun dune-hopper-awd-enabled? ((this wvehicle))
   (and (= (-> this info vehicle-type) (vehicle-type-u8 v-toad))
        *game-info*
-       (logtest? (-> *game-info* secrets) (game-secrets dune-hopper-awd))
+       (or (v-toad-locked-4wd? this)
+           (logtest? (-> *game-info* secrets) (game-secrets dune-hopper-awd)))
        )
+  )
+
+(define *v-toad-hill-assist-start-grade* 0.02)
+(define *v-toad-hill-assist-full-grade* 0.20)
+(define *v-toad-awd-hill-torque-mult* 2.5)
+(define *v-toad-4wd-hill-torque-mult* 3.5)
+(define *v-toad-awd-water-torque-mult* 2.5)
+
+(defun v-toad-water-assist-amount ((this wvehicle))
+  (let ((wet-wheels 0))
+    (when (and (dune-hopper-awd-enabled? this)
+               (> (-> this controls throttle) 0.1))
+      (dotimes (index (-> this info physics-model wheel-count))
+        (let ((wheel (-> this wheel index)))
+          (when (and (-> wheel surface)
+                     (> (-> wheel up-force) 0.0)
+                     (or (> (-> wheel sink-depth) 0.0)
+                         (= (-> wheel surface surface-type) (vehicle-wheel-surface-type water))))
+            (+! wet-wheels 1)))))
+    (/ (the float wet-wheels) (the float (-> this info physics-model wheel-count))))
+  )
+
+(defun v-toad-hill-assist-amount ((this wvehicle))
+  (let ((amount 0.0))
+    (when (and (dune-hopper-awd-enabled? this)
+               (> (-> this controls throttle) 0.1)
+               (nonzero? (-> this gear-select)))
+      (let ((normal (new-stack-vector0))
+            (forward (new 'stack-no-clear 'vector))
+            (contacts 0))
+        (dotimes (index (-> this info physics-model wheel-count))
+          (let ((wheel (-> this wheel index)))
+            (when (and (-> wheel surface) (> (-> wheel up-force) 0.0))
+              (vector+! normal normal (-> wheel ground-normal))
+              (+! contacts 1))))
+        (when (> contacts 0)
+          (vector-normalize! normal 1.0)
+          ;; Measure uphill travel along the actual supporting ground plane.
+          (vector+float*! forward (-> this rbody matrix fvec) normal
+                         (- (vector-dot (-> this rbody matrix fvec) normal)))
+          (when (> (vector-length forward) 0.0)
+            (vector-normalize! forward 1.0)
+            (set! amount
+                  (fmax 0.0 (fmin 1.0
+                    (/ (- (-> forward y) *v-toad-hill-assist-start-grade*)
+                       (- *v-toad-hill-assist-full-grade* *v-toad-hill-assist-start-grade*)))))))))
+    amount)
   )
 
 (defun wvehicle-wheel-driven? ((this wvehicle) (arg0 vehicle-wheel-info))
@@ -468,7 +590,8 @@
 
 (defun wvehicle-effective-gear-ratio ((this wvehicle))
   ;; Hero overdrive is local to the vehicle; never mutate shared constants.
-  (if (hero-extended-gears? this)
+  (* (if (v-toad-low-range? this) 2.0 1.0)
+     (if (hero-extended-gears? this)
       (case (-> this info vehicle-type)
         (((vehicle-type-u8 v-scorpion))
          (case (-> this gear-select)
@@ -508,7 +631,7 @@
            ((9) 0.42)
            ((10) 0.36)
            (else (-> this info transmission gear-ratio-array (-> this gear-select))))))
-      (-> this info transmission gear-ratio-array (-> this gear-select))))
+      (-> this info transmission gear-ratio-array (-> this gear-select)))))
 
 (defun tough-puppy-clutch-held? ((this wvehicle))
   (if (and (tough-puppy-manual-gears-active? this) (cpad-hold? 0 l2))
@@ -629,10 +752,28 @@
 
 (defun tough-puppy-reward-clean-shift! ((this wvehicle))
   ;; Runtime hit-points are normalized. inv-hit-points is exactly one HP for
-  ;; the current vehicle, regardless of that vehicle's maximum health.
-  (when (and (> (-> this hit-points) 0.0) (< (-> this hit-points) 1.0))
-    (set! (-> this hit-points)
-          (fmin 1.0 (+ (-> this hit-points) (-> this info damage inv-hit-points)))))
+  ;; the current vehicle. Both clean upshifts and downshifts use this table.
+  (let ((vehicle-type (-> this info vehicle-type))
+        (heal-hp 0.0))
+    (cond
+      ((= vehicle-type (vehicle-type-u8 v-mirage))
+       (set! heal-hp 5.0))
+      ((or (= vehicle-type (vehicle-type-u8 v-fox))
+           (= vehicle-type (vehicle-type-u8 v-x-ride)))
+       (set! heal-hp 4.0))
+      ((or (= vehicle-type (vehicle-type-u8 v-snake))
+           (= vehicle-type (vehicle-type-u8 v-scorpion))
+           (= vehicle-type (vehicle-type-u8 v-rhino)))
+       (set! heal-hp 2.0))
+      ((or (= vehicle-type (vehicle-type-u8 v-turtle))
+           (= vehicle-type (vehicle-type-u8 v-toad)))
+       (set! heal-hp 1.0)))
+    (when (and (> heal-hp 0.0)
+               (> (-> this hit-points) 0.0)
+               (< (-> this hit-points) 1.0))
+      (set! (-> this hit-points)
+            (fmin 1.0 (+ (-> this hit-points)
+                         (* heal-hp (-> this info damage inv-hit-points)))))))
   (none)
   )
 
@@ -731,6 +872,12 @@
 (defun tough-puppy-stall-engine! ((this wvehicle))
   (set! (-> *tough-puppy-stall-owner* 0) (process->handle this))
   (set! *tough-puppy-engine-stalled?* #t)
+  ;; A stalled manual-transmission car restarts in first, except for the
+  ;; Rhino and Gila Stomper which retain their selected gear by design.
+  (when (and (!= (-> this info vehicle-type) (vehicle-type-u8 v-rhino))
+             (!= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion)))
+    (set! (-> this gear-select) 1)
+    (set! (-> this next-gear-select) 1))
   (set! (-> this engine-rev) 0.0)
   (set! (-> this engine-rpm) 0.0)
   (set! (-> this engine-torque) 0.0)
@@ -1002,7 +1149,15 @@
         (go (method-of-object this sink))
         )
     )
+  ;; Bumper Cars gives the player car a lower rebound than the lightweight
+  ;; Marauders, so ramming them feels forceful without tossing the player away.
   (when (logtest? (vehicle-flag player-driving net-player-driving) (-> this v-flags))
+    (set! (-> this rbody bounce-factor)
+          (if *hero-destroy-interceptors-bumper-active?*
+              0.65
+              (-> this info info bounce-factor))))
+  (when (and (not *hero-destroy-interceptors-bumper-active?*)
+             (logtest? (vehicle-flag player-driving net-player-driving) (-> this v-flags)))
     (if (= (-> this info vehicle-type) (vehicle-type-u8 v-toad))
         (let ((ready?
                 (>= (the-as uint (- (current-time) (the-as int (-> this shoot-time))))
@@ -1094,6 +1249,7 @@
                (< 0.0 (-> this hit-points))
                (<= (-> this hit-points) 0.1))
       (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
+      (sound-play "get-green-eco")
       (set! *v-snake-emergency-repair-armed?* #f)
       (set! *v-snake-emergency-repair-cooldown-time* (-> *display* game-clock frame-counter))
       (set! *v-snake-emergency-repair-cooldown-active?* #t)
@@ -1115,6 +1271,47 @@
     0
     )
   ((method-of-type vehicle vehicle-method-77) this)
+  ;; Bumper Cars Tier-3 escalation meter. It mirrors the tachometer on the
+  ;; lower-right and appears only while the six-second multiplier stage is live.
+  (when (and *hero-destroy-interceptors-bumper-active?*
+             (> *hero-bumper-point-multiplier* 1)
+             (nonzero? *hero-bumper-double-start*)
+             (not (time-elapsed? *hero-bumper-double-start* *hero-bumper-double-duration*))
+             (logtest? (vehicle-flag player-driving net-player-driving) (-> this v-flags))
+             (not (paused?)) (not (movie?)) (not *progress-process*)
+             (not (load-in-progress? *level*))
+             (not (logtest? (-> this v-flags) (vehicle-flag dead))))
+    (let* ((width (the int (* 90.0 (-> *video-params* relative-x-scale))))
+           (x (the int (- 512.0 (* 8.0 (-> *video-params* relative-x-scale)) (the float width))))
+           (bar-y 310)
+           (fill (the int (* (the float width)
+                             (fmax 0.0 (fmin 1.0 (/ *hero-bumper-stage-points*
+                                                    *hero-bumper-stage-threshold*))))))
+           (time-fill (the int (* (the float width)
+                                  (fmax 0.0
+                                        (fmin 1.0
+                                          (- 1.0
+                                             (/ (the float (- (current-time) *hero-bumper-double-start*))
+                                                (the float *hero-bumper-double-duration*))))))))
+           (font (new 'stack 'font-context *font-default-matrix* x 293 0.0
+                      (font-color default) (font-flags shadow kerning middle))))
+      (set-width! font width)
+      (set-height! font 80)
+      ;; Match the tachometer's large gear-number presentation and leave the
+      ;; bar itself to communicate threshold progress and remaining time.
+      (set-scale! font 1.75)
+      (format (clear *temp-string*) "x~D" *hero-bumper-point-multiplier*)
+      (print-game-text *temp-string* font #f 44 (bucket-id hud-draw-pris2))
+      (with-dma-buffer-add-bucket ((buf (-> *display* frames (-> *display* on-screen) global-buf))
+                                   (bucket-id hud-draw-pris2))
+        (draw-sprite2d-xy buf x bar-y width 5
+                          (new 'static 'rgba :r 55 :g 55 :b 55 :a 100) #x3fffff)
+        (draw-sprite2d-xy buf x (+ bar-y 1) fill 3
+                          (new 'static 'rgba :r 255 :g 200 :b 48 :a 160) #x3fffff)
+        ;; The thin lower strip counts down the current six-second stage while
+        ;; the gold fill tracks points earned toward the next multiplier.
+        (draw-sprite2d-xy buf x (+ bar-y 4) time-fill 1
+                          (new 'static 'rgba :r 133 :g 186 :b 234 :a 160) #x3fffff))))
   ;; Tachometer and current gear above the lower-left boost HUD, safe for 4:3 for the streamers that'll play this mod XD. This is needed to see the current gear and RPM when using the manual transmission, otherwise you have to guess when to shift. hello?
   (when (and (tough-puppy-manual-gears-active? this)
              (not (paused?)) (not (movie?)) (not *progress-process*)
@@ -1143,11 +1340,20 @@
                           (new 'static 'rgba :r 55 :g 55 :b 55 :a 100) #x3fffff)
         (draw-sprite2d-xy buf (+ x (the int (* 0.9 (the float width)))) bar-y
                           (- width (the int (* 0.9 (the float width)))) 5
-                          (new 'static 'rgba :r 180 :g 25 :b 25 :a 128) #x3fffff)
+                          (new 'static 'rgba :r 153 :g 37 :b 31 :a 128) #x3fffff)
         (draw-sprite2d-xy buf x (+ bar-y 1)
                           (the int (* (the float width) (fmax 0.0 (fmin 1.0
                             (/ (-> this engine-rpm) (-> this info engine max-rpm)))))) 3
-                          (new 'static 'rgba :r 100 :g 210 :b 240 :a 128) #x3fffff)
+                          (new 'static 'rgba :r 133 :g 186 :b 234 :a 128) #x3fffff)
+        ;; Green is this car's configured downshift point.  It is deliberately
+        ;; hidden in first/reverse because no lower forward gear exists.
+        (when (> (-> this gear-select) 1)
+          (draw-sprite2d-xy buf
+                            (+ x (the int (* (the float (- width 1)) (fmin 1.0
+                              (/ (-> this info transmission downshift-rpm)
+                                 (-> this info engine max-rpm))))))
+                            bar-y 3 5
+                            (new 'static 'rgba :r 226 :g 235 :b 136 :a 160) #x3fffff))
         (draw-sprite2d-xy buf
                           (+ x (the int (* (the float (- width 1)) (fmin 1.0
                             (/ (tough-puppy-road-rpm this) (-> this info engine max-rpm))))))
@@ -1217,8 +1423,8 @@
                (= (-> this gear-select) (-> this next-gear-select)))
       (let ((required (tough-puppy-road-rpm this)))
         (set! *tough-puppy-clutch-mismatch* (fabs (- required (-> this engine-rpm))))
-        ;; Reward an actual, tightly rev-matched gear change with exactly one
-        ;; vehicle HP. Launches and clutch taps without a gear change do not heal.
+        ;; Reward an actual, tightly rev-matched gear change using the current
+        ;; vehicle's clean-shift heal. Launches and clutch taps do not heal.
         (when (and (!= (-> this gear-select) *tough-puppy-clutch-start-gear*)
                    (> (-> this gear-select) 0)
                    (not (tough-puppy-engine-stalled? this))
@@ -1466,6 +1672,14 @@
         (set! (-> this engine-torque)
               (* -1.0 (tough-puppy-engine-braking this) (-> this engine-max-torque)
                  (/ (-> this engine-rpm) (-> this info engine peak-torque-rpm))))))
+    (when (> (-> this engine-torque) 0.0)
+      (*! (-> this engine-torque)
+          (+ 1.0 (fmax
+                   (* (v-toad-water-assist-amount this) (- *v-toad-awd-water-torque-mult* 1.0))
+                   (* (v-toad-hill-assist-amount this)
+                    (- (if (v-toad-locked-4wd? this)
+                           *v-toad-4wd-hill-torque-mult*
+                           *v-toad-awd-hill-torque-mult*) 1.0))))))
     (let ((f0-13 0.0))
       (dotimes (v1-23 (-> s5-0 physics-model wheel-count))
         (let ((a0-9 (-> this wheel v1-23 info)))
@@ -1750,7 +1964,9 @@
           )
     (set! (-> s5-0 0 fvec y) (fmin 1.0 (fmax (-> s5-0 0 trans y) (-> s5-0 0 trans x))))
     (set! (-> s5-0 0 fvec x) (* (-> this controls steering) (-> s5-0 0 fvec y)))
-    (set! (-> s5-0 0 fvec z) (* (-> this info handling tire-steering-angle) (-> s5-0 0 fvec x)))
+    (set! (-> s5-0 0 fvec z)
+          (* (-> this info handling tire-steering-angle) (-> s5-0 0 fvec x)
+             (if (v-toad-locked-4wd? this) 0.75 1.0)))
     (set! (-> s5-0 0 fvec w)
           (* (-> s5-0 0 fvec z) (+ 1.0 (* (-> this info handling ackermann-factor) (fabs (-> s5-0 0 fvec x)))))
           )
@@ -1822,7 +2038,11 @@
             (set! (-> s3-0 steer-angle) (* (-> (&-> s5-0 0 rvec data (logand s4-1 1)) 0) (sign (-> s2-0 local-pos z))))
             )
         (if (wvehicle-wheel-driven? this s2-0)
-            (set! (-> s3-0 drive-diff) (-> (&-> s5-0 0 rvec data (logand s4-1 1)) 4))
+            ;; Locked mode removes the normal turning differential correction.
+            (set! (-> s3-0 drive-diff)
+                  (if (v-toad-locked-4wd? this)
+                      1.0
+                      (-> (&-> s5-0 0 rvec data (logand s4-1 1)) 4)))
             )
         )
       )
@@ -1835,7 +2055,9 @@
   (let ((s5-2 (new 'stack-no-clear 'wvehicle-physics-work)))
     (set! (-> s5-2 mat rvec x) (the-as float (current-time)))
     (cond
-      ((logtest? (-> this info flags) 4096)
+      ((and (logtest? (-> this info flags) 4096)
+            (not (and (= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
+                      (hero-scorpion-super-jump-enabled?))))
        (when (and (logtest? (-> this controls flags) (vehicle-controls-flag vcf0))
                   (not (logtest? (-> this controls prev-flags) (vehicle-controls-flag vcf0)))
                   (< (the-as uint 45) (- (the-as uint (-> s5-2 mat rvec x)) (the-as uint (-> this jump-time))))
@@ -1889,7 +2111,11 @@
           0
           (when (>= (-> this rbody matrix uvec y) 0.707)
             (set! (-> this jump-time) (the-as uint (-> s5-2 mat rvec x)))
-            (set! (-> this jump-control) (-> this info handling jump-thrust-factor))
+            (set! (-> this jump-control)
+                  (if (and (= (-> this info vehicle-type) (vehicle-type-u8 v-scorpion))
+                           (hero-scorpion-super-jump-enabled?))
+                      2.0
+                      (-> this info handling jump-thrust-factor)))
             (sound-play-by-name (-> this info sound jump-sound) (new-sound-id) 1024 0 0 (sound-group) #t)
             )
           )

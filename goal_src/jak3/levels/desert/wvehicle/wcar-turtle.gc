@@ -502,6 +502,8 @@
                       )
                   )
          (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
+         (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (sound-play "get-green-eco"))
          (set-time! *v-turtle-repair-cooldown-time*)
          (set! *v-turtle-repair-cooldown-active?* #t)
          )

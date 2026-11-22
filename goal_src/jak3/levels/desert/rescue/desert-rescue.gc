@@ -2250,6 +2250,12 @@
     )
   :trans (behavior ()
     ((-> (method-of-type task-manager active) trans))
+    ;; Hero Mode Neo Satellite reserve: Light Heal, Freeze, and Shield may
+    ;; consume the meter normally, but this fight always preserves one pill.
+    ;; Keeping the floor in the fight manager avoids changing Light Jak globally.
+    (when (and (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+               (< (-> *game-info* eco-pill-light) 1.0))
+      (set! (-> *game-info* eco-pill-light) 1.0))
     (task-manager-desert-rescue-method-44 self)
     (when (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
       (set! (-> *game-info* timer)

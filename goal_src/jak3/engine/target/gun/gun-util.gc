@@ -945,7 +945,13 @@
           (f30-0 (rotate-y<-vector+vector (-> this laser-dir) (-> this unk-vec00)))
           )
       (vector+float*! (-> s4-0 start-pos) s5-0 s3-0 -8192.0)
-      (vector-float*! (-> s4-0 move-dist) s3-0 163840.0)
+      (vector-float*!
+        (-> s4-0 move-dist)
+        s3-0
+        (if (= (-> this track-angle-mult) 98.0)
+            (+ 8192.0 (vector-vector-distance s5-0 (-> this track-trans)))
+            163840.0)
+        )
       (let ((v1-13 s4-0))
         (set! (-> v1-13 radius) (-> this track-beam-size))
         (set! (-> v1-13 collide-with)

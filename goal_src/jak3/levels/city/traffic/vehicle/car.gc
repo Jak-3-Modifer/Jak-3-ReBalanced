@@ -448,15 +448,19 @@
 (define *h-car-b-constants*
   (new 'static 'rigid-body-vehicle-constants
     :info (new 'static 'rigid-body-info
-      :mass 6.0
-      :inv-mass 0.16666667
+      ;; Volkswagen ID. Buzz: roughly 6,000 lb curb weight, long 127.5 in
+      ;; wheelbase, and a low battery-mounted center of mass.  Keep it
+      ;; substantially heavier and more rotation-resistant than the sedan
+      ;; chassis while retaining stable road manners.
+      :mass 10.0
+      :inv-mass 0.1
       :linear-damping 0.995
       :angular-damping 0.995
       :bounce-factor 0.4
       :friction-factor 0.05
       :bounce-mult-factor 1.22
       :cm-offset-joint (new 'static 'vector :w 1.0)
-      :inertial-tensor-box (new 'static 'array meters 3 (meters 3) (meters 4) (meters 6))
+      :inertial-tensor-box (new 'static 'array meters 3 (meters 5) (meters 8) (meters 10))
       )
     :extra (new 'static 'rigid-body-object-extra-info
       :max-time-step 0.033333335
@@ -471,14 +475,17 @@
     :vehicle-type (vehicle-type-u8 vt27)
     :transmission (new 'static 'vehicle-transmission-info :gear-count 1)
     :handling (new 'static 'vehicle-handling-info
-      :max-engine-thrust (meters 40)
-      :inv-max-engine-thrust 0.0000061035157
-      :engine-response-rate 10.0
+      ;; ID. Buzz RWD: a single-speed electric drivetrain with useful
+      ;; low-speed torque, but commuter-van acceleration and an ~90 mph
+      ;; limited top speed.
+      :max-engine-thrust (meters 85)
+      :inv-max-engine-thrust 0.0000028722427
+      :engine-response-rate 32.0
       :engine-intake-factor 1.0
-      :brake-factor 2.25
+      :brake-factor 3.3
       :turbo-boost-factor 1.0
       :turbo-boost-duration (seconds 1)
-      :max-xz-speed (meters 40)
+      :max-xz-speed (meters 25)
       :player-turn-anim-min -1.0
       :player-turn-anim-max 1.0
       :pilot-x-accel-factor 1.0
@@ -486,23 +493,23 @@
       :pilot-z-accel-factor 1.0
       :ground-probe-distance (meters 4.5)
       :cos-ground-effect-angle 0.42261827
-      :spring-lift-factor 0.4
+      :spring-lift-factor 0.32
       :air-drag-factor 1.0
-      :steering-thruster-factor 3.5
-      :steering-thruster-max-gain 3.8
-      :steering-thruster-half-gain-speed (meters 15)
+      :steering-thruster-factor 2.8
+      :steering-thruster-max-gain 3.0
+      :steering-thruster-half-gain-speed (meters 12)
       :tire-steering-speed-factor 61440.0
-      :tire-friction-factor 0.55
-      :tire-static-friction 0.55
-      :tire-dynamic-friction 0.4
+      :tire-friction-factor 0.65
+      :tire-static-friction 0.62
+      :tire-dynamic-friction 0.47
       :tire-dynamic-friction-speed (meters 2)
       :tire-inv-max-friction-speed 0.000034877234
       :airfoil-factor 1.0
       :drag-force-factor 1.0
       :speed-scrubbing-drag 10.0
       :speed-limiting-drag 0.69
-      :pitch-control-factor 0.5
-      :roll-control-factor 1.0
+      :pitch-control-factor 0.45
+      :roll-control-factor 0.8
       :jump-thrust-factor 0.5
       :buoyancy-factor 1.0
       :water-drag-factor 1.0
@@ -515,7 +522,7 @@
       :ai-throttle-factor 1.0
       )
     :target-speed-offset (meters 3)
-    :turning-accel (meters 20)
+    :turning-accel (meters 16)
     :camera (new 'static 'vehicle-camera-info
       :string-min-height (meters 4.5)
       :string-max-height (meters 4.5)

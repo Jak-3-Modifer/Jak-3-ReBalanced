@@ -16,6 +16,81 @@
 
 ;; DECOMP BEGINS
 
+;; Hero Mode Gila Stomper loadout.  This intentionally has its own state so
+;; the garage selections never alter the Tough Puppy or Dune Hopper.
+(define *v-scorpion-loadout-menu-open?* #f)
+(define *v-scorpion-loadout-menu-page* 0)
+(define *v-scorpion-loadout-menu-selection* 0)
+(define *v-scorpion-weapon-loadout* 0)
+(define *v-scorpion-ability-loadout* 0)
+(define *v-scorpion-defense-loadout* 0)
+(define *v-scorpion-toughness-equipped?* #f)
+(define *v-scorpion-mass-inverter-time* (the-as time-frame 0))
+(define *v-scorpion-mass-inverter-cooldown?* #f)
+(define *v-scorpion-shield-time* (the-as time-frame 0))
+(define *v-scorpion-shield-active?* #f)
+(define *v-scorpion-shield-cooldown-time* (the-as time-frame 0))
+(define *v-scorpion-shield-cooldown?* #f)
+(define *v-scorpion-repair-cooldown-time* (the-as time-frame 0))
+(define *v-scorpion-repair-cooldown?* #f)
+(define *v-scorpion-regen-time* (the-as time-frame 0))
+(define *v-scorpion-regen-active?* #f)
+(define *v-scorpion-camouflage-time* (the-as time-frame 0))
+(define *v-scorpion-camouflage-cooldown-time* (the-as time-frame 0))
+(define *v-scorpion-camouflage-cooldown?* #f)
+(define *v-scorpion-camouflage-active?* #f)
+(define *v-scorpion-jammer-fade-active?* #f)
+(define *v-scorpion-super-jump-slam?* #f)
+(define *v-scorpion-super-jump-slam-time* (the-as time-frame 0))
+
+(define-extern hero-scorpion-super-jump-enabled? (function symbol))
+
+(defun set-v-scorpion-active-loadout! ((loadout int))
+  (set! *v-scorpion-weapon-loadout* loadout)
+  (none))
+
+(defun set-v-scorpion-ability-loadout! ((loadout int))
+  (set! *v-scorpion-ability-loadout* loadout)
+  (set! *v-scorpion-toughness-equipped?* (= loadout 2))
+  (none))
+
+(defun set-v-scorpion-defense-loadout! ((loadout int))
+  (set! *v-scorpion-defense-loadout* loadout)
+  (none))
+
+(defun close-v-scorpion-loadout-menu ()
+  (set-master-mode 'game)
+  (set! *v-scorpion-loadout-menu-open?* #f)
+  (set! *popup-menu-open* #f)
+  (none))
+
+(defun open-v-scorpion-loadout-menu ()
+  (set! *v-scorpion-loadout-menu-page* 0)
+  (set! *v-scorpion-loadout-menu-selection* 0)
+  (set! *v-scorpion-loadout-menu-open?* #t)
+  (set! *popup-menu-open* #t)
+  (set-master-mode 'menu)
+  (sound-play "menu-pick")
+  (none))
+
+(defun v-scorpion-set-fade! ((this wvehicle) (amount uint) (active? symbol))
+  (if active?
+      (begin
+        (logior! (-> this draw status) (draw-control-status force-fade))
+        (set! (-> this draw force-fade) amount))
+      (begin
+        (set! (-> this draw force-fade) (the-as uint 128))
+        (logclear! (-> this draw status) (draw-control-status force-fade))))
+  (none))
+
+(defun v-scorpion-camouflage-hides-target? ()
+  (if (and *v-scorpion-camouflage-active?*
+           *target*
+           (focus-test? *target* pilot-riding)
+           (= (-> *game-info* current-vehicle) (vehicle-type-u8 v-scorpion)))
+      #t
+      #f))
+
 
 (deftype v-scorpion (wcar-base)
   ((jmod-axles       joint-mod-rotate-local  4 :inline)
@@ -191,6 +266,13 @@
   (let ((t9-0 (method-of-type wcar-base vehicle-method-88)))
     (t9-0 this arg0)
     )
+  ;; Keep the charged jump on the normal L1 vehicle-jump input. The shared
+  ;; jump system handles suspension compression while held and launch on release.
+  (when (and (hero-scorpion-super-jump-enabled?)
+             (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+    (if (cpad-hold? 0 l1)
+        (logior! (-> arg0 flags) (vehicle-controls-flag vcf0))
+        (logclear! (-> arg0 flags) (vehicle-controls-flag vcf0))))
   (wvehicle-method-199 this)
   0
   (none)
@@ -206,7 +288,139 @@
   (none)
   )
 
+(defmethod deactivate ((this v-scorpion))
+  (when (or *v-scorpion-camouflage-active?* *v-scorpion-jammer-fade-active?*)
+    (v-scorpion-set-fade! this (the-as uint 128) #f))
+  (set! *v-scorpion-camouflage-active?* #f)
+  (set! *v-scorpion-jammer-fade-active?* #f)
+  (set! *v-scorpion-shield-active?* #f)
+  (set! *v-scorpion-super-jump-slam?* #f)
+  ((method-of-type wcar-base deactivate) this)
+  (none)
+  )
+
+(defmethod apply-damage ((this v-scorpion) (amount float) (impact rigid-body-impact))
+  (when (and *v-scorpion-toughness-equipped?*
+             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+             (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+    (set! amount (/ amount 2)))
+  (when *v-scorpion-shield-active?*
+    (set! amount 0.0))
+  ;; Protect the player vehicle through the slam and its initial ground impact.
+  ;; The immunity window is slightly longer than the 0.2-second gravity burst.
+  (when (and *v-scorpion-super-jump-slam?*
+             (hero-scorpion-super-jump-enabled?)
+             (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (not (time-elapsed? *v-scorpion-super-jump-slam-time* (seconds 0.3))))
+    (set! amount 0.0))
+  (when (and (= *v-scorpion-ability-loadout* 7) (> amount 0.0))
+    (set-time! *v-scorpion-regen-time*)
+    (set! *v-scorpion-regen-active?* #t))
+  ((method-of-type wcar-base apply-damage) this amount impact)
+  (none)
+  )
+
+(defun v-scorpion-update-loadout! ((this v-scorpion))
+  (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (= *v-scorpion-weapon-loadout* 1)
+             (cpad-pressed? 0 r1)
+             (or (not *v-scorpion-mass-inverter-cooldown?*)
+                 (time-elapsed? *v-scorpion-mass-inverter-time* (seconds 8))))
+    (process-spawn gun-gravity (-> this root trans) (-> this rbody matrix fvec)
+                   :name "v-scorpion-mass-inverter" :to *entity-pool*)
+    (set-time! *v-scorpion-mass-inverter-time*)
+    (set! *v-scorpion-mass-inverter-cooldown?* #t))
+  (when (and (logtest? (vehicle-flag player-driving) (-> this v-flags))
+             (cpad-pressed? 0 right))
+    (case *v-scorpion-defense-loadout*
+      ((4)
+       (when (and (not *v-scorpion-shield-active?*)
+                  (or (not *v-scorpion-shield-cooldown?*)
+                      (time-elapsed? *v-scorpion-shield-cooldown-time* (seconds 35))))
+         (set-time! *v-scorpion-shield-time*)
+         (set! *v-scorpion-shield-active?* #t)
+         (set! *v-scorpion-shield-cooldown?* #f)
+         (sound-play "shield-on")))
+      ((5)
+       (when (and (< 0.0 (-> this hit-points))
+                  (<= (-> this hit-points) 0.15)
+                  (or (not *v-scorpion-repair-cooldown?*)
+                      (time-elapsed? *v-scorpion-repair-cooldown-time* (seconds 40))))
+         (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.25)))
+         (when (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
+           (sound-play "get-green-eco"))
+         (set-time! *v-scorpion-repair-cooldown-time*)
+         (set! *v-scorpion-repair-cooldown?* #t)))
+      ((8)
+       (when (and (not *v-scorpion-camouflage-active?*)
+                  (or (not *v-scorpion-camouflage-cooldown?*)
+                      (time-elapsed? *v-scorpion-camouflage-cooldown-time* (seconds 25))))
+         (set-time! *v-scorpion-camouflage-time*)
+         (set! *v-scorpion-camouflage-active?* #t)
+         (set! *v-scorpion-camouflage-cooldown?* #f)
+         (v-scorpion-set-fade! this (the-as uint 13) #t)))))
+  (when (and *v-scorpion-shield-active?*
+             (or (time-elapsed? *v-scorpion-shield-time* (seconds 4))
+                 (!= *v-scorpion-defense-loadout* 4)))
+    (set! *v-scorpion-shield-active?* #f)
+    (set-time! *v-scorpion-shield-cooldown-time*)
+    (set! *v-scorpion-shield-cooldown?* #t))
+  (when (and (= *v-scorpion-ability-loadout* 3)
+             (not (logtest? (vehicle-flag turbo-boost) (-> this v-flags))))
+    (set! (-> this turbo-ready) (fmin 1.0 (+ (-> this turbo-ready)
+                                             (* 0.5 (seconds-per-frame))))))
+  (cond
+    ((!= *v-scorpion-ability-loadout* 7)
+     (set! *v-scorpion-regen-active?* #f))
+    ((and *v-scorpion-regen-active?*
+          (time-elapsed? *v-scorpion-regen-time* (seconds 4)))
+     (set! (-> this hit-points) (fmin 1.0 (+ (-> this hit-points) 0.033333335)))
+     (if (>= (-> this hit-points) 1.0)
+         (set! *v-scorpion-regen-active?* #f)
+         (set-time! *v-scorpion-regen-time*))))
+  (when (and *v-scorpion-camouflage-active?*
+             (or (time-elapsed? *v-scorpion-camouflage-time* (seconds 10))
+                 (!= *v-scorpion-defense-loadout* 8)))
+    (set! *v-scorpion-camouflage-active?* #f)
+    (set-time! *v-scorpion-camouflage-cooldown-time*)
+    (set! *v-scorpion-camouflage-cooldown?* #t)
+    (v-scorpion-set-fade! this (the-as uint 128) #f))
+  (cond
+    (*v-scorpion-camouflage-active?*
+     (set! *v-scorpion-jammer-fade-active?* #f))
+    ((= *v-scorpion-ability-loadout* 6)
+     (unless *v-scorpion-jammer-fade-active?*
+       (set! *v-scorpion-jammer-fade-active?* #t)
+       (v-scorpion-set-fade! this (the-as uint 115) #t)))
+    (*v-scorpion-jammer-fade-active?*
+     (set! *v-scorpion-jammer-fade-active?* #f)
+     (v-scorpion-set-fade! this (the-as uint 128) #f)))
+  ;; Square applies eight additional gravities for 0.2 seconds. Force is
+  ;; additive, preserving horizontal rigid-body motion.
+  (when (and (hero-scorpion-super-jump-enabled?)
+             (logtest? (vehicle-flag player-driving in-air) (-> this v-flags))
+             (cpad-pressed? 0 square))
+    (set! *v-scorpion-super-jump-slam?* #t)
+    (set-time! *v-scorpion-super-jump-slam-time*))
+  (cond
+    ((and *v-scorpion-super-jump-slam?*
+          (hero-scorpion-super-jump-enabled?)
+          (logtest? (vehicle-flag player-driving) (-> this v-flags)))
+     (when (and (logtest? (vehicle-flag in-air) (-> this v-flags))
+                (not (time-elapsed? *v-scorpion-super-jump-slam-time* (seconds 0.2))))
+       (let ((force (new 'stack 'vector)))
+         (set! (-> force y)
+               (- (* 8.0 (-> this info info mass) (-> this info extra gravity))))
+         (add-force! (-> this rbody) force)))
+     (when (time-elapsed? *v-scorpion-super-jump-slam-time* (seconds 0.3))
+       (set! *v-scorpion-super-jump-slam?* #f)))
+    (*v-scorpion-super-jump-slam?*
+     (set! *v-scorpion-super-jump-slam?* #f)))
+  (none)
+  )
+
 (defmethod vehicle-method-79 ((this v-scorpion))
+  (v-scorpion-update-loadout! this)
   (seek! (-> this gun-kick) 0.0 (* 32768.0 (seconds-per-frame)))
   (new 'stack-no-clear 'vector)
   (set! (-> this jmod-gun-kick transform trans z) (-> this gun-kick))
@@ -335,8 +549,7 @@
   (set! (-> this gun-aim-yaw-vel) 0.0)
   (set! (-> this gun-yaw) 0.0)
   (set! (-> this gun-pitch) 0.0)
-  ;; 36 ticks at 300 ticks per second gives 500 RPM.
-  (set! (-> this shoot-delay) (the-as uint 36))
+  (set! (-> this shoot-delay) (the-as uint 26))
   (set! (-> this lock-turret) #f)
   0
   (none)

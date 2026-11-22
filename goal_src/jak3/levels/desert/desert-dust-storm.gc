@@ -812,8 +812,6 @@
 (define *desert-resource-match-pos*
   (new 'static 'vector :x (meters 3033.70) :y (meters 8.63) :z (meters 1681.03) :w 1.0))
 (define *rr-radius* (meters 3))
-(define *rr-debug-marker?* #t)
-(define *rr-debug-color* (new 'static 'rgba :r 32 :g 255 :b 160 :a 128))
 (define *rr-open?* #f)
 (define *rr-mode* 0) ;; 0 river, 1 inventory, 2 bank, 3 summary, 4 discard confirmation.
 (define *rr-return-mode* 1)
@@ -1434,25 +1432,6 @@
           *rr-caught* *rr-deposited* *rr-goal* (rr-count 4)) 36 391 0.34 (font-color menu-flag-off)))))
   (none))
 (defun rr-update ((owner process))
-  ;; Temporary locator: no actors, map registrations, or persistent handles.
-  (when (and *rr-debug-marker?* *target* (not *rr-open?*)
-             (= *master-mode* 'game)
-             (logtest? (-> *game-info* secrets) (game-secrets hero-mode))
-             (= (level-status? *level* 'desert #f) 'active)
-             (not (load-in-progress? *level*)))
-    (add-debug-sphere #t (bucket-id debug-no-zbuf1)
-      *desert-resource-match-pos* *rr-radius* *rr-debug-color*)
-    (let ((top (new 'stack 'vector)))
-      (vector-copy! top *desert-resource-match-pos*)
-      (+! (-> top y) (meters 60))
-      (add-debug-line #t (bucket-id debug-no-zbuf1)
-        *desert-resource-match-pos* top *rr-debug-color* #f (the-as rgba -1)))
-    (add-debug-line #t (bucket-id debug-no-zbuf1)
-      (target-pos 0) *desert-resource-match-pos* *rr-debug-color* #f (the-as rgba -1))
-    (rr-label (rr-text "ROCK COLLECTOR: ~D METERS"
-      (the int (/ (vector-vector-distance (target-pos 0) *desert-resource-match-pos*) (meters 1))))
-      100 110 0.30 (font-color cyan))
-    (rr-label "3033.70 / 8.63 / 1681.03 - ENTER ON FOOT" 70 132 0.23 (font-color white)))
   (cond
     (*rr-open?*
      (cond

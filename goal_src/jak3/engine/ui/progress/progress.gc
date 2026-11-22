@@ -7,6 +7,10 @@
 
 (define-extern memcard-unlocked-secrets? (function object symbol game-secrets))
 (define-extern *progress-list-level* progress-list-level)
+;; The menu source does not import game-info-h directly, so declare the
+;; Cosmetics helpers used by its toggle path here.
+(define-extern hero-costume-option? (function text-id symbol))
+(define-extern hero-costume-option-toggle! (function text-id none))
 
 ;; DECOMP BEGINS
 
@@ -511,6 +515,9 @@
 
 (defmethod deactivate ((this progress))
   "Make a process dead, clean it up, remove it from the active pool, and return to dead pool."
+  ;; Start a consumed food's timed effect only after the pause screen has
+  ;; finished closing, so one-second effects are not spent during transition.
+  (hero-fruit-apply-pending!)
   (set! (-> *progress-work* hero-mode-save) #f)
   (remove-setting-by-arg0 *setting-control* 'extra-bank)
   (disable-drawing *bigmap*)
@@ -3426,6 +3433,8 @@
                   (cond
                     ((logtest? (-> s3-0 flags) (secret-item-option-flags sf1))
                      (cond
+                       ((hero-costume-option? (-> s3-0 name))
+                        (hero-costume-option-toggle! (-> s3-0 name)))
                        ((= (-> s3-0 name) (text-id text-004a))
                         (set! (-> *hero-npc-shop-info* purchases)
                               (logxor (-> *hero-npc-shop-info* purchases) 2)))
@@ -3924,20 +3933,97 @@
     )
   )
 
+(defun hero-food-selection-valid? ((food int))
+  (and (>= food 0)
+       (< food 6)
+       (< 0 (-> *hero-fruit-shop-info* owned food)))
+  )
+
+(defun hero-food-normalize-selection! ()
+  (when (not (hero-food-selection-valid? *hero-food-inventory-selection*))
+    (let ((first -1))
+      (dotimes (food 6)
+        (when (and (= first -1) (hero-food-selection-valid? food))
+          (set! first food)))
+      ;; Keep the cursor in range when the inventory is empty.  The draw and
+      ;; input paths still treat it as unavailable until an item is owned.
+      (set! *hero-food-inventory-selection* (if (= first -1) 0 first))))
+  (none)
+  )
+
+(defun hero-food-move-selection! ((direction int))
+  (hero-food-normalize-selection!)
+  (let ((old *hero-food-inventory-selection*))
+    (when (hero-food-selection-valid? old)
+      (cond
+        ((or (= direction -1) (= direction 1))
+         ;; Horizontal navigation wraps through the six fixed slots, skipping
+         ;; every food whose owned quantity is zero.
+         (let ((candidate old)
+               (remaining 6))
+           (while (> remaining 0)
+             (set! candidate (mod (+ candidate direction 6) 6))
+             (+! remaining -1)
+             (when (hero-food-selection-valid? candidate)
+               (set! *hero-food-inventory-selection* candidate)
+               (set! remaining 0)))))
+        (else
+          ;; The grid is 3 columns by 2 rows.  Prefer the same column in the
+          ;; opposite row, then search the other two slots in that row.
+          (let ((row (if (< old 3) 3 0))
+                (column (mod old 3))
+                (offset 0)
+                (found -1))
+            (while (< offset 3)
+              (let ((candidate (+ row (mod (+ column offset) 3))))
+                (when (and (= found -1) (hero-food-selection-valid? candidate))
+                  (set! found candidate)))
+              (+! offset 1))
+            (when (!= found -1)
+              (set! *hero-food-inventory-selection* found))))))
+    (!= old *hero-food-inventory-selection*))
+  )
+
 (defmethod respond-progress ((this menu-inventory) (arg0 progress) (arg1 symbol))
   (let* ((f30-0 (the float (-> this screens length)))
          (s4-0 (-> this screens (min (the int (-> this current-index)) (-> this screens length))))
          (v1-9 (-> s4-0 groups (-> s4-0 current-index)))
+         (food-page? (and (= (-> s4-0 name) (text-id progress-inventory-food-items))
+                          (logtest? (-> *game-info* secrets) (game-secrets hero-mode))))
          (gp-0 #f)
          )
+    ;; Food owns its four-way grid input.  Native L1/R1 paging remains active.
+    (when food-page?
+      (hero-food-normalize-selection!)
+      (cond
+        ((cpad-pressed? 0 left l-analog-left)
+         (when (hero-food-move-selection! -1) (sound-play "generic-beep"))
+         (cpad-clear! 0 left l-analog-left))
+        ((cpad-pressed? 0 right l-analog-right)
+         (when (hero-food-move-selection! 1) (sound-play "generic-beep"))
+         (cpad-clear! 0 right l-analog-right))
+        ((cpad-pressed? 0 up l-analog-up)
+         (when (hero-food-move-selection! -3) (sound-play "generic-beep"))
+         (cpad-clear! 0 up l-analog-up))
+        ((cpad-pressed? 0 down l-analog-down)
+         (when (hero-food-move-selection! 3) (sound-play "generic-beep"))
+         (cpad-clear! 0 down l-analog-down))
+        ((cpad-pressed? 0 x)
+         (cpad-clear! 0 x)
+         (let ((before (-> *hero-fruit-shop-info* owned *hero-food-inventory-selection*)))
+           (hero-fruit-consume! *hero-food-inventory-selection*)
+           (when (< (-> *hero-fruit-shop-info* owned *hero-food-inventory-selection*) before)
+             (hero-food-normalize-selection!)
+             (set-next-state arg0 'go-away 0))))))
     (let ((f28-0 0.0))
       (let ((f0-3 (-> this target-index)))
         (set! (-> this target-index) (- f0-3 (* (the float (the int (/ f0-3 f30-0))) f30-0)))
         )
       (cond
-        ((or (cpad-pressed? 0 left l-analog-left)
+        ((and (not food-page?)
+              (or (cpad-pressed? 0 left l-analog-left)
              (and (cpad-hold? 0 left l-analog-left) (time-elapsed? (-> arg0 last-move) (seconds 0.2)))
-             )
+             ))
          (set-time! (-> arg0 last-move))
          (let ((s3-0 (-> s4-0 current-index))
                (s2-0 (-> v1-9 index-left))
@@ -3960,9 +4046,10 @@
              )
            )
          )
-        ((or (cpad-pressed? 0 right l-analog-right)
+        ((and (not food-page?)
+              (or (cpad-pressed? 0 right l-analog-right)
              (and (cpad-hold? 0 right l-analog-right) (time-elapsed? (-> arg0 last-move) (seconds 0.2)))
-             )
+             ))
          (set-time! (-> arg0 last-move))
          (let ((s3-2 (-> s4-0 current-index))
                (s2-1 (-> v1-9 index-right))
@@ -3985,9 +4072,10 @@
              )
            )
          )
-        ((or (cpad-pressed? 0 up l-analog-up)
+        ((and (not food-page?)
+              (or (cpad-pressed? 0 up l-analog-up)
              (and (cpad-hold? 0 up l-analog-up) (time-elapsed? (-> arg0 last-move) (seconds 0.2)))
-             )
+             ))
          (set-time! (-> arg0 last-move))
          (let ((s3-4 (-> s4-0 current-index))
                (s2-2 (-> v1-9 index-up))
@@ -4010,9 +4098,10 @@
              )
            )
          )
-        ((or (cpad-pressed? 0 down l-analog-down)
+        ((and (not food-page?)
+              (or (cpad-pressed? 0 down l-analog-down)
              (and (cpad-hold? 0 down l-analog-down) (time-elapsed? (-> arg0 last-move) (seconds 0.2)))
-             )
+             ))
          (set-time! (-> arg0 last-move))
          (let ((s3-6 (-> s4-0 current-index))
                (s2-3 (-> v1-9 index-down))

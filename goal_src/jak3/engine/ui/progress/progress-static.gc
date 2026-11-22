@@ -3470,10 +3470,18 @@
       (new 'static 'inventory-item-group
         :items (new 'static 'boxed-array :type inventory-item)))))
 
+(define *hero-food-inventory-screen*
+  (new 'static 'inventory-screen
+    :name (text-id progress-inventory-food-items)
+    :groups (new 'static 'boxed-array :type inventory-item-group
+      (new 'static 'inventory-item-group
+        :items (new 'static 'boxed-array :type inventory-item)))))
+
 (define *normal-inventory-screens*
   (-> (the-as menu-inventory (-> *inventory* options 0)) screens))
 (define *hero-inventory-screens*
-  (new 'global 'boxed-array inventory-screen (+ (-> *normal-inventory-screens* length) 1)))
+  (new 'global 'boxed-array inventory-screen (+ (-> *normal-inventory-screens* length) 2)))
 (set! (-> *hero-inventory-screens* 0) *hero-artifact-inventory-screen*)
+(set! (-> *hero-inventory-screens* 1) *hero-food-inventory-screen*)
 (dotimes (index (-> *normal-inventory-screens* length))
-  (set! (-> *hero-inventory-screens* (+ index 1)) (-> *normal-inventory-screens* index)))
+  (set! (-> *hero-inventory-screens* (+ index 2)) (-> *normal-inventory-screens* index)))

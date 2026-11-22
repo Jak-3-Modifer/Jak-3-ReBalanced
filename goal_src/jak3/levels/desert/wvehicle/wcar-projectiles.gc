@@ -272,8 +272,22 @@
       )
     (when (and owner
                (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-snake)))
-      (set! (-> this vehicle-impulse-factor) 1.5)
+      (set! (-> this vehicle-impulse-factor) 0.5)
       )
+    ;; X-Ride impulse factor.
+    (when (and owner
+               (= (-> (the-as wvehicle owner) info vehicle-type)
+                  (vehicle-type-u8 v-x-ride)))
+      (set! (-> this vehicle-impulse-factor) 1.0)
+      )
+
+    
+    (when (and owner
+               (= (-> (the-as wvehicle owner) info vehicle-type)
+                  (vehicle-type-u8 v-fox)))
+      (set! (-> this damage) 1.65)
+      )
+
     )
   (none)
   )
@@ -294,14 +308,17 @@
   (none)
   )
 
+
 (defmethod deal-damage! ((this v-snake-shot) (arg0 process) (arg1 event-message-block))
   (let* ((owner (handle->process (-> this owner-handle)))
          (desert-screamer?
            (and owner
-                (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-x-ride))))
+                (= (-> (the-as wvehicle owner) info vehicle-type)
+                   (vehicle-type-u8 v-x-ride))))
          (heat-seeker?
            (and owner
-                (= (-> (the-as wvehicle owner) info vehicle-type) (vehicle-type-u8 v-fox))))
+                (= (-> (the-as wvehicle owner) info vehicle-type)
+                   (vehicle-type-u8 v-fox))))
          (gp-0
            (if (or desert-screamer? heat-seeker?)
                (let ((attack (new 'stack 'attack-info)))
@@ -314,9 +331,38 @@
                    (set! (-> attack attacker-velocity quad) (-> this pre-move-transv quad))
                    (logior! (-> attack mask) (attack-mask attacker-velocity))
                    )
-                 (set! (-> attack damage) (-> this damage))
-                 (set! (-> attack vehicle-damage-factor) (-> this vehicle-damage-factor))
-                 (set! (-> attack vehicle-impulse-factor) (-> this vehicle-impulse-factor))
+                 
+(set! (-> attack damage)
+  (if desert-screamer?
+      (let ((distance
+              (vector-vector-distance
+                (-> this init-pos)
+                (-> this root trans))))
+        (cond
+          ;; Full damage through 70 meters.
+          ((<= distance (meters 70))
+           3.2)
+
+          ;; Linear falloff from 3.0 to 2.1.
+          ((<= distance (meters 125))
+           (- 3.2
+              (* 1.1
+                 (/ (- distance (meters 70))
+                    (meters 55)))))
+
+                    ;; Minimum damage beyond 125 meters. just read the code
+          (else 2.1)
+          )
+        )
+      (-> this damage)
+      )
+  )
+
+(set! (-> attack vehicle-damage-factor)
+      (-> this vehicle-damage-factor))
+
+(set! (-> attack vehicle-impulse-factor)
+      (-> this vehicle-impulse-factor))
                  (logior!
                    (-> attack mask)
                    (attack-mask damage vehicle-damage-factor vehicle-impulse-factor)
@@ -345,7 +391,38 @@
                      )
                    )
                  )
-               ((method-of-type v-scorp-shot deal-damage!) this arg0 arg1)
+
+               ;; sand shark distance-based damage falloff, used to balance the cars
+               (if (and owner
+                        (= (-> (the-as wvehicle owner) info vehicle-type)
+                           (vehicle-type-u8 v-snake)))
+                   (let ((original-damage (-> this damage))
+                         (distance (vector-vector-distance
+                                     (-> this init-pos)
+                                     (-> this root trans))))
+                     (set! (-> this damage)
+                       (cond
+                         ((<= distance (meters 15)) 1.6)
+                         ((<= distance (meters 30))
+                          (- 1.6 (* (- distance (meters 15))
+                                    (/ 0.5 (meters 15)))))
+                         ((<= distance (meters 50))
+                          (- 1.0 (* (- distance (meters 30))
+                                    (/ 0.4 (meters 20)))))
+                         ((<= distance (meters 75))
+                          (- 0.6 (* (- distance (meters 50))
+                                    (/ 0.3 (meters 25)))))
+                         (else 0.3)
+                         )
+                       )
+                     (let ((result ((method-of-type v-scorp-shot deal-damage!)
+                                    this arg0 arg1)))
+                       (set! (-> this damage) original-damage)
+                       result
+                       )
+                     )
+                   ((method-of-type v-scorp-shot deal-damage!) this arg0 arg1)
+                   )
                )
            )
          )
@@ -661,7 +738,7 @@
                   ;; dedicated outward push below, with no vertical launch.
                   (when (= mirage-push-scale 0.0)
                     (+! (-> vehicle rbody lin-momentum y)
-                        (* (meters 60)
+                        (* (meters 30)
                            (-> vehicle info info mass)
                            (- 1.0 (/ distance radius))
                            )

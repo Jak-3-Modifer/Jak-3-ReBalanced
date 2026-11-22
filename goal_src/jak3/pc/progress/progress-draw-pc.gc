@@ -855,10 +855,16 @@
   )
 
 (defmethod inventory-screen-method-9 ((this inventory-screen) (arg0 progress) (arg1 font-context) (arg2 float) (arg3 float))
-  ;; progress-draw-pc replaces the original screen renderer at runtime too.
-  (if (and (= this *hero-artifact-inventory-screen*)
-           (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-      (draw-hero-artifact-inventory-page arg0 arg1 arg2 arg3)
+  ;; progress-draw-pc replaces the shared screen renderer at runtime too, so
+  ;; route both custom Hero Mode pages back through their shared draw helpers.
+  (cond
+    ((and (= this *hero-artifact-inventory-screen*)
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (draw-hero-artifact-inventory-page arg0 arg1 arg2 arg3))
+    ((and (= (-> this name) (text-id progress-inventory-food-items))
+          (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
+     (draw-hero-food-inventory-page arg0 arg1 arg2 arg3))
+    (else
       (begin
         ;; Each frame draws two adjacent pages; restore native alignment after
         ;; rendering the artifact page so the other page is not right-aligned.
@@ -878,7 +884,7 @@
             (the-as int (= s1-1 (-> this current-index)))
             )
           )
-        (none)))
+        (none))))
   )
 
 (defmethod inventory-item-group-method-10 ((this inventory-item-group) (arg0 progress) (arg1 font-context) (arg2 float) (arg3 float) (arg4 int))

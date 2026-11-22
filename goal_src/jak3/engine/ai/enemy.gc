@@ -2176,12 +2176,22 @@
                      )
                  )
          )
-    (if (and (logtest? (process-mask kg-robot) (-> this mask))
-             (kg-robot-player-weapon-or-melee? attack)
-             )
-        (* damage 0.5)
-        damage
-        )
+    (let ((adjusted
+            (if (and (logtest? (process-mask kg-robot) (-> this mask))
+                     (kg-robot-player-weapon-or-melee? attack)
+                     )
+                (* damage 0.5)
+                damage)))
+      ;; Raspberries boost only direct Jak melee while their short timer is
+      ;; active; gun projectiles always have a non-target attacker process.
+      (if (and *target*
+               (not (time-elapsed? (-> *hero-fruit-shop-info* melee-time)
+                                   (seconds 1)))
+               (logtest? (-> attack mask) (attack-mask attacker))
+               (= (handle->process (-> attack attacker)) *target*)
+               (not (using-gun? *target*)))
+          (* adjusted 1.35)
+          adjusted))
     )
   )
 

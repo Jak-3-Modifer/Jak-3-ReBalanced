@@ -680,16 +680,6 @@
             )
         )
       )
-    ;; Normal Mode retains the original Turtle restriction. Hero Mode accepts
-    ;; whichever desert vehicle the player selected.
-    (when (and (not (logtest? (-> *game-info* secrets) (game-secrets hero-mode)))
-               *target*
-               (focus-test? *target* pilot-riding)
-               (not (focus-test? *target* flut))
-               (!= (-> *target* pilot vehicle) (-> *vehicle-info* handle-by-vehicle-type 12))
-               )
-      (send-event this 'fail)
-      )
     (when (zero? (-> this lizard-count))
       (when (and (not (time-elapsed? (-> this hint-time) (seconds 10)))
                  (can-display-query? this "desert-lizard-task" -99.0)

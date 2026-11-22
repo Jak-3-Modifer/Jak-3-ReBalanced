@@ -752,10 +752,46 @@
   (none)
   )
 
+(defun eco-creature-push-darkjak! ((this prebot-large-eco-creature))
+  (let ((away (new 'stack-no-clear 'vector)))
+    (vector-! away (get-trans *target* 0) (-> this root trans))
+    (set! (-> away y) 0.0)
+    (when (> (vector-length away) 0.0)
+      (vector-normalize! away 1.0)
+      ;; Remove only velocity toward Jak, keeping vertical and sideways motion.
+      (let ((inward (vector-dot (-> this root transv) away)))
+        (when (> inward 0.0)
+          (vector+float*! (-> this root transv) (-> this root transv) away (- inward))
+          )
+        )
+      (let ((inward (vector-dot (-> this nav state velocity) away)))
+        (when (> inward 0.0)
+          (vector+float*! (-> this nav state velocity) (-> this nav state velocity) away (- inward))
+          (set! (-> this nav state speed) (vector-length (-> this nav state velocity)))
+          )
+        )
+      ;; Use the existing velocity timer to avoid restarting the push each frame.
+      (when (>= (current-time) (-> *target* control additional-decaying-velocity-decay-start-time))
+        (send-event *target* 'push-transv
+                    (vector-float*! away away (meters 16))
+                    (seconds 0.5))
+        )
+      )
+    )
+  (none)
+  )
+
+(defmethod enemy-touch-handler ((this prebot-large-eco-creature) (arg0 process) (arg1 event-message-block))
+  (if (and (eco-creature-darkjak-target? arg0) (-> arg1 param 0))
+      (eco-creature-push-darkjak! this)
+      ((method-of-type nav-enemy enemy-touch-handler) this arg0 arg1))
+  (none)
+  )
+
 (defmethod send-attack-from-tshape ((this prebot-large-eco-creature) (arg0 process) (arg1 touching-shapes-entry) (arg2 uint))
-  "Eco Creatures cannot hurt active Dark Jak, but retain their normal attacks otherwise."
+  "Shove active Dark Jak on contact without damaging him."
   (if (eco-creature-darkjak-target? arg0)
-      #f
+      (begin (eco-creature-push-darkjak! this) #t)
       ((method-of-type enemy send-attack-from-tshape) this arg0 arg1 arg2)))
 
 (defmethod get-penetrated-by ((this prebot-large-eco-creature))
@@ -1381,7 +1417,9 @@
        #f
        )
       (('touch 'bonk)
-       (if (and (< (-> self which-trajectory) 2) (= proc *target*))
+       (if (eco-creature-darkjak-target? proc)
+           (eco-creature-push-darkjak! self)
+           (if (and (< (-> self which-trajectory) 2) (= proc *target*))
            (send-event
              *target*
              'attack
@@ -1396,6 +1434,7 @@
                                  )
              )
            (event-handler self proc argc message block)
+           )
            )
        #t
        )
